@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ai assistants
+.agents/
+.claude/
+.cursor/
+AGENTS.md
+CLAUDE.md
