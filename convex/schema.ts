@@ -9,4 +9,9 @@ export default defineSchema({
   numbers: defineTable({
     value: v.number(),
   }),
+  users: defineTable({
+    authUserId: v.string(),
+    name: v.optional(v.string()),
+    email: v.string(),
+  }).index("by_authUserId", ["authUserId"]),
 });
