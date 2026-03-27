@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export function LoginForm() {
+export function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
@@ -31,17 +31,18 @@ export function LoginForm() {
 
   if (isPending || session) return null;
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
-    const { error: signInError } = await authClient.signIn.email({
+    const { error: signUpError } = await authClient.signUp.email({
       email,
       password,
+      name: email.split("@")[0],
     });
     setIsLoading(false);
-    if (signInError) {
-      setError(signInError.message || "Failed to sign in. Please try again.");
+    if (signUpError) {
+      setError(signUpError.message || "Failed to create account. Please try again.");
     } else {
       router.replace(next);
     }
@@ -50,12 +51,12 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Enter your email and password to continue</CardDescription>
+        <CardTitle>Create account</CardTitle>
+        <CardDescription>Enter your email and password to get started</CardDescription>
       </CardHeader>
       <CardContent>
         {error && <p className="text-destructive text-sm mb-4">{error}</p>}
-        <form className="flex flex-col gap-4" onSubmit={handleSignIn}>
+        <form className="flex flex-col gap-4" onSubmit={handleSignUp}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -79,15 +80,15 @@ export function LoginForm() {
             />
           </div>
           <Button type="submit" disabled={isLoading} className="mt-2">
-            Sign In
+            Create account
           </Button>
           <p className="text-sm text-center text-muted-foreground">
-            Don&apos;t have an account?{" "}
+            Already have an account?{" "}
             <Link
-              href={`/register${next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`}
+              href={`/login${next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`}
               className="underline underline-offset-2"
             >
-              Create one
+              Sign in
             </Link>
           </p>
         </form>

@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth-server";
-import { LoginForm } from "@/components/auth/LoginForm";
+import { RegisterForm } from "@/components/auth/RegisterForm";
 
-export default async function LoginPage({
+export default async function RegisterPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string }>;
@@ -17,9 +17,7 @@ export default async function LoginPage({
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
       <h1 className="text-2xl font-semibold mb-8">Blackkin</h1>
-      <LoginForm />
+      <RegisterForm />
     </div>
   );
 }
-
-
