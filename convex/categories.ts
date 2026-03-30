@@ -19,10 +19,11 @@ export const list = query({
   args: {},
   returns: v.array(categoryObject),
   handler: async (ctx) => {
-    return await ctx.db
+    const cats = await ctx.db
       .query("categories")
       .withIndex("by_isActive", (q) => q.eq("isActive", true))
       .take(100);
+    return [...cats].sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
 
@@ -32,7 +33,8 @@ export const listAll = query({
   returns: v.array(categoryObject),
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    return await ctx.db.query("categories").order("asc").take(200);
+    const cats = await ctx.db.query("categories").order("asc").take(200);
+    return [...cats].sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
 
@@ -54,7 +56,7 @@ export const create = mutation({
     slug: v.string(),
     description: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
-    sortOrder: v.number(),
+    // sortOrder is auto-assigned (max + 1)
   },
   returns: v.id("categories"),
   handler: async (ctx, args) => {
@@ -64,7 +66,13 @@ export const create = mutation({
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .unique();
     if (existing) throw new ConvexError("Slug already in use");
-    return await ctx.db.insert("categories", { ...args, isActive: true });
+    const all = await ctx.db.query("categories").order("asc").take(200);
+    const maxSort = all.length > 0 ? Math.max(...all.map((c) => c.sortOrder)) : -1;
+    return await ctx.db.insert("categories", {
+      ...args,
+      isActive: true,
+      sortOrder: maxSort + 1,
+    });
   },
 });
 
@@ -75,7 +83,7 @@ export const update = mutation({
     slug: v.optional(v.string()),
     description: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
-    sortOrder: v.optional(v.number()),
+    // sortOrder is now managed via reorder only
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -92,6 +100,20 @@ export const update = mutation({
       Object.entries(updates).filter(([, v]) => v !== undefined)
     );
     if (Object.keys(clean).length > 0) await ctx.db.patch(id, clean);
+    return null;
+  },
+});
+
+export const reorder = mutation({
+  args: {
+    items: v.array(v.object({ id: v.id("categories"), sortOrder: v.number() })),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) => ctx.db.patch(item.id, { sortOrder: item.sortOrder }))
+    );
     return null;
   },
 });

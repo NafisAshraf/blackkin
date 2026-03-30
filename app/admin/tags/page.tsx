@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -25,42 +26,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Loader2, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
 
 function toSlug(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-type Tag = {
-  _id: Id<"tags">;
-  _creationTime: number;
-  name: string;
-  slug: string;
-  isActive: boolean;
-};
+type Tag = { _id: Id<"tags">; _creationTime: number; name: string; slug: string; isActive: boolean };
+type TagDialogState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; tag: Tag };
 
-type TagDialogState =
-  | { mode: "closed" }
-  | { mode: "create" }
-  | { mode: "edit"; tag: Tag };
-
-function TagDialog({
-  state,
-  onClose,
-}: {
-  state: TagDialogState;
-  onClose: () => void;
-}) {
+function TagDialog({ state, onClose }: { state: TagDialogState; onClose: () => void }) {
   const isEdit = state.mode === "edit";
   const initial = isEdit ? state.tag : null;
 
@@ -73,9 +49,7 @@ function TagDialog({
 
   function handleNameChange(val: string) {
     setName(val);
-    if (!isEdit) {
-      setSlug(toSlug(val));
-    }
+    if (!isEdit) setSlug(toSlug(val));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -99,35 +73,19 @@ function TagDialog({
 
   return (
     <DialogContent>
-      <DialogHeader>
-        <DialogTitle>{isEdit ? "Edit Tag" : "New Tag"}</DialogTitle>
-      </DialogHeader>
+      <DialogHeader><DialogTitle>{isEdit ? "Edit Tag" : "New Tag"}</DialogTitle></DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
           <Label htmlFor="tag-name">Name</Label>
-          <Input
-            id="tag-name"
-            value={name}
-            onChange={(e) => handleNameChange(e.target.value)}
-            required
-          />
+          <Input id="tag-name" value={name} onChange={(e) => handleNameChange(e.target.value)} required />
         </div>
         <div className="space-y-1">
           <Label htmlFor="tag-slug">Slug</Label>
-          <Input
-            id="tag-slug"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-          />
+          <Input id="tag-slug" value={slug} onChange={(e) => setSlug(e.target.value)} required />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : isEdit ? "Update" : "Create"}
-          </Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button type="submit" disabled={loading}>{loading ? "Saving…" : isEdit ? "Update" : "Create"}</Button>
         </DialogFooter>
       </form>
     </DialogContent>
@@ -182,12 +140,7 @@ export default function TagsPage() {
       </div>
 
       <Dialog open={isOpen} onOpenChange={(open) => !open && setDialogState({ mode: "closed" })}>
-        {isOpen && (
-          <TagDialog
-            state={dialogState}
-            onClose={() => setDialogState({ mode: "closed" })}
-          />
-        )}
+        {isOpen && <TagDialog state={dialogState} onClose={() => setDialogState({ mode: "closed" })} />}
       </Dialog>
 
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
@@ -195,74 +148,61 @@ export default function TagsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete tag &quot;{deleteTarget?.name}&quot;?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the tag and remove it from all products. This action
-              cannot be undone.
+              This will permanently delete the tag and remove it from all products.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteTarget && handleDelete(deleteTarget)}
-            >
-              Delete
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => deleteTarget && handleDelete(deleteTarget)}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {tags === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading...</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
       ) : tags.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No tags yet.</p>
+        <p className="text-muted-foreground text-sm py-4">No tags yet.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tags.map((tag) => (
-              <TableRow key={tag._id}>
-                <TableCell className="font-medium">{tag.name}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{tag.slug}</TableCell>
-                <TableCell>{tag.isActive ? "Yes" : "No"}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialogState({ mode: "edit", tag })}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={togglingId === tag._id}
-                    onClick={() => handleToggleActive(tag)}
-                  >
-                    {togglingId === tag._id
-                      ? "..."
-                      : tag.isActive
-                      ? "Deactivate"
-                      : "Activate"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={deletingId === tag._id}
-                    onClick={() => setDeleteTarget(tag)}
-                  >
-                    {deletingId === tag._id ? "Deleting..." : "Delete"}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="rounded-md border divide-y">
+          {tags.map((tag) => (
+            <div key={tag._id} className="flex items-center gap-3 px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-sm">{tag.name}</p>
+                  <Badge variant={tag.isActive ? "default" : "secondary"} className="text-xs">
+                    {tag.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">{tag.slug}</p>
+              </div>
+              <RowActionsMenu
+                actions={[
+                  {
+                    label: "Edit",
+                    icon: Pencil,
+                    onClick: () => setDialogState({ mode: "edit", tag }),
+                  },
+                  {
+                    label: togglingId === tag._id ? "Updating…" : tag.isActive ? "Deactivate" : "Activate",
+                    icon: tag.isActive ? ToggleLeft : ToggleRight,
+                    disabled: togglingId === tag._id,
+                    separator: true,
+                    onClick: () => handleToggleActive(tag),
+                  },
+                  {
+                    label: deletingId === tag._id ? "Deleting…" : "Delete",
+                    icon: Trash2,
+                    variant: "destructive",
+                    disabled: deletingId === tag._id,
+                    onClick: () => setDeleteTarget(tag),
+                  },
+                ]}
+              />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

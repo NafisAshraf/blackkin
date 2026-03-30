@@ -57,8 +57,6 @@ export default defineSchema({
     categoryId: v.id("categories"),
     basePrice: v.number(), // price in BDT (whole number)
     isActive: v.boolean(),
-    isFeaturedBestSeller: v.boolean(), // for landing page "Best Sellers"
-    isFeaturedNewArrival: v.boolean(), // for landing page "New Arrivals"
     totalRatings: v.number(), // denormalized count of approved reviews
     averageRating: v.number(), // denormalized average rating
     // Media stored inline - bounded list, well under 8192 limit
@@ -73,8 +71,6 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_categoryId", ["categoryId"])
     .index("by_isActive", ["isActive"])
-    .index("by_isFeaturedBestSeller", ["isFeaturedBestSeller"])
-    .index("by_isFeaturedNewArrival", ["isFeaturedNewArrival"])
     .index("by_categoryId_and_isActive", ["categoryId", "isActive"])
     .searchIndex("search_name", {
       searchField: "name",
@@ -123,8 +119,14 @@ export default defineSchema({
 
   // ─── PRODUCT RECOMMENDATIONS (admin-selected, GLOBAL) ────
   // "also_like" shows on ALL product pages. "also_bought" shows at checkout filtered by size.
+  // "best_sellers" and "new_arrivals" show on landing page (top 3 by sortOrder).
   productRecommendations: defineTable({
-    type: v.union(v.literal("also_like"), v.literal("also_bought")),
+    type: v.union(
+      v.literal("also_like"),
+      v.literal("also_bought"),
+      v.literal("best_sellers"),
+      v.literal("new_arrivals")
+    ),
     recommendedProductId: v.id("products"),
     forSize: v.optional(v.string()), // null = all sizes; "M" = only when M is in cart
     sortOrder: v.number(),

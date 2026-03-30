@@ -11,18 +11,30 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
 
 type ScopeType = "storewide" | "category" | "tag" | "product";
 
 function toIso(ms: number) {
   return new Date(ms).toISOString().slice(0, 16);
 }
-
 function formatDate(ms: number) {
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(ms).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
 }
 
 const DEFAULT_FORM = {
@@ -51,6 +63,7 @@ export default function CampaignsPage() {
   const [editId, setEditId] = useState<Id<"salesCampaigns"> | null>(null);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: Id<"salesCampaigns">; name: string } | null>(null);
 
   function openCreate() {
     setEditId(null);
@@ -83,18 +96,9 @@ export default function CampaignsPage() {
   }
 
   async function handleSave() {
-    if (!form.discountValue || parseFloat(form.discountValue) <= 0) {
-      toast.error("Discount value must be positive");
-      return;
-    }
-    if (form.scopeType === "category" && !form.scopeCategoryId) {
-      toast.error("Select a category");
-      return;
-    }
-    if (form.scopeType === "tag" && !form.scopeTagId) {
-      toast.error("Select a tag");
-      return;
-    }
+    if (!form.discountValue || parseFloat(form.discountValue) <= 0) { toast.error("Discount value must be positive"); return; }
+    if (form.scopeType === "category" && !form.scopeCategoryId) { toast.error("Select a category"); return; }
+    if (form.scopeType === "tag" && !form.scopeTagId) { toast.error("Select a tag"); return; }
 
     setSaving(true);
     try {
@@ -107,14 +111,8 @@ export default function CampaignsPage() {
         scope: buildScope(),
         isActive: form.isActive,
       };
-
-      if (editId) {
-        await updateCampaign({ id: editId, ...payload });
-        toast.success("Campaign updated");
-      } else {
-        await createCampaign(payload);
-        toast.success("Campaign created");
-      }
+      if (editId) { await updateCampaign({ id: editId, ...payload }); toast.success("Campaign updated"); }
+      else { await createCampaign(payload); toast.success("Campaign created"); }
       setDialogOpen(false);
     } catch (e: any) {
       toast.error(e.message ?? "Failed to save");
@@ -126,15 +124,9 @@ export default function CampaignsPage() {
   function scopeLabel(c: any) {
     const s = c.scope;
     if (s.type === "storewide") return "Storewide";
-    if (s.type === "category") {
-      const cat = categories?.find((x) => x._id === s.categoryId);
-      return `Category: ${cat?.name ?? s.categoryId}`;
-    }
-    if (s.type === "tag") {
-      const tag = tags?.find((x) => x._id === s.tagId);
-      return `Tag: ${tag?.name ?? s.tagId}`;
-    }
-    return `Product`;
+    if (s.type === "category") { const cat = categories?.find((x) => x._id === s.categoryId); return `Category: ${cat?.name ?? "…"}`; }
+    if (s.type === "tag") { const tag = tags?.find((x) => x._id === s.tagId); return `Tag: ${tag?.name ?? "…"}`; }
+    return "Product";
   }
 
   return (
@@ -147,6 +139,31 @@ export default function CampaignsPage() {
         <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> New Campaign</Button>
       </div>
 
+      {/* Delete confirmation */}
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete &quot;{deleteTarget?.name}&quot;?</AlertDialogTitle>
+            <AlertDialogDescription>This will permanently remove this campaign.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTarget) {
+                  removeCampaign({ id: deleteTarget.id })
+                    .then(() => toast.success("Deleted"))
+                    .catch((e) => toast.error(e.message));
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="border rounded">
         <Table>
           <TableHeader>
@@ -157,7 +174,7 @@ export default function CampaignsPage() {
               <TableHead>Start</TableHead>
               <TableHead>End</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="w-20">Actions</TableHead>
+              <TableHead className="w-12">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -168,9 +185,7 @@ export default function CampaignsPage() {
             ) : campaigns.map((c) => (
               <TableRow key={c._id}>
                 <TableCell className="font-medium">{c.name}</TableCell>
-                <TableCell>
-                  {c.discountType === "percentage" ? `${c.discountValue}% off` : `৳${c.discountValue} off`}
-                </TableCell>
+                <TableCell>{c.discountType === "percentage" ? `${c.discountValue}% off` : `৳${c.discountValue} off`}</TableCell>
                 <TableCell className="text-sm">{scopeLabel(c)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{formatDate(c.startTime)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{formatDate(c.endTime)}</TableCell>
@@ -180,24 +195,18 @@ export default function CampaignsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(c)}><Pencil className="h-3 w-3" /></Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3 w-3" /></Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete "{c.name}"?</AlertDialogTitle>
-                          <AlertDialogDescription>This will permanently remove this campaign.</AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => removeCampaign({ id: c._id }).then(() => toast.success("Deleted")).catch((e) => toast.error(e.message))}>Delete</AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
+                  <RowActionsMenu
+                    actions={[
+                      { label: "Edit", icon: Pencil, onClick: () => openEdit(c) },
+                      {
+                        label: "Delete",
+                        icon: Trash2,
+                        variant: "destructive",
+                        separator: true,
+                        onClick: () => setDeleteTarget({ id: c._id, name: c.name }),
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}
@@ -205,6 +214,7 @@ export default function CampaignsPage() {
         </Table>
       </div>
 
+      {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{editId ? "Edit Campaign" : "New Campaign"}</DialogTitle></DialogHeader>
@@ -283,7 +293,7 @@ export default function CampaignsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</> : "Save"}
+              {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</> : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

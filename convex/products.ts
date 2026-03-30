@@ -37,8 +37,6 @@ const productWithPricingValidator = v.object({
   discountAmount: v.number(),
   campaignName: v.union(v.string(), v.null()),
   isActive: v.boolean(),
-  isFeaturedBestSeller: v.boolean(),
-  isFeaturedNewArrival: v.boolean(),
   totalRatings: v.number(),
   averageRating: v.number(),
   media: v.array(mediaItemValidator),
@@ -112,7 +110,6 @@ export const listFiltered = query({
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // If filtering by tag, get matching productIds first
     let tagProductIds: Set<Id<"products">> | null = null;
     if (args.tagId) {
       const rows = await ctx.db
@@ -122,11 +119,9 @@ export const listFiltered = query({
       tagProductIds = new Set(rows.map((r) => r.productId));
     }
 
-    // If filtering by variant attributes, find matching productIds
     let variantProductIds: Set<Id<"products">> | null = null;
     if (args.size || args.color) {
       if (args.size) {
-        // Use index for size filtering - query all then filter
         const sizeVariants = await ctx.db
           .query("productVariants")
           .order("asc")
@@ -158,7 +153,6 @@ export const listFiltered = query({
 
     const result = await dbQuery.paginate(args.paginationOpts);
 
-    // Post-filter by tag, variant, price
     const filtered = result.page.filter((p: Doc<"products">) => {
       if (tagProductIds && !tagProductIds.has(p._id)) return false;
       if (variantProductIds && !variantProductIds.has(p._id)) return false;
@@ -197,73 +191,87 @@ export const getById = query({
   },
 });
 
+/** Landing page: top 3 best sellers by sortOrder from recommendations table */
 export const getFeaturedBestSellers = query({
   args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("products"),
-      _creationTime: v.number(),
-      name: v.string(),
-      slug: v.string(),
-      basePrice: v.number(),
-      discountedPrice: v.number(),
-      discountAmount: v.number(),
-      campaignName: v.union(v.string(), v.null()),
-      isActive: v.boolean(),
-      isFeaturedBestSeller: v.boolean(),
-      isFeaturedNewArrival: v.boolean(),
-      totalRatings: v.number(),
-      averageRating: v.number(),
-      media: v.array(mediaItemValidator),
-      categoryId: v.id("categories"),
-      description: v.string(),
-      tags: v.array(v.object({ _id: v.id("tags"), name: v.string(), slug: v.string() })),
-      variants: v.array(variantValidator),
-    })
-  ),
+  returns: v.array(productWithPricingValidator),
   handler: async (ctx) => {
-    const products = await ctx.db
-      .query("products")
-      .withIndex("by_isFeaturedBestSeller", (q) =>
-        q.eq("isFeaturedBestSeller", true)
-      )
+    const recs = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type", (q) => q.eq("type", "best_sellers"))
+      .order("asc")
       .take(3);
-    return Promise.all(products.map((p) => enrichProduct(ctx, p)));
+
+    const products = await Promise.all(
+      recs.map(async (rec) => {
+        const product = await ctx.db.get(rec.recommendedProductId);
+        if (!product || !product.isActive) return null;
+        return enrichProduct(ctx, product);
+      })
+    );
+    return products.filter(Boolean) as Awaited<ReturnType<typeof enrichProduct>>[];
   },
 });
 
+/** Landing page: top 3 new arrivals by sortOrder from recommendations table */
 export const getFeaturedNewArrivals = query({
   args: {},
+  returns: v.array(productWithPricingValidator),
+  handler: async (ctx) => {
+    const recs = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type", (q) => q.eq("type", "new_arrivals"))
+      .order("asc")
+      .take(3);
+
+    const products = await Promise.all(
+      recs.map(async (rec) => {
+        const product = await ctx.db.get(rec.recommendedProductId);
+        if (!product || !product.isActive) return null;
+        return enrichProduct(ctx, product);
+      })
+    );
+    return products.filter(Boolean) as Awaited<ReturnType<typeof enrichProduct>>[];
+  },
+});
+
+/** Check if a slug is available (for inline validation on product forms) */
+export const checkSlugAvailable = query({
+  args: {
+    slug: v.string(),
+    excludeId: v.optional(v.id("products")),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    if (!args.slug.trim()) return true;
+    const existing = await ctx.db
+      .query("products")
+      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .unique();
+    if (!existing) return true;
+    if (args.excludeId && existing._id === args.excludeId) return true;
+    return false;
+  },
+});
+
+/** Admin: lightweight product search for the recommendations picker */
+export const searchForPicker = query({
+  args: { query: v.string() },
   returns: v.array(
     v.object({
       _id: v.id("products"),
-      _creationTime: v.number(),
       name: v.string(),
       slug: v.string(),
-      basePrice: v.number(),
-      discountedPrice: v.number(),
-      discountAmount: v.number(),
-      campaignName: v.union(v.string(), v.null()),
-      isActive: v.boolean(),
-      isFeaturedBestSeller: v.boolean(),
-      isFeaturedNewArrival: v.boolean(),
-      totalRatings: v.number(),
-      averageRating: v.number(),
-      media: v.array(mediaItemValidator),
-      categoryId: v.id("categories"),
-      description: v.string(),
-      tags: v.array(v.object({ _id: v.id("tags"), name: v.string(), slug: v.string() })),
-      variants: v.array(variantValidator),
     })
   ),
-  handler: async (ctx) => {
-    const products = await ctx.db
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    if (!args.query.trim()) return [];
+    const results = await ctx.db
       .query("products")
-      .withIndex("by_isFeaturedNewArrival", (q) =>
-        q.eq("isFeaturedNewArrival", true)
-      )
-      .take(3);
-    return Promise.all(products.map((p) => enrichProduct(ctx, p)));
+      .withSearchIndex("search_name", (q) => q.search("name", args.query))
+      .take(10);
+    return results.map((p) => ({ _id: p._id, name: p.name, slug: p.slug }));
   },
 });
 
@@ -325,17 +333,13 @@ export const create = mutation({
     const productId = await ctx.db.insert("products", {
       ...productData,
       isActive: true,
-      isFeaturedBestSeller: false,
-      isFeaturedNewArrival: false,
       totalRatings: 0,
       averageRating: 0,
     });
 
-    // Fetch inserted doc for aggregate
     const product = await ctx.db.get(productId);
     if (product) await aggregateProducts.insertIfDoesNotExist(ctx, product);
 
-    // Insert variants
     await Promise.all(
       variants.map((v) => ctx.db.insert("productVariants", { ...v, productId }))
     );
@@ -384,7 +388,7 @@ export const updateVariants = mutation({
     productId: v.id("products"),
     variants: v.array(
       v.object({
-        id: v.optional(v.id("productVariants")), // if provided = update, else = create
+        id: v.optional(v.id("productVariants")),
         size: v.string(),
         color: v.optional(v.string()),
         sku: v.optional(v.string()),
@@ -398,12 +402,10 @@ export const updateVariants = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    // Delete removed variants
     if (args.deleteIds) {
       await Promise.all(args.deleteIds.map((id) => ctx.db.delete(id)));
     }
 
-    // Update or create
     await Promise.all(
       args.variants.map(({ id, ...data }) => {
         if (id) {
@@ -432,51 +434,6 @@ export const toggleActive = mutation({
   },
 });
 
-export const setFeatured = mutation({
-  args: {
-    id: v.id("products"),
-    isFeaturedBestSeller: v.optional(v.boolean()),
-    isFeaturedNewArrival: v.optional(v.boolean()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-
-    // Enforce max 3 per section
-    if (args.isFeaturedBestSeller === true) {
-      const count = await ctx.db
-        .query("products")
-        .withIndex("by_isFeaturedBestSeller", (q) =>
-          q.eq("isFeaturedBestSeller", true)
-        )
-        .take(4);
-      if (count.length >= 3 && !count.find((p) => p._id === args.id)) {
-        throw new ConvexError("Maximum 3 Best Sellers allowed");
-      }
-    }
-    if (args.isFeaturedNewArrival === true) {
-      const count = await ctx.db
-        .query("products")
-        .withIndex("by_isFeaturedNewArrival", (q) =>
-          q.eq("isFeaturedNewArrival", true)
-        )
-        .take(4);
-      if (count.length >= 3 && !count.find((p) => p._id === args.id)) {
-        throw new ConvexError("Maximum 3 New Arrivals allowed");
-      }
-    }
-
-    const updates: Record<string, boolean> = {};
-    if (args.isFeaturedBestSeller !== undefined)
-      updates.isFeaturedBestSeller = args.isFeaturedBestSeller;
-    if (args.isFeaturedNewArrival !== undefined)
-      updates.isFeaturedNewArrival = args.isFeaturedNewArrival;
-
-    if (Object.keys(updates).length > 0) await ctx.db.patch(args.id, updates);
-    return null;
-  },
-});
-
 /** Replace all tags for a product */
 export const assignTags = mutation({
   args: {
@@ -487,14 +444,12 @@ export const assignTags = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    // Remove existing
     const existing = await ctx.db
       .query("productTags")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .take(100);
     await Promise.all(existing.map((r) => ctx.db.delete(r._id)));
 
-    // Insert new
     await Promise.all(
       args.tagIds.map((tagId) =>
         ctx.db.insert("productTags", { productId: args.productId, tagId })
@@ -533,6 +488,19 @@ export const remove = mutation({
         .take(64);
       if (tags.length === 0) { done = true; } else {
         await Promise.all(tags.map((t) => ctx.db.delete(t._id)));
+      }
+    }
+
+    // Remove from any recommendation sections
+    done = false;
+    while (!done) {
+      const recs = await ctx.db
+        .query("productRecommendations")
+        .order("asc")
+        .take(64);
+      const matching = recs.filter((r) => r.recommendedProductId === args.id);
+      if (matching.length === 0) { done = true; } else {
+        await Promise.all(matching.map((r) => ctx.db.delete(r._id)));
       }
     }
 

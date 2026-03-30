@@ -26,15 +26,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { SortableList } from "@/components/admin/SortableList";
+import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -54,26 +49,16 @@ type PlatformColor = {
   sortOrder: number;
 };
 
-// ─── Sizes Section ────────────────────────────────────────────
+// ─── SizeDialog ───────────────────────────────────────────────
 
-type SizeDialogState =
-  | { mode: "closed" }
-  | { mode: "create" }
-  | { mode: "edit"; size: PlatformSize };
+type SizeDialogState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; size: PlatformSize };
 
-function SizeDialog({
-  state,
-  onClose,
-}: {
-  state: SizeDialogState;
-  onClose: () => void;
-}) {
+function SizeDialog({ state, onClose }: { state: SizeDialogState; onClose: () => void }) {
   const isEdit = state.mode === "edit";
   const initial = isEdit ? state.size : null;
 
   const [name, setName] = useState(initial?.name ?? "");
   const [measurements, setMeasurements] = useState(initial?.measurements ?? "");
-  const [sortOrder, setSortOrder] = useState(String(initial?.sortOrder ?? 0));
   const [loading, setLoading] = useState(false);
 
   const createMutation = useMutation(api.platformConfig.createSize);
@@ -84,15 +69,10 @@ function SizeDialog({
     setLoading(true);
     try {
       if (isEdit) {
-        await updateMutation({
-          id: state.size._id,
-          name,
-          measurements,
-          sortOrder: Number(sortOrder),
-        });
+        await updateMutation({ id: state.size._id, name, measurements });
         toast.success("Size updated");
       } else {
-        await createMutation({ name, measurements, sortOrder: Number(sortOrder) });
+        await createMutation({ name, measurements });
         toast.success("Size created");
       }
       onClose();
@@ -129,21 +109,12 @@ function SizeDialog({
             rows={3}
           />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="size-sort">Sort Order</Label>
-          <Input
-            id="size-sort"
-            type="number"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-          />
-        </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : isEdit ? "Update" : "Create"}
+            {loading ? "Saving…" : isEdit ? "Update" : "Create"}
           </Button>
         </DialogFooter>
       </form>
@@ -151,13 +122,17 @@ function SizeDialog({
   );
 }
 
+// ─── SizesTab ─────────────────────────────────────────────────
+
 function SizesTab() {
   const sizes = useQuery(api.platformConfig.listSizes);
   const deleteMutation = useMutation(api.platformConfig.deleteSize);
+  const reorderMutation = useMutation(api.platformConfig.reorderSizes);
 
   const [dialogState, setDialogState] = useState<SizeDialogState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<PlatformSize | null>(null);
   const [deletingId, setDeletingId] = useState<Id<"platformSizes"> | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   async function handleDelete(size: PlatformSize) {
     setDeletingId(size._id);
@@ -172,6 +147,20 @@ function SizesTab() {
     }
   }
 
+  async function handleReorder(reordered: { id: string; sortOrder: number }[]) {
+    if (reordering) return;
+    setReordering(true);
+    try {
+      await reorderMutation({
+        items: reordered.map((r) => ({ id: r.id as Id<"platformSizes">, sortOrder: r.sortOrder })),
+      });
+    } catch {
+      toast.error("Failed to reorder");
+    } finally {
+      setReordering(false);
+    }
+  }
+
   const isOpen = dialogState.mode !== "closed";
 
   return (
@@ -181,21 +170,14 @@ function SizesTab() {
       </div>
 
       <Dialog open={isOpen} onOpenChange={(open) => !open && setDialogState({ mode: "closed" })}>
-        {isOpen && (
-          <SizeDialog state={dialogState} onClose={() => setDialogState({ mode: "closed" })} />
-        )}
+        {isOpen && <SizeDialog state={dialogState} onClose={() => setDialogState({ mode: "closed" })} />}
       </Dialog>
 
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete size &quot;{deleteTarget?.name}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -207,73 +189,61 @@ function SizesTab() {
       </AlertDialog>
 
       {sizes === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading...</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
       ) : sizes.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No sizes yet.</p>
+        <p className="text-muted-foreground text-sm py-4">No sizes yet. Click &quot;New Size&quot; to add one.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Measurements</TableHead>
-              <TableHead>Sort Order</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sizes.map((size) => (
-              <TableRow key={size._id}>
-                <TableCell className="font-medium">{size.name}</TableCell>
-                <TableCell className="text-muted-foreground text-sm max-w-xs truncate">
-                  {size.measurements}
-                </TableCell>
-                <TableCell>{size.sortOrder}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialogState({ mode: "edit", size })}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={deletingId === size._id}
-                    onClick={() => setDeleteTarget(size)}
-                  >
-                    {deletingId === size._id ? "Deleting..." : "Delete"}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="rounded-md border divide-y">
+          <SortableList
+            items={sizes}
+            onReorder={handleReorder}
+            renderItem={(size, dragHandle) => (
+              <div className="flex items-center gap-3 px-4 py-3 bg-background">
+                {dragHandle}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">{size.name}</p>
+                  {size.measurements && (
+                    <p className="text-xs text-muted-foreground truncate">{size.measurements}</p>
+                  )}
+                </div>
+                <RowActionsMenu
+                  actions={[
+                    {
+                      label: "Edit",
+                      icon: Pencil,
+                      onClick: () => setDialogState({ mode: "edit", size }),
+                    },
+                    {
+                      label: deletingId === size._id ? "Deleting…" : "Delete",
+                      icon: Trash2,
+                      variant: "destructive",
+                      disabled: deletingId === size._id,
+                      separator: true,
+                      onClick: () => setDeleteTarget(size),
+                    },
+                  ]}
+                />
+              </div>
+            )}
+          />
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Colors Section ───────────────────────────────────────────
+// ─── ColorDialog ──────────────────────────────────────────────
 
-type ColorDialogState =
-  | { mode: "closed" }
-  | { mode: "create" }
-  | { mode: "edit"; color: PlatformColor };
+type ColorDialogState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; color: PlatformColor };
 
-function ColorDialog({
-  state,
-  onClose,
-}: {
-  state: ColorDialogState;
-  onClose: () => void;
-}) {
+function ColorDialog({ state, onClose }: { state: ColorDialogState; onClose: () => void }) {
   const isEdit = state.mode === "edit";
   const initial = isEdit ? state.color : null;
 
   const [name, setName] = useState(initial?.name ?? "");
   const [hexCode, setHexCode] = useState(initial?.hexCode ?? "");
-  const [sortOrder, setSortOrder] = useState(String(initial?.sortOrder ?? 0));
   const [loading, setLoading] = useState(false);
 
   const createMutation = useMutation(api.platformConfig.createColor);
@@ -284,19 +254,10 @@ function ColorDialog({
     setLoading(true);
     try {
       if (isEdit) {
-        await updateMutation({
-          id: state.color._id,
-          name,
-          hexCode: hexCode || undefined,
-          sortOrder: Number(sortOrder),
-        });
+        await updateMutation({ id: state.color._id, name, hexCode: hexCode || undefined });
         toast.success("Color updated");
       } else {
-        await createMutation({
-          name,
-          hexCode: hexCode || undefined,
-          sortOrder: Number(sortOrder),
-        });
+        await createMutation({ name, hexCode: hexCode || undefined });
         toast.success("Color created");
       }
       onClose();
@@ -333,28 +294,16 @@ function ColorDialog({
               placeholder="#000000"
             />
             {hexCode && (
-              <div
-                className="w-8 h-8 rounded border shrink-0"
-                style={{ backgroundColor: hexCode }}
-              />
+              <div className="w-8 h-8 rounded border shrink-0" style={{ backgroundColor: hexCode }} />
             )}
           </div>
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="color-sort">Sort Order</Label>
-          <Input
-            id="color-sort"
-            type="number"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-          />
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : isEdit ? "Update" : "Create"}
+            {loading ? "Saving…" : isEdit ? "Update" : "Create"}
           </Button>
         </DialogFooter>
       </form>
@@ -362,13 +311,17 @@ function ColorDialog({
   );
 }
 
+// ─── ColorsTab ────────────────────────────────────────────────
+
 function ColorsTab() {
   const colors = useQuery(api.platformConfig.listColors);
   const deleteMutation = useMutation(api.platformConfig.deleteColor);
+  const reorderMutation = useMutation(api.platformConfig.reorderColors);
 
   const [dialogState, setDialogState] = useState<ColorDialogState>({ mode: "closed" });
   const [deleteTarget, setDeleteTarget] = useState<PlatformColor | null>(null);
   const [deletingId, setDeletingId] = useState<Id<"platformColors"> | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   async function handleDelete(color: PlatformColor) {
     setDeletingId(color._id);
@@ -383,6 +336,20 @@ function ColorsTab() {
     }
   }
 
+  async function handleReorder(reordered: { id: string; sortOrder: number }[]) {
+    if (reordering) return;
+    setReordering(true);
+    try {
+      await reorderMutation({
+        items: reordered.map((r) => ({ id: r.id as Id<"platformColors">, sortOrder: r.sortOrder })),
+      });
+    } catch {
+      toast.error("Failed to reorder");
+    } finally {
+      setReordering(false);
+    }
+  }
+
   const isOpen = dialogState.mode !== "closed";
 
   return (
@@ -392,21 +359,14 @@ function ColorsTab() {
       </div>
 
       <Dialog open={isOpen} onOpenChange={(open) => !open && setDialogState({ mode: "closed" })}>
-        {isOpen && (
-          <ColorDialog state={dialogState} onClose={() => setDialogState({ mode: "closed" })} />
-        )}
+        {isOpen && <ColorDialog state={dialogState} onClose={() => setDialogState({ mode: "closed" })} />}
       </Dialog>
 
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete color &quot;{deleteTarget?.name}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone.
-            </AlertDialogDescription>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -418,58 +378,56 @@ function ColorsTab() {
       </AlertDialog>
 
       {colors === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading...</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
       ) : colors.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No colors yet.</p>
+        <p className="text-muted-foreground text-sm py-4">No colors yet. Click &quot;New Color&quot; to add one.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Hex Code</TableHead>
-              <TableHead>Sort Order</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {colors.map((color) => (
-              <TableRow key={color._id}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
+        <div className="rounded-md border divide-y">
+          <SortableList
+            items={colors}
+            onReorder={handleReorder}
+            renderItem={(color, dragHandle) => (
+              <div className="flex items-center gap-3 px-4 py-3 bg-background">
+                {dragHandle}
+                <div className="flex-1 flex items-center gap-2 min-w-0">
+                  {color.hexCode ? (
+                    <span
+                      className="h-5 w-5 rounded-full border shrink-0"
+                      style={{ backgroundColor: color.hexCode }}
+                    />
+                  ) : (
+                    <span className="h-5 w-5 rounded-full border border-dashed shrink-0 bg-muted" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm">{color.name}</p>
                     {color.hexCode && (
-                      <div
-                        className="w-4 h-4 rounded-full border shrink-0"
-                        style={{ backgroundColor: color.hexCode }}
-                      />
+                      <p className="text-xs text-muted-foreground">{color.hexCode}</p>
                     )}
-                    {color.name}
                   </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {color.hexCode ?? "—"}
-                </TableCell>
-                <TableCell>{color.sortOrder}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialogState({ mode: "edit", color })}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    disabled={deletingId === color._id}
-                    onClick={() => setDeleteTarget(color)}
-                  >
-                    {deletingId === color._id ? "Deleting..." : "Delete"}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </div>
+                <RowActionsMenu
+                  actions={[
+                    {
+                      label: "Edit",
+                      icon: Pencil,
+                      onClick: () => setDialogState({ mode: "edit", color }),
+                    },
+                    {
+                      label: deletingId === color._id ? "Deleting…" : "Delete",
+                      icon: Trash2,
+                      variant: "destructive",
+                      disabled: deletingId === color._id,
+                      separator: true,
+                      onClick: () => setDeleteTarget(color),
+                    },
+                  ]}
+                />
+              </div>
+            )}
+          />
+        </div>
       )}
     </div>
   );
@@ -483,7 +441,7 @@ export default function SizesPage() {
       <div>
         <h1 className="text-2xl font-semibold">Platform Configuration</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Manage sizes and colors available across your store
+          Manage sizes and colors available across your store. Drag to reorder.
         </p>
       </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -11,10 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, Trash2, Plus, ArrowLeft, X } from "lucide-react";
+import { Loader2, ArrowLeft, ArrowUp, ArrowDown, Upload, X, MoreHorizontal, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import Link from "next/link";
 import {
   AlertDialog,
@@ -25,80 +26,155 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  VariantMatrix,
+  matrixToVariants,
+  variantsToMatrix,
+  type StockMatrix,
+} from "@/components/admin/VariantMatrix";
 
-function toSlug(str: string) {
-  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+// ─── Types ────────────────────────────────────────────────────
+
+interface MediaItem {
+  storageId: Id<"_storage">;
+  previewUrl: string | null; // null for server-stored items without URL yet
+  type: "image" | "video";
 }
 
-interface VariantRow {
-  id?: Id<"productVariants">;
-  size: string;
-  color: string;
-  sku: string;
-  stock: number;
-  priceOverride: string;
+function slugify(str: string) {
+  return str.toLowerCase().trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
+
+// ─── Component ────────────────────────────────────────────────
 
 export default function EditProductPage() {
   const params = useParams();
   const router = useRouter();
   const productId = params.productId as Id<"products">;
 
+  // ── Queries ──────────────────────────────────────────────────
   const product = useQuery(api.products.getById, { id: productId });
   const categories = useQuery(api.categories.listAll);
   const tags = useQuery(api.tags.list);
   const sizes = useQuery(api.platformConfig.listSizes);
   const colors = useQuery(api.platformConfig.listColors);
 
+  // Featured state from recommendations table (no optimistic updates)
+  const isBestSeller = useQuery(api.recommendations.isProductInSection, {
+    type: "best_sellers",
+    productId,
+  });
+  const isNewArrival = useQuery(api.recommendations.isProductInSection, {
+    type: "new_arrivals",
+    productId,
+  });
+
+  // ── Mutations ─────────────────────────────────────────────────
   const updateProduct = useMutation(api.products.update);
   const updateVariants = useMutation(api.products.updateVariants);
   const assignTags = useMutation(api.products.assignTags);
   const toggleActive = useMutation(api.products.toggleActive);
-  const setFeatured = useMutation(api.products.setFeatured);
   const removeProduct = useMutation(api.products.remove);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const addAtTop = useMutation(api.recommendations.addAtTop);
+  const removeByProductAndType = useMutation(api.recommendations.removeByProductAndType);
 
+  // ── Form state ────────────────────────────────────────────────
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [slugManual, setSlugManual] = useState(false);
+  const [debouncedSlug, setDebouncedSlug] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("");
-  const [variants, setVariants] = useState<VariantRow[]>([]);
-  const [deletedVariantIds, setDeletedVariantIds] = useState<Id<"productVariants">[]>([]);
   const [selectedTags, setSelectedTags] = useState<Set<Id<"tags">>>(new Set());
-  const [media, setMedia] = useState<{ storageId: Id<"_storage">; type: "image" | "video"; sortOrder: number }[]>([]);
+  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [existingVariantIds, setExistingVariantIds] = useState<Id<"productVariants">[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  // ── Variant Matrix state ──────────────────────────────────────
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [stockMatrix, setStockMatrix] = useState<StockMatrix>({});
+
+  // ── Featured loading ─────────────────────────────────────────
+  const [togglingBestSeller, setTogglingBestSeller] = useState(false);
+  const [togglingNewArrival, setTogglingNewArrival] = useState(false);
+
+  // ── Other UI state ────────────────────────────────────────────
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Populate form when product loads
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Slug debounce ─────────────────────────────────────────────
   useEffect(() => {
-    if (!product) return;
+    const t = setTimeout(() => setDebouncedSlug(slug), 400);
+    return () => clearTimeout(t);
+  }, [slug]);
+
+  const slugAvailable = useQuery(
+    api.products.checkSlugAvailable,
+    debouncedSlug.trim() ? { slug: debouncedSlug, excludeId: productId } : "skip"
+  );
+  const slugTaken = debouncedSlug.trim() && slugAvailable === false;
+
+  // ── Populate form when product loads (once) ───────────────────
+  useEffect(() => {
+    if (!product || initialized) return;
+
     setName(product.name);
     setSlug(product.slug);
     setDescription(product.description);
     setCategoryId(product.categoryId);
     setBasePrice(product.basePrice.toString());
-    setMedia(product.media);
-    setVariants(
+    setSelectedTags(new Set(product.tags.map((t) => t._id)));
+    setMedia(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (product.variants as any[]).map((variant) => ({
-        id: variant._id,
-        size: variant.size,
-        color: variant.color ?? "",
-        sku: variant.sku ?? "",
-        stock: variant.stock ?? 0,
-        priceOverride: variant.priceOverride?.toString() ?? "",
+      (product.media as any[]).map((m) => ({
+        storageId: m.storageId,
+        previewUrl: null, // existing media — no local URL
+        type: m.type as "image" | "video",
       }))
     );
-    setSelectedTags(new Set(product.tags.map((t) => t._id)));
-  }, [product]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    // Pre-populate variant matrix from existing variants
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawVariants = (product.variants as any[]).map((v) => ({
+      size: v.size as string,
+      color: v.color as string | undefined,
+      stock: (v.stock as number) ?? 0,
+    }));
+    const { selectedColors: cols, selectedSizes: szs, stockMatrix: mat } =
+      variantsToMatrix(rawVariants);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setExistingVariantIds((product.variants as any[]).map((v) => v._id as Id<"productVariants">));
+    setSelectedColors(cols);
+    setSelectedSizes(szs);
+    setStockMatrix(mat);
+    setInitialized(true);
+  }, [product, initialized]);
+
+  // ── File upload ───────────────────────────────────────────────
+  async function handleFileUpload(file: File) {
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      toast.error("Only image and video files are allowed");
+      return;
+    }
     setUploading(true);
     try {
       const uploadUrl = await generateUploadUrl({});
@@ -107,66 +183,125 @@ export default function EditProductPage() {
         headers: { "Content-Type": file.type },
         body: file,
       });
+      if (!result.ok) throw new Error("Upload failed");
       const { storageId } = await result.json();
-      const type = file.type.startsWith("video/") ? "video" : "image";
-      setMedia((prev) => [...prev, { storageId, type, sortOrder: prev.length }]);
-    } catch {
-      toast.error("Upload failed");
+      const previewUrl = URL.createObjectURL(file);
+      const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+      setMedia((prev) => [...prev, { storageId, previewUrl, type }]);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
     }
-  };
+  }
 
-  const handleSave = async () => {
+  function removeMedia(index: number) {
+    setMedia((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function moveMedia(index: number, direction: "up" | "down") {
+    setMedia((prev) => {
+      const next = [...prev];
+      const swap = direction === "up" ? index - 1 : index + 1;
+      if (swap < 0 || swap >= next.length) return prev;
+      [next[index], next[swap]] = [next[swap], next[index]];
+      return next;
+    });
+  }
+
+  // ── Featured toggles ──────────────────────────────────────────
+  async function toggleBestSeller() {
+    if (isBestSeller === undefined || togglingBestSeller) return;
+    setTogglingBestSeller(true);
+    try {
+      if (isBestSeller) {
+        await removeByProductAndType({ type: "best_sellers", recommendedProductId: productId });
+        toast.success("Removed from Best Sellers");
+      } else {
+        await addAtTop({ type: "best_sellers", recommendedProductId: productId });
+        toast.success("Added to Best Sellers");
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setTogglingBestSeller(false);
+    }
+  }
+
+  async function toggleNewArrival() {
+    if (isNewArrival === undefined || togglingNewArrival) return;
+    setTogglingNewArrival(true);
+    try {
+      if (isNewArrival) {
+        await removeByProductAndType({ type: "new_arrivals", recommendedProductId: productId });
+        toast.success("Removed from New Arrivals");
+      } else {
+        await addAtTop({ type: "new_arrivals", recommendedProductId: productId });
+        toast.success("Added to New Arrivals");
+      }
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    } finally {
+      setTogglingNewArrival(false);
+    }
+  }
+
+  // ── Save ──────────────────────────────────────────────────────
+  async function handleSave() {
     if (!name || !categoryId || !basePrice) {
       toast.error("Name, category, and price are required");
       return;
     }
+    if (slugTaken) {
+      toast.error("This slug is already in use");
+      return;
+    }
+
     setSaving(true);
     try {
       await updateProduct({
         id: productId,
         name,
-        slug: slug || toSlug(name),
+        slug: slug.trim() || slugify(name),
         description,
         categoryId: categoryId as Id<"categories">,
         basePrice: parseFloat(basePrice),
-        media,
+        media: media.map((m, i) => ({ storageId: m.storageId, type: m.type, sortOrder: i })),
       });
+
+      // Delete all existing variants and re-create from matrix
+      const matrixVariants = matrixToVariants(stockMatrix, selectedColors, selectedSizes);
       await updateVariants({
         productId,
-        variants: variants.map((v) => ({
-          id: v.id,
-          size: v.size,
-          color: v.color || undefined,
-          sku: v.sku || undefined,
-          stock: v.stock,
-          priceOverride: v.priceOverride ? parseFloat(v.priceOverride) : undefined,
-        })),
-        deleteIds: deletedVariantIds,
+        variants: matrixVariants.map((v) => ({ size: v.size, color: v.color, stock: v.stock })),
+        deleteIds: existingVariantIds,
       });
+      // After save, new variant IDs are unknown — clear so we don't double-delete
+      setExistingVariantIds([]);
+
       await assignTags({ productId, tagIds: Array.from(selectedTags) });
       toast.success("Product updated");
-      setDeletedVariantIds([]);
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to update");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  const handleDelete = async () => {
+  // ── Delete ────────────────────────────────────────────────────
+  async function handleDelete() {
     setDeleting(true);
     try {
       await removeProduct({ id: productId });
       toast.success("Product deleted");
       router.push("/admin/products");
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to delete");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete");
       setDeleting(false);
     }
-  };
+  }
 
+  // ── Loading state ─────────────────────────────────────────────
   if (!product) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -175,108 +310,117 @@ export default function EditProductPage() {
     );
   }
 
+  const hasNoConfig =
+    (colors !== undefined && colors.length === 0) ||
+    (sizes !== undefined && sizes.length === 0);
+
+  // ── Render ────────────────────────────────────────────────────
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-4xl space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/products"><ArrowLeft className="h-4 w-4" /></Link>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/admin/products">
+              <ArrowLeft className="h-4 w-4 mr-1" />Back
+            </Link>
           </Button>
           <div>
             <h1 className="text-xl font-semibold">Edit Product</h1>
             <p className="text-sm text-muted-foreground">{product.name}</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => toggleActive({ id: productId, isActive: !product.isActive }).then(() => toast.success(product.isActive ? "Deactivated" : "Activated")).catch((e) => toast.error(e.message))}
-          >
-            {product.isActive ? "Deactivate" : "Activate"}
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={deleting}>
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Product?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will permanently delete the product and all its variants. This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
+
+        {/* 3-dot menu for Deactivate / Delete */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                toggleActive({ id: productId, isActive: !product.isActive })
+                  .then(() => toast.success(product.isActive ? "Deactivated" : "Activated"))
+                  .catch((e) => toast.error(e.message))
+              }
+            >
+              {product.isActive ? (
+                <><ToggleLeft className="mr-2 h-4 w-4" />Deactivate</>
+              ) : (
+                <><ToggleRight className="mr-2 h-4 w-4" />Activate</>
+              )}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setShowDeleteDialog(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the product and all its variants. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Status badges */}
       <div className="flex gap-2 flex-wrap">
         <Badge variant={product.isActive ? "default" : "secondary"}>
           {product.isActive ? "Active" : "Inactive"}
         </Badge>
-        <Badge variant={product.isFeaturedBestSeller ? "default" : "outline"}>
-          Best Seller
-        </Badge>
-        <Badge variant={product.isFeaturedNewArrival ? "default" : "outline"}>
-          New Arrival
-        </Badge>
+        {isBestSeller && <Badge variant="default">Best Seller</Badge>}
+        {isNewArrival && <Badge variant="default">New Arrival</Badge>}
       </div>
 
-      {/* Featured section */}
-      <Card>
-        <CardHeader><CardTitle className="text-base">Featured Sections</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">Maximum 3 products per section on the landing page.</p>
-          <div className="flex gap-6">
-            <Button
-              variant={product.isFeaturedBestSeller ? "default" : "outline"}
-              size="sm"
-              onClick={() =>
-                setFeatured({ id: productId, isFeaturedBestSeller: !product.isFeaturedBestSeller })
-                  .then(() => toast.success("Updated"))
-                  .catch((e) => toast.error(e.message))
-              }
-            >
-              {product.isFeaturedBestSeller ? "Remove from Best Sellers" : "Add to Best Sellers"}
-            </Button>
-            <Button
-              variant={product.isFeaturedNewArrival ? "default" : "outline"}
-              size="sm"
-              onClick={() =>
-                setFeatured({ id: productId, isFeaturedNewArrival: !product.isFeaturedNewArrival })
-                  .then(() => toast.success("Updated"))
-                  .catch((e) => toast.error(e.message))
-              }
-            >
-              {product.isFeaturedNewArrival ? "Remove from New Arrivals" : "Add to New Arrivals"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Basic Info */}
+      {/* ── 1. Basic Info ── */}
       <Card>
         <CardHeader><CardTitle className="text-base">Basic Info</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (!slugManual) setSlug(slugify(e.target.value));
+                }}
+              />
             </div>
             <div className="space-y-2">
-              <Label>Slug</Label>
-              <Input value={slug} onChange={(e) => setSlug(e.target.value)} />
+              <Label htmlFor="slug">Slug</Label>
+              <Input
+                id="slug"
+                value={slug}
+                onChange={(e) => { setSlug(e.target.value); setSlugManual(true); }}
+                className={slugTaken ? "border-destructive" : ""}
+              />
+              {slugTaken && (
+                <p className="text-xs text-destructive">This slug is already in use</p>
+              )}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Category</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
@@ -289,127 +433,196 @@ export default function EditProductPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Base Price (৳)</Label>
-              <Input type="number" min="0" value={basePrice} onChange={(e) => setBasePrice(e.target.value)} />
+              <Label htmlFor="basePrice">Base Price (৳)</Label>
+              <Input
+                id="basePrice"
+                type="number"
+                min="0"
+                value={basePrice}
+                onChange={(e) => setBasePrice(e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Label htmlFor="description">Description</Label>
+            <Textarea
+              id="description"
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
 
-      {/* Variants */}
+      {/* ── 2. Variants ── */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Variants</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => setVariants((prev) => [...prev, { size: "", color: "", sku: "", stock: 0, priceOverride: "" }])}>
-              <Plus className="h-4 w-4 mr-1" /> Add Variant
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {variants.map((v, i) => (
-            <div key={i} className="grid grid-cols-6 gap-2 items-end border rounded p-2">
-              <div className="space-y-1">
-                <Label className="text-xs">Size</Label>
-                <Select value={v.size} onValueChange={(val) => setVariants((prev) => prev.map((r, idx) => idx === i ? { ...r, size: val } : r))}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Size" /></SelectTrigger>
-                  <SelectContent>{(sizes ?? []).map((s) => <SelectItem key={s._id} value={s.name}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Color</Label>
-                <Select value={v.color || "_none"} onValueChange={(val) => setVariants((prev) => prev.map((r, idx) => idx === i ? { ...r, color: val === "_none" ? "" : val } : r))}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">Any</SelectItem>
-                    {(colors ?? []).map((c) => <SelectItem key={c._id} value={c.name}>{c.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Stock</Label>
-                <Input className="h-8 text-xs" type="number" min="0" step="1" value={v.stock} onChange={(e) => setVariants((prev) => prev.map((r, idx) => idx === i ? { ...r, stock: parseInt(e.target.value) || 0 } : r))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">SKU</Label>
-                <Input className="h-8 text-xs" value={v.sku} onChange={(e) => setVariants((prev) => prev.map((r, idx) => idx === i ? { ...r, sku: e.target.value } : r))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Override ৳</Label>
-                <Input className="h-8 text-xs" type="number" min="0" placeholder="—" value={v.priceOverride} onChange={(e) => setVariants((prev) => prev.map((r, idx) => idx === i ? { ...r, priceOverride: e.target.value } : r))} />
-              </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                if (v.id) setDeletedVariantIds((prev) => [...prev, v.id!]);
-                setVariants((prev) => prev.filter((_, idx) => idx !== i));
-              }}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-          {variants.length === 0 && <p className="text-sm text-muted-foreground">No variants. Add at least one.</p>}
+        <CardHeader><CardTitle className="text-base">Variants &amp; Stock</CardTitle></CardHeader>
+        <CardContent>
+          {initialized ? (
+            <VariantMatrix
+              platformSizes={sizes}
+              platformColors={colors}
+              selectedColors={selectedColors}
+              onSelectedColorsChange={setSelectedColors}
+              selectedSizes={selectedSizes}
+              onSelectedSizesChange={setSelectedSizes}
+              stockMatrix={stockMatrix}
+              onStockMatrixChange={setStockMatrix}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading variants…</p>
+          )}
         </CardContent>
       </Card>
 
-      {/* Media */}
+      {/* ── 3. Media ── */}
       <Card>
         <CardHeader><CardTitle className="text-base">Media</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {media.map((m, i) => (
-              <div key={i} className="relative h-20 w-20 border rounded overflow-hidden bg-muted">
-                <span className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">{m.type}</span>
-                <Button variant="destructive" size="icon" className="absolute top-0 right-0 h-5 w-5 rounded-none" onClick={() => setMedia((prev) => prev.filter((_, idx) => idx !== i))}>
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div>
-            <Label htmlFor="media-upload" className="cursor-pointer">
-              <Button variant="outline" size="sm" disabled={uploading} asChild>
-                <span>{uploading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Uploading...</> : "Upload Image / Video"}</span>
-              </Button>
-            </Label>
-            <input id="media-upload" type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
-          </div>
+        <CardContent className="space-y-4">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) await handleFileUpload(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</>
+            ) : (
+              <><Upload className="mr-2 h-4 w-4" />Upload Image / Video</>
+            )}
+          </Button>
+
+          {media.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {media.map((item, i) => (
+                <div key={item.storageId} className="relative group rounded-md overflow-hidden border bg-muted">
+                  {item.previewUrl ? (
+                    item.type === "image" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.previewUrl} alt={`media-${i}`} className="w-full h-28 object-cover" />
+                    ) : (
+                      <video src={item.previewUrl} className="w-full h-28 object-cover" muted />
+                    )
+                  ) : (
+                    <div className="w-full h-28 flex items-center justify-center text-xs text-muted-foreground">
+                      {item.type}
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                    <Button type="button" variant="secondary" size="icon" className="h-7 w-7" disabled={i === 0} onClick={() => moveMedia(i, "up")}>
+                      <ArrowUp className="h-3 w-3" />
+                    </Button>
+                    <Button type="button" variant="secondary" size="icon" className="h-7 w-7" disabled={i === media.length - 1} onClick={() => moveMedia(i, "down")}>
+                      <ArrowDown className="h-3 w-3" />
+                    </Button>
+                    <Button type="button" variant="destructive" size="icon" className="h-7 w-7" onClick={() => removeMedia(i)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  {i === 0 && (
+                    <span className="absolute top-1 left-1 text-[10px] bg-black/70 text-white px-1 rounded">Cover</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Tags */}
+      {/* ── 4. Tags ── */}
       <Card>
         <CardHeader><CardTitle className="text-base">Tags</CardTitle></CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-4">
-            {(tags ?? []).map((tag) => (
-              <div key={tag._id} className="flex items-center gap-2">
-                <Checkbox
-                  id={tag._id}
-                  checked={selectedTags.has(tag._id)}
-                  onCheckedChange={(checked) => {
-                    setSelectedTags((prev) => {
-                      const next = new Set(prev);
-                      checked ? next.add(tag._id) : next.delete(tag._id);
-                      return next;
-                    });
-                  }}
+          {!tags ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : tags.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No tags available.</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {tags.map((tag) => (
+                <div key={tag._id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`tag-${tag._id}`}
+                    checked={selectedTags.has(tag._id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedTags((prev) => {
+                        const next = new Set(prev);
+                        checked ? next.add(tag._id) : next.delete(tag._id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <Label htmlFor={`tag-${tag._id}`} className="cursor-pointer font-normal text-sm">
+                    {tag.name}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── 5. Featured ── */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Featured</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Toggle to add or remove this product from homepage featured sections.
+          </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="bestSeller" className="font-normal cursor-pointer">Best Seller</Label>
+              <div className="flex items-center gap-2">
+                {togglingBestSeller && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                <Switch
+                  id="bestSeller"
+                  checked={isBestSeller ?? false}
+                  disabled={isBestSeller === undefined || togglingBestSeller}
+                  onCheckedChange={toggleBestSeller}
                 />
-                <Label htmlFor={tag._id} className="text-sm cursor-pointer">{tag.name}</Label>
               </div>
-            ))}
-            {(tags ?? []).length === 0 && <p className="text-sm text-muted-foreground">No tags yet. Create tags first.</p>}
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="newArrival" className="font-normal cursor-pointer">New Arrival</Label>
+              <div className="flex items-center gap-2">
+                {togglingNewArrival && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                <Switch
+                  id="newArrival"
+                  checked={isNewArrival ?? false}
+                  disabled={isNewArrival === undefined || togglingNewArrival}
+                  onCheckedChange={toggleNewArrival}
+                />
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex gap-3">
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</> : "Save Changes"}
+      {/* ── Actions ── */}
+      <div className="flex items-center gap-3">
+        <Button onClick={handleSave} disabled={saving || !!slugTaken || hasNoConfig}>
+          {saving ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</>
+          ) : (
+            "Save Changes"
+          )}
         </Button>
-        <Button variant="outline" asChild><Link href="/admin/products">Cancel</Link></Button>
+        <Button variant="outline" asChild>
+          <Link href="/admin/products">Cancel</Link>
+        </Button>
       </div>
     </div>
   );

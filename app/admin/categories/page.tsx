@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -16,20 +17,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Loader2, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { SortableList } from "@/components/admin/SortableList";
+import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
 
 function toSlug(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 type Category = {
@@ -42,25 +35,15 @@ type Category = {
   sortOrder: number;
 };
 
-type DialogState =
-  | { mode: "closed" }
-  | { mode: "create" }
-  | { mode: "edit"; category: Category };
+type DialogState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; category: Category };
 
-function CategoryDialog({
-  state,
-  onClose,
-}: {
-  state: DialogState;
-  onClose: () => void;
-}) {
+function CategoryDialog({ state, onClose }: { state: DialogState; onClose: () => void }) {
   const isEdit = state.mode === "edit";
   const initial = isEdit ? state.category : null;
 
   const [name, setName] = useState(initial?.name ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [sortOrder, setSortOrder] = useState(String(initial?.sortOrder ?? 0));
   const [loading, setLoading] = useState(false);
 
   const createMutation = useMutation(api.categories.create);
@@ -68,9 +51,7 @@ function CategoryDialog({
 
   function handleNameChange(val: string) {
     setName(val);
-    if (!isEdit) {
-      setSlug(toSlug(val));
-    }
+    if (!isEdit) setSlug(toSlug(val));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -78,21 +59,10 @@ function CategoryDialog({
     setLoading(true);
     try {
       if (isEdit) {
-        await updateMutation({
-          id: state.category._id,
-          name,
-          slug,
-          description: description || undefined,
-          sortOrder: Number(sortOrder),
-        });
+        await updateMutation({ id: state.category._id, name, slug, description: description || undefined });
         toast.success("Category updated");
       } else {
-        await createMutation({
-          name,
-          slug,
-          description: description || undefined,
-          sortOrder: Number(sortOrder),
-        });
+        await createMutation({ name, slug, description: description || undefined });
         toast.success("Category created");
       }
       onClose();
@@ -111,47 +81,19 @@ function CategoryDialog({
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1">
           <Label htmlFor="cat-name">Name</Label>
-          <Input
-            id="cat-name"
-            value={name}
-            onChange={(e) => handleNameChange(e.target.value)}
-            required
-          />
+          <Input id="cat-name" value={name} onChange={(e) => handleNameChange(e.target.value)} required />
         </div>
         <div className="space-y-1">
           <Label htmlFor="cat-slug">Slug</Label>
-          <Input
-            id="cat-slug"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            required
-          />
+          <Input id="cat-slug" value={slug} onChange={(e) => setSlug(e.target.value)} required />
         </div>
         <div className="space-y-1">
           <Label htmlFor="cat-desc">Description</Label>
-          <Textarea
-            id="cat-desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="cat-sort">Sort Order</Label>
-          <Input
-            id="cat-sort"
-            type="number"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-          />
+          <Textarea id="cat-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={loading}>
-            {loading ? "Saving..." : isEdit ? "Update" : "Create"}
-          </Button>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button type="submit" disabled={loading}>{loading ? "Saving…" : isEdit ? "Update" : "Create"}</Button>
         </DialogFooter>
       </form>
     </DialogContent>
@@ -161,8 +103,11 @@ function CategoryDialog({
 export default function CategoriesPage() {
   const categories = useQuery(api.categories.listAll);
   const toggleActiveMutation = useMutation(api.categories.toggleActive);
+  const reorderMutation = useMutation(api.categories.reorder);
+
   const [dialogState, setDialogState] = useState<DialogState>({ mode: "closed" });
   const [togglingId, setTogglingId] = useState<Id<"categories"> | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   async function handleToggleActive(cat: Category) {
     setTogglingId(cat._id);
@@ -176,6 +121,20 @@ export default function CategoriesPage() {
     }
   }
 
+  async function handleReorder(reordered: { id: string; sortOrder: number }[]) {
+    if (reordering) return;
+    setReordering(true);
+    try {
+      await reorderMutation({
+        items: reordered.map((r) => ({ id: r.id as Id<"categories">, sortOrder: r.sortOrder })),
+      });
+    } catch {
+      toast.error("Failed to reorder");
+    } finally {
+      setReordering(false);
+    }
+  }
+
   const isOpen = dialogState.mode !== "closed";
 
   return (
@@ -183,67 +142,60 @@ export default function CategoriesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Categories</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage product categories</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage product categories. Drag to reorder.</p>
         </div>
         <Button onClick={() => setDialogState({ mode: "create" })}>New Category</Button>
       </div>
 
       <Dialog open={isOpen} onOpenChange={(open) => !open && setDialogState({ mode: "closed" })}>
-        {isOpen && (
-          <CategoryDialog
-            state={dialogState}
-            onClose={() => setDialogState({ mode: "closed" })}
-          />
-        )}
+        {isOpen && <CategoryDialog state={dialogState} onClose={() => setDialogState({ mode: "closed" })} />}
       </Dialog>
 
       {categories === undefined ? (
-        <p className="text-muted-foreground text-sm">Loading...</p>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
       ) : categories.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No categories yet.</p>
+        <p className="text-muted-foreground text-sm py-4">No categories yet.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead>Sort Order</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {categories.map((cat) => (
-              <TableRow key={cat._id}>
-                <TableCell className="font-medium">{cat.name}</TableCell>
-                <TableCell className="text-muted-foreground text-sm">{cat.slug}</TableCell>
-                <TableCell>{cat.isActive ? "Yes" : "No"}</TableCell>
-                <TableCell>{cat.sortOrder}</TableCell>
-                <TableCell className="text-right space-x-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDialogState({ mode: "edit", category: cat })}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={togglingId === cat._id}
-                    onClick={() => handleToggleActive(cat)}
-                  >
-                    {togglingId === cat._id
-                      ? "..."
-                      : cat.isActive
-                      ? "Deactivate"
-                      : "Activate"}
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="rounded-md border divide-y">
+          <SortableList
+            items={categories}
+            onReorder={handleReorder}
+            renderItem={(cat, dragHandle) => (
+              <div className="flex items-center gap-3 px-4 py-3 bg-background">
+                {dragHandle}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium text-sm">{cat.name}</p>
+                    <Badge variant={cat.isActive ? "default" : "secondary"} className="text-xs">
+                      {cat.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{cat.slug}</p>
+                </div>
+                <RowActionsMenu
+                  actions={[
+                    {
+                      label: "Edit",
+                      icon: Pencil,
+                      onClick: () => setDialogState({ mode: "edit", category: cat }),
+                    },
+                    {
+                      label: togglingId === cat._id
+                        ? "Updating…"
+                        : cat.isActive ? "Deactivate" : "Activate",
+                      icon: cat.isActive ? ToggleLeft : ToggleRight,
+                      disabled: togglingId === cat._id,
+                      separator: true,
+                      onClick: () => handleToggleActive(cat),
+                    },
+                  ]}
+                />
+              </div>
+            )}
+          />
+        </div>
       )}
     </div>
   );

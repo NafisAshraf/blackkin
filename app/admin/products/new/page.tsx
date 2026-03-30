@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -11,40 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, ArrowUp, ArrowDown, Loader2, Upload, X } from "lucide-react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  ArrowLeft,
-  ArrowUp,
-  ArrowDown,
-  Loader2,
-  Plus,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+  VariantMatrix,
+  matrixToVariants,
+  type StockMatrix,
+} from "@/components/admin/VariantMatrix";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface VariantRow {
-  _rowId: string;
-  size: string;
-  color: string;
-  stock: number;
-  priceOverride: string;
-}
 
 interface MediaItem {
   storageId: Id<"_storage">;
@@ -53,17 +31,10 @@ interface MediaItem {
 }
 
 function slugify(str: string) {
-  return str
-    .toLowerCase()
-    .trim()
+  return str.toLowerCase().trim()
     .replace(/[^\w\s-]/g, "")
     .replace(/[\s_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-let rowCounter = 0;
-function newRowId() {
-  return `row-${++rowCounter}`;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -80,20 +51,65 @@ export default function NewProductPage() {
   // Mutations
   const createProduct = useMutation(api.products.create);
   const assignTags = useMutation(api.products.assignTags);
+  const addAtTop = useMutation(api.recommendations.addAtTop);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
 
   // ── Basic Info ──────────────────────────────────────────────
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
+  const [debouncedSlug, setDebouncedSlug] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [basePrice, setBasePrice] = useState("");
 
-  // ── Variants ────────────────────────────────────────────────
-  const [variants, setVariants] = useState<VariantRow[]>([
-    { _rowId: newRowId(), size: "", color: "", stock: 0, priceOverride: "" },
-  ]);
+  // Debounce slug for availability check
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSlug(slug), 400);
+    return () => clearTimeout(t);
+  }, [slug]);
+
+  const slugAvailable = useQuery(
+    api.products.checkSlugAvailable,
+    debouncedSlug.trim() ? { slug: debouncedSlug } : "skip"
+  );
+  const slugTaken = debouncedSlug.trim() && slugAvailable === false;
+
+  // ── Variant Matrix ──────────────────────────────────────────
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [stockMatrix, setStockMatrix] = useState<StockMatrix>({});
+
+  // Auto-select first available color and size when data loads
+  useEffect(() => {
+    if (colors && colors.length > 0 && selectedColors.length === 0) {
+      const firstColor = colors[0].name;
+      setSelectedColors([firstColor]);
+      setStockMatrix((prev) => ({ ...prev, [firstColor]: {} }));
+    }
+  }, [colors]);
+
+  useEffect(() => {
+    if (sizes && sizes.length > 0 && selectedSizes.length === 0) {
+      setSelectedSizes([sizes[0].name]);
+    }
+  }, [sizes]);
+
+  // Sync matrix when initial color/size auto-selection completes
+  useEffect(() => {
+    if (selectedColors.length > 0 && selectedSizes.length > 0) {
+      setStockMatrix((prev) => {
+        const next: StockMatrix = {};
+        for (const color of selectedColors) {
+          next[color] = {};
+          for (const size of selectedSizes) {
+            next[color][size] = prev[color]?.[size] ?? 0;
+          }
+        }
+        return next;
+      });
+    }
+  }, []);
 
   // ── Media ───────────────────────────────────────────────────
   const [media, setMedia] = useState<MediaItem[]>([]);
@@ -122,28 +138,12 @@ export default function NewProductPage() {
     setSlugManual(true);
   }
 
-  function addVariant() {
-    setVariants((prev) => [
-      ...prev,
-      { _rowId: newRowId(), size: "", color: "", stock: 0, priceOverride: "" },
-    ]);
-  }
-
-  function removeVariant(rowId: string) {
-    setVariants((prev) => prev.filter((v) => v._rowId !== rowId));
-  }
-
-  function updateVariant<K extends keyof VariantRow>(
-    rowId: string,
-    key: K,
-    value: VariantRow[K]
-  ) {
-    setVariants((prev) =>
-      prev.map((v) => (v._rowId === rowId ? { ...v, [key]: value } : v))
-    );
-  }
-
   async function handleFileUpload(file: File) {
+    // Validate file type
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      toast.error("Only image and video files are allowed");
+      return;
+    }
     setUploadingMedia(true);
     try {
       const uploadUrl = await generateUploadUrl({});
@@ -155,14 +155,10 @@ export default function NewProductPage() {
       if (!result.ok) throw new Error("Upload failed");
       const { storageId } = await result.json();
       const previewUrl = URL.createObjectURL(file);
-      const type: "image" | "video" = file.type.startsWith("video/")
-        ? "video"
-        : "image";
+      const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
       setMedia((prev) => [...prev, { storageId, previewUrl, type }]);
     } catch (err: unknown) {
-      toast.error(
-        err instanceof Error ? err.message : "Media upload failed"
-      );
+      toast.error(err instanceof Error ? err.message : "Media upload failed");
     } finally {
       setUploadingMedia(false);
     }
@@ -191,87 +187,62 @@ export default function NewProductPage() {
     });
   }
 
+  const hasNoConfig = (colors !== undefined && colors.length === 0) ||
+    (sizes !== undefined && sizes.length === 0);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!categoryId) {
-      toast.error("Please select a category");
-      return;
-    }
+    if (!categoryId) { toast.error("Please select a category"); return; }
     if (!basePrice || isNaN(Number(basePrice)) || Number(basePrice) <= 0) {
-      toast.error("Enter a valid base price");
-      return;
+      toast.error("Enter a valid base price"); return;
     }
-    if (variants.length === 0) {
-      toast.error("Add at least one variant");
-      return;
+    if (slugTaken) { toast.error("This slug is already in use"); return; }
+    if (hasNoConfig) { toast.error("Configure colors and sizes first in Platform Configuration"); return; }
+    if (selectedColors.length === 0 || selectedSizes.length === 0) {
+      toast.error("Select at least one color and one size"); return;
     }
-    for (const v of variants) {
-      if (!v.size) {
-        toast.error("All variants must have a size selected");
-        return;
-      }
-    }
+
     setSubmitting(true);
     try {
+      const variants = matrixToVariants(stockMatrix, selectedColors, selectedSizes);
+
       const productId = await createProduct({
         name: name.trim(),
         slug: slug.trim() || slugify(name),
         description: description.trim(),
         categoryId: categoryId as Id<"categories">,
         basePrice: Number(basePrice),
-        media: media.map((m, i) => ({
-          storageId: m.storageId,
-          type: m.type,
-          sortOrder: i,
-        })),
-        variants: variants.map((v) => ({
-          size: v.size,
-          color: v.color || undefined,
-          stock: Number(v.stock),
-          priceOverride: v.priceOverride ? Number(v.priceOverride) : undefined,
-        })),
+        media: media.map((m, i) => ({ storageId: m.storageId, type: m.type, sortOrder: i })),
+        variants: variants.map((v) => ({ size: v.size, color: v.color, stock: v.stock })),
       });
 
       if (selectedTagIds.size > 0) {
-        await assignTags({
-          productId,
-          tagIds: Array.from(selectedTagIds),
-        });
+        await assignTags({ productId, tagIds: Array.from(selectedTagIds) });
       }
 
-      if (isFeaturedBestSeller || isFeaturedNewArrival) {
-        await useMutationSetFeatured({ productId, isFeaturedBestSeller, isFeaturedNewArrival });
+      if (isFeaturedBestSeller) {
+        try {
+          await addAtTop({ type: "best_sellers", recommendedProductId: productId });
+        } catch {
+          toast.warning("Product created but could not add to Best Sellers (may already exist)");
+        }
+      }
+      if (isFeaturedNewArrival) {
+        try {
+          await addAtTop({ type: "new_arrivals", recommendedProductId: productId });
+        } catch {
+          toast.warning("Product created but could not add to New Arrivals (may already exist)");
+        }
       }
 
       toast.success("Product created successfully");
       router.push("/admin/products");
     } catch (err: unknown) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to create product"
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to create product");
     } finally {
       setSubmitting(false);
     }
-  }
-
-  // We need setFeatured separately — pull the mutation at component level
-  const setFeatured = useMutation(api.products.setFeatured);
-
-  async function useMutationSetFeatured({
-    productId,
-    isFeaturedBestSeller,
-    isFeaturedNewArrival,
-  }: {
-    productId: Id<"products">;
-    isFeaturedBestSeller: boolean;
-    isFeaturedNewArrival: boolean;
-  }) {
-    await setFeatured({
-      id: productId,
-      isFeaturedBestSeller: isFeaturedBestSeller || undefined,
-      isFeaturedNewArrival: isFeaturedNewArrival || undefined,
-    });
   }
 
   // ── Render ───────────────────────────────────────────────────
@@ -280,10 +251,7 @@ export default function NewProductPage() {
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/admin/products">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Link>
+          <Link href="/admin/products"><ArrowLeft className="h-4 w-4 mr-1" />Back</Link>
         </Button>
         <h1 className="text-2xl font-bold">New Product</h1>
       </div>
@@ -291,9 +259,7 @@ export default function NewProductPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* ── 1. Basic Info ── */}
         <Card>
-          <CardHeader>
-            <CardTitle>Basic Info</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Basic Info</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -314,7 +280,11 @@ export default function NewProductPage() {
                   value={slug}
                   onChange={(e) => handleSlugChange(e.target.value)}
                   placeholder="product-slug"
+                  className={slugTaken ? "border-destructive" : ""}
                 />
+                {slugTaken && (
+                  <p className="text-xs text-destructive">This slug is already in use</p>
+                )}
               </div>
             </div>
 
@@ -334,14 +304,10 @@ export default function NewProductPage() {
               <div className="space-y-2">
                 <Label htmlFor="category">Category *</Label>
                 <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
+                  <SelectTrigger id="category"><SelectValue placeholder="Select category" /></SelectTrigger>
                   <SelectContent>
                     {(categories ?? []).map((cat) => (
-                      <SelectItem key={cat._id} value={cat._id}>
-                        {cat.name}
-                      </SelectItem>
+                      <SelectItem key={cat._id} value={cat._id}>{cat.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -365,108 +331,24 @@ export default function NewProductPage() {
 
         {/* ── 2. Variants ── */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Variants</CardTitle>
-            <Button type="button" variant="outline" size="sm" onClick={addVariant}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add Variant
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {variants.map((variant) => (
-              <div
-                key={variant._rowId}
-                className="grid grid-cols-2 md:grid-cols-6 gap-3 p-3 border rounded-md items-end"
-              >
-                <div className="space-y-1 col-span-1">
-                  <Label className="text-xs">Size *</Label>
-                  <Select
-                    value={variant.size}
-                    onValueChange={(v) => updateVariant(variant._rowId, "size", v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Size" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(sizes ?? []).map((s) => (
-                        <SelectItem key={s._id} value={s.name}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1 col-span-1">
-                  <Label className="text-xs">Color</Label>
-                  <Select
-                    value={variant.color}
-                    onValueChange={(v) => updateVariant(variant._rowId, "color", v)}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Color" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(colors ?? []).map((c) => (
-                        <SelectItem key={c._id} value={c.name}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1 col-span-1">
-                  <Label className="text-xs">Stock *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    className="h-9"
-                    value={variant.stock}
-                    onChange={(e) =>
-                      updateVariant(variant._rowId, "stock", Number(e.target.value))
-                    }
-                  />
-                </div>
-
-                <div className="space-y-1 col-span-1">
-                  <Label className="text-xs">Price Override (৳)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    className="h-9"
-                    value={variant.priceOverride}
-                    placeholder="Optional"
-                    onChange={(e) =>
-                      updateVariant(variant._rowId, "priceOverride", e.target.value)
-                    }
-                  />
-                </div>
-
-                <div className="flex items-center justify-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 text-destructive hover:text-destructive"
-                    disabled={variants.length === 1}
-                    onClick={() => removeVariant(variant._rowId)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+          <CardHeader><CardTitle>Variants & Stock</CardTitle></CardHeader>
+          <CardContent>
+            <VariantMatrix
+              platformSizes={sizes}
+              platformColors={colors}
+              selectedColors={selectedColors}
+              onSelectedColorsChange={setSelectedColors}
+              selectedSizes={selectedSizes}
+              onSelectedSizesChange={setSelectedSizes}
+              stockMatrix={stockMatrix}
+              onStockMatrixChange={setStockMatrix}
+            />
           </CardContent>
         </Card>
 
         {/* ── 3. Media ── */}
         <Card>
-          <CardHeader>
-            <CardTitle>Media</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Media</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <input
               ref={fileInputRef}
@@ -486,15 +368,9 @@ export default function NewProductPage() {
               onClick={() => fileInputRef.current?.click()}
             >
               {uploadingMedia ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading…
-                </>
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</>
               ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload Image / Video
-                </>
+                <><Upload className="mr-2 h-4 w-4" />Upload Image / Video</>
               )}
             </Button>
 
@@ -504,53 +380,23 @@ export default function NewProductPage() {
                   <div key={item.storageId} className="relative group rounded-md overflow-hidden border">
                     {item.type === "image" ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.previewUrl}
-                        alt={`media-${i}`}
-                        className="w-full h-28 object-cover"
-                      />
+                      <img src={item.previewUrl} alt={`media-${i}`} className="w-full h-28 object-cover" />
                     ) : (
-                      <video
-                        src={item.previewUrl}
-                        className="w-full h-28 object-cover"
-                        muted
-                      />
+                      <video src={item.previewUrl} className="w-full h-28 object-cover" muted />
                     )}
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        className="h-7 w-7"
-                        disabled={i === 0}
-                        onClick={() => moveMedia(i, "up")}
-                      >
+                      <Button type="button" variant="secondary" size="icon" className="h-7 w-7" disabled={i === 0} onClick={() => moveMedia(i, "up")}>
                         <ArrowUp className="h-3 w-3" />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        className="h-7 w-7"
-                        disabled={i === media.length - 1}
-                        onClick={() => moveMedia(i, "down")}
-                      >
+                      <Button type="button" variant="secondary" size="icon" className="h-7 w-7" disabled={i === media.length - 1} onClick={() => moveMedia(i, "down")}>
                         <ArrowDown className="h-3 w-3" />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => removeMedia(i)}
-                      >
+                      <Button type="button" variant="destructive" size="icon" className="h-7 w-7" onClick={() => removeMedia(i)}>
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
                     {i === 0 && (
-                      <span className="absolute top-1 left-1 text-[10px] bg-black/70 text-white px-1 rounded">
-                        Cover
-                      </span>
+                      <span className="absolute top-1 left-1 text-[10px] bg-black/70 text-white px-1 rounded">Cover</span>
                     )}
                   </div>
                 ))}
@@ -559,11 +405,9 @@ export default function NewProductPage() {
           </CardContent>
         </Card>
 
-        {/* ── 5. Tags ── */}
+        {/* ── 4. Tags ── */}
         <Card>
-          <CardHeader>
-            <CardTitle>Tags</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Tags</CardTitle></CardHeader>
           <CardContent>
             {!tags ? (
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -578,10 +422,7 @@ export default function NewProductPage() {
                       checked={selectedTagIds.has(tag._id)}
                       onCheckedChange={() => toggleTag(tag._id)}
                     />
-                    <Label
-                      htmlFor={`tag-${tag._id}`}
-                      className="cursor-pointer font-normal"
-                    >
+                    <Label htmlFor={`tag-${tag._id}`} className="cursor-pointer font-normal">
                       {tag.name}
                     </Label>
                   </div>
@@ -591,50 +432,39 @@ export default function NewProductPage() {
           </CardContent>
         </Card>
 
-        {/* ── 6. Featured ── */}
+        {/* ── 5. Featured ── */}
         <Card>
-          <CardHeader>
-            <CardTitle>Featured</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+          <CardHeader><CardTitle>Featured</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Maximum 3 products per featured section. The server will reject if the limit is already reached.
+              Enabling these adds the product to the top of that section on the landing page.
             </p>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="bestSeller"
-                checked={isFeaturedBestSeller}
-                onCheckedChange={(checked) =>
-                  setIsFeaturedBestSeller(checked === true)
-                }
-              />
-              <Label htmlFor="bestSeller" className="cursor-pointer font-normal">
-                Best Seller
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="newArrival"
-                checked={isFeaturedNewArrival}
-                onCheckedChange={(checked) =>
-                  setIsFeaturedNewArrival(checked === true)
-                }
-              />
-              <Label htmlFor="newArrival" className="cursor-pointer font-normal">
-                New Arrival
-              </Label>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="bestSeller" className="font-normal cursor-pointer">Best Seller</Label>
+                <Switch
+                  id="bestSeller"
+                  checked={isFeaturedBestSeller}
+                  onCheckedChange={setIsFeaturedBestSeller}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="newArrival" className="font-normal cursor-pointer">New Arrival</Label>
+                <Switch
+                  id="newArrival"
+                  checked={isFeaturedNewArrival}
+                  onCheckedChange={setIsFeaturedNewArrival}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* ── Submit ── */}
         <div className="flex items-center gap-3">
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || !!slugTaken || hasNoConfig}>
             {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating…
-              </>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating…</>
             ) : (
               "Create Product"
             )}

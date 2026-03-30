@@ -4,6 +4,15 @@ import { Doc } from "./_generated/dataModel";
 import { requireAdmin } from "./lib/auth.helpers";
 import { getProductDiscountedPrice } from "./lib/discounts";
 
+// ─── Validators ─────────────────────────────────────────────
+
+const recType = v.union(
+  v.literal("also_like"),
+  v.literal("also_bought"),
+  v.literal("best_sellers"),
+  v.literal("new_arrivals")
+);
+
 const recommendedProductCard = v.object({
   _id: v.id("products"),
   name: v.string(),
@@ -14,6 +23,8 @@ const recommendedProductCard = v.object({
   totalRatings: v.number(),
   imageUrl: v.union(v.string(), v.null()),
 });
+
+// ─── PUBLIC QUERIES ──────────────────────────────────────────
 
 /** "You may also like" — shown on ALL product detail pages */
 export const getAlsoLike = query({
@@ -61,7 +72,7 @@ export const getAlsoLike = query({
  */
 export const getAlsoBought = query({
   args: {
-    sizes: v.array(v.string()), // sizes currently in cart
+    sizes: v.array(v.string()),
   },
   returns: v.array(recommendedProductCard),
   handler: async (ctx, args) => {
@@ -69,7 +80,6 @@ export const getAlsoBought = query({
     const rows: Doc<"productRecommendations">[] = [];
 
     if (args.sizes.length === 0) {
-      // No sizes - return generic (no forSize) ones
       const generic = await ctx.db
         .query("productRecommendations")
         .withIndex("by_type_and_forSize", (q) =>
@@ -78,7 +88,6 @@ export const getAlsoBought = query({
         .take(20);
       rows.push(...generic);
     } else {
-      // Fetch recommendations for each size
       for (const size of args.sizes) {
         const sizeRecs = await ctx.db
           .query("productRecommendations")
@@ -125,16 +134,16 @@ export const getAlsoBought = query({
   },
 });
 
-/** Admin: get all recommendations of a type */
+// ─── ADMIN QUERIES ───────────────────────────────────────────
+
+/** Admin: get all recommendations of a type, sorted by sortOrder */
 export const listByType = query({
-  args: {
-    type: v.union(v.literal("also_like"), v.literal("also_bought")),
-  },
+  args: { type: recType },
   returns: v.array(
     v.object({
       _id: v.id("productRecommendations"),
       _creationTime: v.number(),
-      type: v.union(v.literal("also_like"), v.literal("also_bought")),
+      type: recType,
       recommendedProductId: v.id("products"),
       forSize: v.optional(v.string()),
       sortOrder: v.number(),
@@ -146,40 +155,145 @@ export const listByType = query({
     const rows = await ctx.db
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", args.type))
-      .take(100);
+      .take(200);
 
-    return (
-      await Promise.all(
-        rows.map(async (row) => {
-          const product = await ctx.db.get(row.recommendedProductId);
-          return {
-            ...row,
-            productName: product?.name ?? "(deleted)",
-          };
-        })
-      )
+    const sorted = [...rows].sort((a, b) => a.sortOrder - b.sortOrder);
+
+    return await Promise.all(
+      sorted.map(async (row) => {
+        const product = await ctx.db.get(row.recommendedProductId);
+        return {
+          ...row,
+          productName: product?.name ?? "(deleted)",
+        };
+      })
     );
   },
 });
 
-/** Admin: add a recommendation */
+/** Admin: check if a product is in a featured section */
+export const isProductInSection = query({
+  args: {
+    type: v.union(v.literal("best_sellers"), v.literal("new_arrivals")),
+    productId: v.id("products"),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const rows = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type", (q) => q.eq("type", args.type))
+      .take(200);
+    return rows.some((r) => r.recommendedProductId === args.productId);
+  },
+});
+
+// ─── ADMIN MUTATIONS ─────────────────────────────────────────
+
+/** Admin: add a recommendation (for also_like / also_bought — appends at bottom) */
 export const add = mutation({
   args: {
-    type: v.union(v.literal("also_like"), v.literal("also_bought")),
+    type: recType,
     recommendedProductId: v.id("products"),
     forSize: v.optional(v.string()),
-    sortOrder: v.number(),
   },
   returns: v.id("productRecommendations"),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const product = await ctx.db.get(args.recommendedProductId);
     if (!product) throw new ConvexError("Product not found");
-    return await ctx.db.insert("productRecommendations", args);
+
+    // Check for duplicate in same type
+    const existing = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type", (q) => q.eq("type", args.type))
+      .take(200);
+    if (existing.some((r) => r.recommendedProductId === args.recommendedProductId)) {
+      throw new ConvexError("Product already in this section");
+    }
+
+    const maxSort = existing.length > 0 ? Math.max(...existing.map((r) => r.sortOrder)) : -1;
+    return await ctx.db.insert("productRecommendations", {
+      type: args.type,
+      recommendedProductId: args.recommendedProductId,
+      forSize: args.forSize,
+      sortOrder: maxSort + 1,
+    });
   },
 });
 
-/** Admin: remove a recommendation */
+/**
+ * Admin: add a product to best_sellers or new_arrivals at the top (order 0),
+ * shifting all existing items down by 1.
+ */
+export const addAtTop = mutation({
+  args: {
+    type: v.union(v.literal("best_sellers"), v.literal("new_arrivals")),
+    recommendedProductId: v.id("products"),
+  },
+  returns: v.id("productRecommendations"),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const product = await ctx.db.get(args.recommendedProductId);
+    if (!product) throw new ConvexError("Product not found");
+
+    const existing = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type", (q) => q.eq("type", args.type))
+      .take(200);
+
+    if (existing.some((r) => r.recommendedProductId === args.recommendedProductId)) {
+      throw new ConvexError("Product already in this section");
+    }
+
+    // Shift existing items down
+    await Promise.all(
+      existing.map((item) => ctx.db.patch(item._id, { sortOrder: item.sortOrder + 1 }))
+    );
+
+    return await ctx.db.insert("productRecommendations", {
+      type: args.type,
+      recommendedProductId: args.recommendedProductId,
+      sortOrder: 0,
+    });
+  },
+});
+
+/**
+ * Admin: remove a product from best_sellers or new_arrivals by product ID,
+ * and re-compact sort orders.
+ */
+export const removeByProductAndType = mutation({
+  args: {
+    type: v.union(v.literal("best_sellers"), v.literal("new_arrivals")),
+    recommendedProductId: v.id("products"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const all = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type", (q) => q.eq("type", args.type))
+      .take(200);
+
+    const match = all.find((r) => r.recommendedProductId === args.recommendedProductId);
+    if (!match) return null;
+
+    await ctx.db.delete(match._id);
+
+    // Re-compact sort orders for remaining items
+    const remaining = all
+      .filter((r) => r._id !== match._id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    await Promise.all(
+      remaining.map((item, i) => ctx.db.patch(item._id, { sortOrder: i }))
+    );
+
+    return null;
+  },
+});
+
+/** Admin: remove a recommendation by ID */
 export const remove = mutation({
   args: { id: v.id("productRecommendations") },
   returns: v.null(),
@@ -190,16 +304,19 @@ export const remove = mutation({
   },
 });
 
-/** Admin: reorder recommendations */
-export const updateSortOrder = mutation({
+/** Admin: batch reorder recommendations (single mutation for cost efficiency) */
+export const reorder = mutation({
   args: {
-    id: v.id("productRecommendations"),
-    sortOrder: v.number(),
+    items: v.array(
+      v.object({ id: v.id("productRecommendations"), sortOrder: v.number() })
+    ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    await ctx.db.patch(args.id, { sortOrder: args.sortOrder });
+    await Promise.all(
+      args.items.map((item) => ctx.db.patch(item.id, { sortOrder: item.sortOrder }))
+    );
     return null;
   },
 });
