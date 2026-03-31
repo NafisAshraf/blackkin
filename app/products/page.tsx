@@ -4,16 +4,16 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePaginatedQuery, useQuery } from "convex/react";
 import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
 import ProductFilters from "@/components/products/ProductFilters";
 import SearchBar from "@/components/products/SearchBar";
 import ProductCard from "@/components/products/ProductCard";
-import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Loader2, SlidersHorizontal } from "lucide-react";
+import { Loader2, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -34,9 +34,9 @@ interface ListProduct {
   averageRating: number;
   totalRatings: number;
   media: ProductMedia[];
+  tags?: Array<{ _id: string; name: string; slug: string }>;
 }
 
-// Resolves image URL for a single product card via individual subscription
 function ProductCardWithImage({ product }: { product: ListProduct }) {
   const storageId = product.media[0]?.storageId;
   const imageUrl = useQuery(
@@ -60,13 +60,11 @@ function ProductsContent() {
   const minPrice = minPriceStr ? Number(minPriceStr) : undefined;
   const maxPrice = maxPriceStr ? Number(maxPriceStr) : undefined;
 
-  // Filter options
   const categories = useQuery(api.categories.list) ?? [];
   const sizes = useQuery(api.platformConfig.listSizes) ?? [];
   const colors = useQuery(api.platformConfig.listColors) ?? [];
   const tags = useQuery(api.tags.list) ?? [];
 
-  // Search results — only active when q is non-empty
   const searchResults = usePaginatedQuery(
     api.products.search,
     q
@@ -75,7 +73,6 @@ function ProductsContent() {
     { initialNumItems: 24 }
   );
 
-  // Filtered results — only active when q is empty
   const filteredResults = usePaginatedQuery(
     api.products.listFiltered,
     !q
@@ -104,31 +101,45 @@ function ProductsContent() {
     />
   );
 
+  // Determine page title
+  let pageTitle = "CATALOG";
+  const tagParam = searchParams.get("tag") ?? tagId;
+  if (tagParam) {
+    if (tagParam.includes("new")) pageTitle = "NEW ARRIVALS";
+    else if (tagParam.includes("sale")) pageTitle = "SALE";
+  }
+
   return (
     <div className="min-h-screen">
       <Navbar />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Page header */}
-        <div className="flex items-center justify-between mb-6">
+      <main className="w-full px-6 lg:px-10 py-8">
+        {/* Page Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-semibold">Products</h1>
+            <h1 className="text-lg font-semibold tracking-wide uppercase">{pageTitle}</h1>
             {!isLoading && (
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 {products.length} {products.length === 1 ? "item" : "items"}
                 {status === "CanLoadMore" ? "+" : ""}
               </p>
             )}
           </div>
 
-          {/* Mobile filter toggle */}
-          <div className="md:hidden">
+          <div className="flex items-center gap-3">
+            {/* Sort (visual only for now) */}
+            <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground border border-border px-3 py-2 cursor-pointer hover:bg-muted transition-colors">
+              <span>Sort: Price, low to high</span>
+              <ChevronDown className="h-3 w-3" />
+            </div>
+
+            {/* Mobile filter toggle */}
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <SlidersHorizontal className="h-4 w-4 mr-2" />
-                  Filters
-                </Button>
+                <button className="flex items-center gap-2 text-xs font-medium border border-border px-3 py-2 hover:bg-muted transition-colors">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  Filter
+                </button>
               </SheetTrigger>
               <SheetContent side="left" className="overflow-y-auto w-72">
                 <div className="pt-6">{filtersPanel}</div>
@@ -139,45 +150,47 @@ function ProductsContent() {
 
         <div className="flex gap-8">
           {/* Desktop sidebar */}
-          <aside className="hidden md:block w-56 flex-shrink-0">
+          <aside className="hidden md:block w-52 flex-shrink-0">
             {filtersPanel}
           </aside>
 
-          {/* Product grid column */}
+          {/* Product grid */}
           <div className="flex-1 min-w-0">
-            <div className="mb-4">
+            {/* Search bar */}
+            <div className="mb-6">
               <SearchBar defaultValue={q} />
             </div>
 
             {isLoading ? (
-              <div className="flex items-center justify-center py-24">
+              <div className="flex items-center justify-center py-32">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             ) : products.length === 0 ? (
-              <p className="text-muted-foreground text-sm py-8 text-center">
+              <p className="text-muted-foreground text-sm py-16 text-center">
                 No products found.
               </p>
             ) : (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                   {products.map((product) => (
                     <ProductCardWithImage key={product._id} product={product} />
                   ))}
                 </div>
 
+                {/* Load more */}
                 {status === "CanLoadMore" && (
-                  <div className="flex justify-center mt-8">
-                    <Button
-                      variant="outline"
+                  <div className="flex justify-center mt-10">
+                    <button
+                      className="border border-border px-8 py-3 text-xs font-semibold uppercase tracking-wider hover:bg-muted transition-colors"
                       onClick={() => loadMore(24)}
                     >
                       Load More
-                    </Button>
+                    </button>
                   </div>
                 )}
 
                 {status === "LoadingMore" && (
-                  <div className="flex justify-center mt-8">
+                  <div className="flex justify-center mt-10">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                   </div>
                 )}
@@ -186,6 +199,8 @@ function ProductsContent() {
           </div>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 }

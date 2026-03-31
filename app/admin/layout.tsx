@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { fetchAuthQuery, isAuthenticated } from "@/lib/auth-server";
 import { api } from "@/convex/_generated/api";
-import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { Navbar } from "@/components/Navbar";
+import { AdminLayoutClient } from "@/components/admin/AdminLayoutClient";
 
 export default async function AdminLayout({
   children,
@@ -19,13 +18,5 @@ export default async function AdminLayout({
     redirect("/");
   }
 
-  return (
-    <div className="min-h-screen">
-      <Navbar />
-      <div className="flex">
-        <AdminSidebar />
-        <main className="flex-1 p-6 min-w-0">{children}</main>
-      </div>
-    </div>
-  );
+  return <AdminLayoutClient>{children}</AdminLayoutClient>;
 }

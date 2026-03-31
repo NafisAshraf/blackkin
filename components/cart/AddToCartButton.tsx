@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation } from "convex/react";
@@ -16,7 +15,11 @@ interface AddToCartButtonProps {
   disabled?: boolean;
 }
 
-export default function AddToCartButton({ productId, variantId, disabled }: AddToCartButtonProps) {
+export default function AddToCartButton({
+  productId,
+  variantId,
+  disabled,
+}: AddToCartButtonProps) {
   const { data: session } = authClient.useSession();
   const addMutation = useMutation(api.cart.add);
   const [loading, setLoading] = useState(false);
@@ -43,13 +46,17 @@ export default function AddToCartButton({ productId, variantId, disabled }: AddT
   }
 
   return (
-    <Button onClick={handleClick} disabled={isDisabled || loading} className="flex-1">
+    <button
+      onClick={handleClick}
+      disabled={isDisabled || loading}
+      className="w-full h-11 bg-foreground text-background text-xs font-semibold tracking-[0.15em] uppercase hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
-        <ShoppingCart className="h-4 w-4 mr-2" />
+        <ShoppingCart className="h-4 w-4" />
       )}
       Add to Cart
-    </Button>
+    </button>
   );
 }

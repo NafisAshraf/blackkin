@@ -128,3 +128,114 @@
     @apply font-sans;
   }
 }
+
+/* ─── ANNOUNCEMENT BAR INFINITE SCROLL ──────────────────── */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.announcement-marquee {
+  display: flex;
+  animation: marquee-scroll 20s linear infinite;
+  will-change: transform;
+}
+
+/* ─── NAVBAR TRANSITION ─────────────────────────────────── */
+.navbar-wrapper {
+  transition: transform 0.3s ease;
+}
+
+.navbar-hidden {
+  transform: translateY(-100%);
+}
+
+/* ─── PRODUCT DETAIL STICKY SCROLL ──────────────────────── */
+.pdp-left-column {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  max-height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.pdp-left-column::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── PRODUCT CARD HOVER OVERLAY ────────────────────────── */
+.product-card-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1rem;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.3), transparent 50%);
+}
+
+.product-card-wrapper:hover .product-card-overlay {
+  opacity: 1;
+}
+
+/* ─── MOBILE PRODUCT SLIDER ─────────────────────────────── */
+.mobile-slider {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-slider::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-slider > * {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* ─── ADMIN SIDEBAR MOBILE ──────────────────────────────── */
+.admin-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.admin-sidebar-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.admin-sidebar-mobile {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 16rem;
+  z-index: 50;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  background: var(--background);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.admin-sidebar-mobile.open {
+  transform: translateX(0);
+}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Heart, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useMutation } from "convex/react";
@@ -11,9 +10,13 @@ import { authClient } from "@/lib/auth-client";
 
 interface WishlistButtonProps {
   productId: Id<"products">;
+  variant?: "icon" | "full";
 }
 
-export default function WishlistButton({ productId }: WishlistButtonProps) {
+export default function WishlistButton({
+  productId,
+  variant = "icon",
+}: WishlistButtonProps) {
   const { data: session } = authClient.useSession();
   const inWishlist = useQuery(
     api.wishlist.check,
@@ -39,16 +42,41 @@ export default function WishlistButton({ productId }: WishlistButtonProps) {
     }
   }
 
+  if (variant === "full") {
+    return (
+      <button
+        onClick={handleClick}
+        disabled={loading}
+        className="w-full h-11 border border-border bg-background text-foreground text-xs font-semibold tracking-wider uppercase hover:bg-muted transition-colors flex items-center justify-center gap-2 disabled:opacity-40"
+      >
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Heart
+            className="h-4 w-4"
+            fill={inWishlist ? "currentColor" : "none"}
+          />
+        )}
+        {inWishlist ? "Saved to Wishlist" : "Save to Wishlist"}
+      </button>
+    );
+  }
+
   return (
-    <Button variant="ghost" size="icon" onClick={handleClick} disabled={loading}>
+    <button
+      onClick={handleClick}
+      disabled={loading}
+      className="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent transition-colors disabled:opacity-40"
+      aria-label={inWishlist ? "Remove from wishlist" : "Add to wishlist"}
+    >
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
         <Heart
-          className="h-4 w-4"
+          className="h-5 w-5"
           fill={inWishlist ? "currentColor" : "none"}
         />
       )}
-    </Button>
+    </button>
   );
 }

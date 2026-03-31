@@ -191,7 +191,7 @@ export const getById = query({
   },
 });
 
-/** Landing page: top 3 best sellers by sortOrder from recommendations table */
+/** Landing page: up to 12 best sellers by sortOrder from recommendations table */
 export const getFeaturedBestSellers = query({
   args: {},
   returns: v.array(productWithPricingValidator),
@@ -200,7 +200,7 @@ export const getFeaturedBestSellers = query({
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", "best_sellers"))
       .order("asc")
-      .take(3);
+      .take(12);
 
     const products = await Promise.all(
       recs.map(async (rec) => {
@@ -213,7 +213,7 @@ export const getFeaturedBestSellers = query({
   },
 });
 
-/** Landing page: top 3 new arrivals by sortOrder from recommendations table */
+/** Landing page: up to 12 new arrivals by sortOrder from recommendations table */
 export const getFeaturedNewArrivals = query({
   args: {},
   returns: v.array(productWithPricingValidator),
@@ -222,7 +222,7 @@ export const getFeaturedNewArrivals = query({
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", "new_arrivals"))
       .order("asc")
-      .take(3);
+      .take(12);
 
     const products = await Promise.all(
       recs.map(async (rec) => {
