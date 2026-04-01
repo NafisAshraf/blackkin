@@ -198,7 +198,6 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
                   key={color}
                   onClick={() => {
                     setSelectedColor(color);
-                    setSelectedSize(null); // reset size when color changes
                   }}
                   className={`h-7 w-7 rounded-full border-2 transition-all ${
                     isSelected
@@ -240,7 +239,6 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
             selectedSize={selectedSize}
             onChange={(size) => {
               setSelectedSize(size);
-              setSelectedColor(null);
             }}
           />
         </div>
