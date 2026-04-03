@@ -152,6 +152,20 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_and_productId", ["userId", "productId"]),
 
+  // ─── USER SAVED ADDRESSES ─────────────────────────────────
+  userAddresses: defineTable({
+    userId: v.id("users"),
+    type: v.union(v.literal("home"), v.literal("work")),
+    name: v.string(),
+    phone: v.string(),
+    addressLine1: v.string(),
+    addressLine2: v.optional(v.string()),
+    city: v.string(),
+    postalCode: v.optional(v.string()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_type", ["userId", "type"]),
+
   // ─── ORDERS ───────────────────────────────────────────────
   orders: defineTable({
     userId: v.id("users"),
