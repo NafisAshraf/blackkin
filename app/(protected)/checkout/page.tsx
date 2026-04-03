@@ -1,7 +1,12 @@
 "use client";
 
+<<<<<<< Updated upstream
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
+=======
+import { useState } from "react";
+import { useQuery, useMutation, useAction } from "convex/react";
+>>>>>>> Stashed changes
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
@@ -12,12 +17,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+<<<<<<< Updated upstream
 import { Loader2, Home, Briefcase, MapPin } from "lucide-react";
+=======
+import { Loader2, CreditCard, Banknote } from "lucide-react";
+>>>>>>> Stashed changes
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 type AddressMode = "home" | "work" | "custom";
 type SaveAs = "home" | "work" | "none";
+
+type PaymentMethod = "cod" | "sslcommerz";
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -29,7 +40,11 @@ export default function CheckoutPage() {
     cart !== undefined ? { sizes: cartSizes } : "skip"
   );
   const createOrder = useMutation(api.orders.create);
+<<<<<<< Updated upstream
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
+=======
+  const initiatePayment = useAction(api.paymentActions.initiate);
+>>>>>>> Stashed changes
 
   // Address mode: which pill is selected
   const [addressMode, setAddressMode] = useState<AddressMode>("custom");
@@ -44,6 +59,7 @@ export default function CheckoutPage() {
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [notes, setNotes] = useState("");
+<<<<<<< Updated upstream
 
   // For the "save custom address" flow
   const [saveAs, setSaveAs] = useState<SaveAs>("none");
@@ -111,11 +127,26 @@ export default function CheckoutPage() {
   if (!homeAddress) availableSaveSlots.push("home");
   if (!workAddress) availableSaveSlots.push("work");
   const canSaveAddress = addressMode === "custom" && availableSaveSlots.length > 0;
+=======
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const shippingAddress = {
+    name,
+    phone,
+    addressLine1,
+    ...(addressLine2 ? { addressLine2 } : {}),
+    city,
+    ...(postalCode ? { postalCode } : {}),
+  };
+>>>>>>> Stashed changes
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
     try {
+<<<<<<< Updated upstream
       await createOrder({
         shippingAddress: {
           name,
@@ -143,11 +174,33 @@ export default function CheckoutPage() {
 
       toast.success("Order placed!");
       router.push("/account/orders");
+=======
+      if (paymentMethod === "cod") {
+        // ── Cash on Delivery: create order, redirect to order page ──
+        await createOrder({
+          shippingAddress,
+          ...(notes ? { notes } : {}),
+        });
+        toast.success("Order placed!");
+        router.push("/account/orders");
+      } else {
+        // ── SSLCommerz Online Payment ──
+        toast.loading("Connecting to payment gateway…", { id: "ssl-init" });
+        const result = await initiatePayment({
+          shippingAddress,
+          ...(notes ? { notes } : {}),
+        });
+        toast.dismiss("ssl-init");
+        // Full-page redirect to SSLCommerz hosted payment page
+        window.location.href = result.GatewayPageURL;
+      }
+>>>>>>> Stashed changes
     } catch (e: unknown) {
+      toast.dismiss("ssl-init");
       toast.error(e instanceof Error ? e.message : "Failed to place order");
-    } finally {
       setIsSubmitting(false);
     }
+    // Note: for sslcommerz we don't setIsSubmitting(false) — page navigates away
   };
 
   if (cart === undefined || savedAddresses === undefined) {
@@ -334,31 +387,65 @@ export default function CheckoutPage() {
 
             <Separator />
 
-            <div className="space-y-2">
+            {/* Payment Method */}
+            <div className="space-y-3">
               <Label>Payment Method</Label>
-              <div className="flex flex-col gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Cash on Delivery */}
+                <label
+                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                    paymentMethod === "cod"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
                   <input
                     type="radio"
                     name="paymentMethod"
                     value="cod"
-                    defaultChecked
+                    checked={paymentMethod === "cod"}
+                    onChange={() => setPaymentMethod("cod")}
                     className="accent-primary"
+                    id="pm-cod"
                   />
-                  <span>Cash on Delivery</span>
+                  <Banknote className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Cash on Delivery</p>
+                    <p className="text-xs text-muted-foreground">Pay when you receive</p>
+                  </div>
                 </label>
-                <label className="flex items-center gap-2 cursor-not-allowed opacity-50">
+
+                {/* Online Payment */}
+                <label
+                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                    paymentMethod === "sslcommerz"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
                   <input
                     type="radio"
                     name="paymentMethod"
-                    value="online"
-                    disabled
+                    value="sslcommerz"
+                    checked={paymentMethod === "sslcommerz"}
+                    onChange={() => setPaymentMethod("sslcommerz")}
                     className="accent-primary"
+                    id="pm-online"
                   />
-                  <span>Online Payment</span>
-                  <Badge variant="secondary" className="text-xs">Coming Soon</Badge>
+                  <CreditCard className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Online Payment</p>
+                    <p className="text-xs text-muted-foreground">Card, Mobile Banking &amp; More</p>
+                  </div>
                 </label>
               </div>
+
+              {paymentMethod === "sslcommerz" && (
+                <p className="text-xs text-muted-foreground">
+                  You&apos;ll be redirected to SSLCommerz secure payment page. Supports VISA,
+                  Mastercard, bKash, Nagad and more.
+                </p>
+              )}
             </div>
 
             <Separator />
@@ -378,8 +465,10 @@ export default function CheckoutPage() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Placing Order...
+                  {paymentMethod === "sslcommerz" ? "Connecting…" : "Placing Order…"}
                 </>
+              ) : paymentMethod === "sslcommerz" ? (
+                "Pay Online"
               ) : (
                 "Place Order"
               )}

@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { authComponent } from "./auth";
@@ -128,5 +128,16 @@ export const toggleActive = triggerMutation({
     if (user.role === "admin") return null; // cannot deactivate admins
     await ctx.db.patch(args.userId, { isActive: args.isActive });
     return null;
+  },
+});
+
+/** Used by payment action to resolve a user from their JWT identity subject */
+export const getByAuthUserIdInternal = internalQuery({
+  args: { authUserId: v.string() },
+  handler: async (ctx, { authUserId }) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_authUserId", (q) => q.eq("authUserId", authUserId))
+      .unique();
   },
 });

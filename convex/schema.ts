@@ -199,6 +199,34 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_userId_and_status", ["userId", "status"]),
 
+  // ─── PAYMENTS (SSLCommerz transaction tracking) ───────────
+  payments: defineTable({
+    orderId: v.id("orders"),
+    tranId: v.string(),                        // unique ID sent to SSLCommerz
+    sessionKey: v.optional(v.string()),        // SSLCommerz sessionkey
+    gatewayPageUrl: v.optional(v.string()),    // GatewayPageURL (for reference)
+    status: v.union(
+      v.literal("initiated"),   // session created, user redirected
+      v.literal("valid"),       // IPN + validation confirmed
+      v.literal("failed"),      // payment declined
+      v.literal("cancelled"),   // customer cancelled
+      v.literal("expired")      // timeout / unattempted
+    ),
+    amount: v.number(),                        // amount in BDT
+    currency: v.string(),                      // "BDT"
+    // Populated after IPN / validation
+    valId: v.optional(v.string()),
+    bankTranId: v.optional(v.string()),
+    cardType: v.optional(v.string()),
+    cardNo: v.optional(v.string()),
+    cardBrand: v.optional(v.string()),
+    storeAmount: v.optional(v.number()),
+    riskLevel: v.optional(v.string()),
+    riskTitle: v.optional(v.string()),
+  })
+    .index("by_tranId", ["tranId"])
+    .index("by_orderId", ["orderId"]),
+
   // ─── ORDER ITEMS (snapshot at purchase time) ──────────────
   orderItems: defineTable({
     orderId: v.id("orders"),
