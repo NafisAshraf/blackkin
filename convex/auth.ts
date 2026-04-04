@@ -6,8 +6,15 @@ import { query } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
 import authConfig from "./auth.config";
 import type { AuthFunctions } from "@convex-dev/better-auth";
-
 const siteUrl = process.env.SITE_URL!;
+
+function isSyntheticPhoneEmail(email: string | undefined | null): boolean {
+  return !!email?.endsWith("@phone.blackkin.local");
+}
+
+function syntheticEmailToPhone(email: string): string {
+  return `+${email.replace("@phone.blackkin.local", "")}`;
+}
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -18,10 +25,12 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
   triggers: {
     user: {
       onCreate: async (ctx, doc) => {
+        const isPhone = isSyntheticPhoneEmail(doc.email);
         await ctx.db.insert("users", {
           authUserId: doc._id,
-          email: doc.email,
-          name: doc.name,
+          email: isPhone ? undefined : doc.email,
+          phone: isPhone ? syntheticEmailToPhone(doc.email) : undefined,
+          name: isPhone ? undefined : doc.name,
           role: "customer",
         });
       },
@@ -31,9 +40,17 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           .withIndex("by_authUserId", (q) => q.eq("authUserId", newDoc._id))
           .unique();
         if (user) {
+          const isPhone = isSyntheticPhoneEmail(newDoc.email);
+          // Always sync name from Better Auth (so session.user.name stays consistent).
+          // For email: only overwrite when Better Auth itself holds a real email.
+          // For phone users the Better Auth email is synthetic, so we don't touch the
+          // real email that the user may have added directly via the Convex updateProfile
+          // mutation. Similarly, we preserve the Convex phone field for email users.
           await ctx.db.patch(user._id, {
-            email: newDoc.email,
-            name: newDoc.name,
+            name: newDoc.name ?? user.name,
+            ...(isPhone
+              ? { phone: syntheticEmailToPhone(newDoc.email) }   // keep user.email intact
+              : { email: newDoc.email }),                         // keep user.phone intact
           });
         }
       },
@@ -60,6 +77,12 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
+    },
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      },
     },
     plugins: [
       // The Convex plugin is required for Convex compatibility

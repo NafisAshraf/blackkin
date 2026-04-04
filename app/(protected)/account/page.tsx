@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
+import { isSyntheticPhoneEmail, syntheticEmailToPhone } from "@/lib/auth-utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
@@ -19,8 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Home, Briefcase, Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Home, Briefcase, Plus, Pencil, Trash2, Loader2, Check, X } from "lucide-react";
 import { toast } from "sonner";
+
+type ProfileField = "name" | "phone" | "email";
 
 type AddressType = "home" | "work";
 
@@ -58,14 +61,59 @@ export default function AccountPage() {
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
   const deleteAddressMutation = useMutation(api.addresses.deleteAddress);
 
+  const updateProfileMutation = useMutation(api.users.updateProfile);
+
+  // Address form state
   const [editingType, setEditingType] = useState<AddressType | null>(null);
   const [form, setForm] = useState<AddressFormState>(emptyForm());
   const [isSaving, setIsSaving] = useState(false);
+
+  // Profile inline-edit state
+  const [editingField, setEditingField] = useState<ProfileField | null>(null);
+  const [fieldValue, setFieldValue] = useState("");
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
 
   const handleSignOut = async () => {
     await authClient.signOut();
     router.push("/");
   };
+
+  const isPhoneUser = isSyntheticPhoneEmail(session?.user?.email);
+
+  function startEditField(field: ProfileField, currentValue: string) {
+    setEditingField(field);
+    setFieldValue(currentValue);
+  }
+
+  function cancelEditField() {
+    setEditingField(null);
+    setFieldValue("");
+  }
+
+  async function saveField(field: ProfileField) {
+    setIsProfileSaving(true);
+    try {
+      if (field === "name") {
+        // Update in Better Auth so session stays in sync; onUpdate trigger syncs to Convex
+        const { error } = await authClient.updateUser({ name: fieldValue.trim() });
+        if (error) throw new Error(error.message);
+        // Also patch Convex immediately for instant UI feedback
+        await updateProfileMutation({ name: fieldValue.trim() });
+      } else if (field === "phone") {
+        await updateProfileMutation({ phone: fieldValue.trim() });
+      } else if (field === "email") {
+        // Phone users adding a contact email — stored in Convex only
+        await updateProfileMutation({ email: fieldValue.trim() });
+      }
+      toast.success("Profile updated");
+      setEditingField(null);
+      setFieldValue("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update profile");
+    } finally {
+      setIsProfileSaving(false);
+    }
+  }
 
   const homeAddress = savedAddresses?.find((a) => a.type === "home");
   const workAddress = savedAddresses?.find((a) => a.type === "work");
@@ -144,37 +192,114 @@ export default function AccountPage() {
         <h1 className="text-2xl font-semibold mb-8">Your Account</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          {/* ── Profile card ── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Profile</CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-3">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Email</span>
-                <span>{session.user.email}</span>
-              </div>
+              {(() => {
+                // Derive clean display values ─────────────────────────────────
+                // Name: prefer Convex (trigger-synced), fall back to session
+                const displayName = currentUser?.name ?? session.user.name ?? "";
+
+                // Mobile: prefer Convex phone field; for phone-auth users whose
+                // Convex record predates the phone field, extract from the
+                // synthetic email that was their auth identifier.
+                const displayPhone =
+                  currentUser?.phone ??
+                  (isPhoneUser ? syntheticEmailToPhone(session.user.email!) : "");
+
+                // Email: show real email only — never expose the synthetic
+                // "@phone.blackkin.local" placeholder to the user.
+                const rawEmail = currentUser?.email ?? "";
+                const displayEmail = isSyntheticPhoneEmail(rawEmail) ? "" : rawEmail;
+
+                return (
+                  <>
+                    {/* Name — always editable */}
+                    <ProfileRow
+                      label="Name"
+                      value={displayName}
+                      placeholder="Add your name"
+                      isEditing={editingField === "name"}
+                      isSaving={isProfileSaving}
+                      fieldValue={fieldValue}
+                      onEdit={() => startEditField("name", displayName)}
+                      onCancel={cancelEditField}
+                      onSave={() => saveField("name")}
+                      onChangeValue={setFieldValue}
+                    />
+
+                    <Separator />
+
+                    {/* Mobile — read-only for phone-auth users (it's their sign-in
+                        identifier); editable/addable for email-auth users */}
+                    <ProfileRow
+                      label="Mobile"
+                      value={displayPhone}
+                      placeholder="Add mobile number"
+                      inputPlaceholder="e.g. 01712345678"
+                      isEditing={editingField === "phone"}
+                      isSaving={isProfileSaving}
+                      fieldValue={fieldValue}
+                      onEdit={
+                        isPhoneUser
+                          ? undefined // phone is their auth ID — not changeable here
+                          : () => startEditField("phone", displayPhone)
+                      }
+                      onCancel={cancelEditField}
+                      onSave={() => saveField("phone")}
+                      onChangeValue={setFieldValue}
+                    />
+
+                    <Separator />
+
+                    {/* Email — editable only for phone-auth users (adds a contact
+                        email to Convex without changing auth); read-only for
+                        email/Google users whose email comes from Better Auth */}
+                    <ProfileRow
+                      label="Email"
+                      value={displayEmail}
+                      placeholder={isPhoneUser ? "Add contact email" : ""}
+                      inputPlaceholder="you@example.com"
+                      isEditing={editingField === "email"}
+                      isSaving={isProfileSaving}
+                      fieldValue={fieldValue}
+                      onEdit={
+                        isPhoneUser
+                          ? () => startEditField("email", displayEmail)
+                          : undefined
+                      }
+                      onCancel={cancelEditField}
+                      onSave={() => saveField("email")}
+                      onChangeValue={setFieldValue}
+                    />
+                  </>
+                );
+              })()}
+
               <Separator />
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Name</span>
-                <span>{session.user.name || "Not provided"}</span>
-              </div>
-              <Separator />
+
+              {/* Role */}
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Role</span>
-                <Badge variant="secondary">
-                  {currentUser?.role ?? "customer"}
-                </Badge>
+                <Badge variant="secondary">{currentUser?.role ?? "customer"}</Badge>
               </div>
+
             </CardContent>
           </Card>
 
+          {/* ── Security card ── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Security</CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-4">
               <p className="text-muted-foreground">
-                You authenticated using email and password.
+                {isPhoneUser
+                  ? "Signed in with mobile number and password."
+                  : "Signed in with email or Google."}
               </p>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 Sign Out
@@ -385,5 +510,106 @@ export default function AccountPage() {
         </Card>
       </main>
     </>
+  );
+}
+
+// ── Shared inline-edit row ─────────────────────────────────────────────────
+
+interface ProfileRowProps {
+  label: string;
+  value: string;           // current saved value (empty string = not set)
+  placeholder: string;     // display text when not set (e.g. "Add your name")
+  inputPlaceholder?: string;
+  isEditing: boolean;
+  isSaving: boolean;
+  fieldValue: string;
+  onEdit?: () => void;     // undefined = field is read-only
+  onCancel: () => void;
+  onSave: () => void;
+  onChangeValue: (v: string) => void;
+}
+
+function ProfileRow({
+  label,
+  value,
+  placeholder,
+  inputPlaceholder,
+  isEditing,
+  isSaving,
+  fieldValue,
+  onEdit,
+  onCancel,
+  onSave,
+  onChangeValue,
+}: ProfileRowProps) {
+  const displayValue = value || (
+    <span className="text-muted-foreground italic">
+      {placeholder || "—"}
+    </span>
+  );
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground uppercase tracking-wide">{label}</Label>
+        <div className="flex gap-2 items-center">
+          <Input
+            value={fieldValue}
+            onChange={(e) => onChangeValue(e.target.value)}
+            placeholder={inputPlaceholder || placeholder}
+            className="h-8 text-sm flex-1"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSave();
+              if (e.key === "Escape") onCancel();
+            }}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={onSave}
+            disabled={isSaving}
+            title="Save"
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={onCancel}
+            disabled={isSaving}
+            title="Cancel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Use a 3-column grid so the value text always ends at the same x-position
+  // regardless of whether an edit button is present.
+  // col-1: label (fixed shrink-0), col-2: value (grows), col-3: button slot (fixed w-7)
+  return (
+    <div className="grid items-center gap-x-3" style={{ gridTemplateColumns: "auto 1fr 1.75rem" }}>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right truncate">{displayValue}</span>
+      {/* Always render the slot so col-3 width is constant */}
+      <div className="flex justify-end">
+        {onEdit && (
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={onEdit}
+            title={`Edit ${label.toLowerCase()}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

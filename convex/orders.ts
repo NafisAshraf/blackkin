@@ -266,7 +266,7 @@ export const getById = query({
       order,
       items,
       customerName: customer?.name,
-      customerEmail: customer?.email ?? "",
+      customerEmail: customer?.email ?? customer?.phone ?? "",
     };
   },
 });

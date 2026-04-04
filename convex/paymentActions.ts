@@ -116,7 +116,7 @@ export const initiate = action({
       total: created.total,
       items: created.items,
       shippingAddress: args.shippingAddress,
-      cusEmail: user.email,
+      cusEmail: user.email ?? user.phone ?? "customer@blackkin.local",
       cusName: user.name ?? args.shippingAddress.name,
       orderId: created.orderId,
     });
@@ -198,7 +198,7 @@ export const retryPayment = action({
         city: shippingAddress.city,
         postalCode: shippingAddress.postalCode,
       },
-      cusEmail: user.email,
+      cusEmail: user.email ?? user.phone ?? "customer@blackkin.local",
       cusName: user.name ?? shippingAddress.name,
       orderId: args.orderId as unknown as string,
     });

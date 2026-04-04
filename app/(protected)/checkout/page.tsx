@@ -1,12 +1,7 @@
 "use client";
 
-<<<<<<< Updated upstream
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
-=======
-import { useState } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
->>>>>>> Stashed changes
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
@@ -17,11 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-<<<<<<< Updated upstream
-import { Loader2, Home, Briefcase, MapPin } from "lucide-react";
-=======
-import { Loader2, CreditCard, Banknote } from "lucide-react";
->>>>>>> Stashed changes
+import { Loader2, Home, Briefcase, MapPin, CreditCard, Banknote } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -40,11 +31,8 @@ export default function CheckoutPage() {
     cart !== undefined ? { sizes: cartSizes } : "skip"
   );
   const createOrder = useMutation(api.orders.create);
-<<<<<<< Updated upstream
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
-=======
   const initiatePayment = useAction(api.paymentActions.initiate);
->>>>>>> Stashed changes
 
   // Address mode: which pill is selected
   const [addressMode, setAddressMode] = useState<AddressMode>("custom");
@@ -59,11 +47,11 @@ export default function CheckoutPage() {
   const [city, setCity] = useState("");
   const [postalCode, setPostalCode] = useState("");
   const [notes, setNotes] = useState("");
-<<<<<<< Updated upstream
 
   // For the "save custom address" flow
   const [saveAs, setSaveAs] = useState<SaveAs>("none");
 
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const homeAddress = savedAddresses?.find((a) => a.type === "home");
@@ -127,60 +115,36 @@ export default function CheckoutPage() {
   if (!homeAddress) availableSaveSlots.push("home");
   if (!workAddress) availableSaveSlots.push("work");
   const canSaveAddress = addressMode === "custom" && availableSaveSlots.length > 0;
-=======
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const shippingAddress = {
     name,
     phone,
     addressLine1,
-    ...(addressLine2 ? { addressLine2 } : {}),
+    ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
     city,
-    ...(postalCode ? { postalCode } : {}),
+    ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
   };
->>>>>>> Stashed changes
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-<<<<<<< Updated upstream
-      await createOrder({
-        shippingAddress: {
-          name,
-          phone,
-          addressLine1,
-          ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
-          city,
-          ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
-        },
-        ...(notes.trim() ? { notes: notes.trim() } : {}),
-      });
-
-      // Fire-and-forget address save if user opted in
-      if (addressMode === "custom" && saveAs !== "none") {
-        saveAddressMutation({
-          type: saveAs,
-          name,
-          phone,
-          addressLine1,
-          ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
-          city,
-          ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
-        }).catch(console.error);
-      }
-
-      toast.success("Order placed!");
-      router.push("/account/orders");
-=======
       if (paymentMethod === "cod") {
-        // ── Cash on Delivery: create order, redirect to order page ──
+        // ── Cash on Delivery ──
         await createOrder({
           shippingAddress,
-          ...(notes ? { notes } : {}),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
         });
+
+        // Fire-and-forget address save if user opted in
+        if (addressMode === "custom" && saveAs !== "none") {
+          saveAddressMutation({
+            type: saveAs,
+            ...shippingAddress,
+          }).catch(console.error);
+        }
+
         toast.success("Order placed!");
         router.push("/account/orders");
       } else {
@@ -188,13 +152,12 @@ export default function CheckoutPage() {
         toast.loading("Connecting to payment gateway…", { id: "ssl-init" });
         const result = await initiatePayment({
           shippingAddress,
-          ...(notes ? { notes } : {}),
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
         });
         toast.dismiss("ssl-init");
         // Full-page redirect to SSLCommerz hosted payment page
         window.location.href = result.GatewayPageURL;
       }
->>>>>>> Stashed changes
     } catch (e: unknown) {
       toast.dismiss("ssl-init");
       toast.error(e instanceof Error ? e.message : "Failed to place order");

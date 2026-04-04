@@ -6,13 +6,15 @@ export default defineSchema({
   users: defineTable({
     authUserId: v.string(),
     name: v.optional(v.string()),
-    email: v.string(),
+    email: v.optional(v.string()), // undefined for phone-only users
+    phone: v.optional(v.string()), // set for users who signed up with mobile number
     role: v.union(v.literal("customer"), v.literal("admin")),
     isActive: v.optional(v.boolean()), // undefined = active, false = deactivated
   })
     .index("by_authUserId", ["authUserId"])
     .index("by_role", ["role"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_phone", ["phone"]),
 
   // ─── PLATFORM CONFIG (admin-defined master lists) ──────────
   platformSizes: defineTable({

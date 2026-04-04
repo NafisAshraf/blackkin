@@ -41,7 +41,7 @@ export default function AdminCustomersPage() {
             ) : results.map((user) => (
               <TableRow key={user._id}>
                 <TableCell>{user.name ?? "—"}</TableCell>
-                <TableCell className="text-sm">{user.email}</TableCell>
+                <TableCell className="text-sm">{user.email ?? user.phone ?? "—"}</TableCell>
                 <TableCell>
                   <Badge variant={user.isActive === false ? "destructive" : "default"} className="text-xs">
                     {user.isActive === false ? "Deactivated" : "Active"}
