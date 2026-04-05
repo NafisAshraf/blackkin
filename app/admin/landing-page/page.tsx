@@ -17,6 +17,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Loader2, Pencil, Trash2, Upload, ToggleLeft, ToggleRight } from "lucide-react";
 
 // ─── Image slot metadata ────────────────────────────────────────────────────
@@ -171,6 +181,7 @@ export default function LandingPageCmsPage() {
 
   // Quote dialog
   const [quoteDialog, setQuoteDialog] = useState<QuoteDialogState>({ mode: "closed" });
+  const [deleteTarget, setDeleteTarget] = useState<Quote | null>(null);
   const [togglingId, setTogglingId] = useState<Id<"landingPageQuotes"> | null>(null);
   const [deletingId, setDeletingId] = useState<Id<"landingPageQuotes"> | null>(null);
 
@@ -217,7 +228,6 @@ export default function LandingPageCmsPage() {
   }
 
   async function handleDeleteQuote(quote: Quote) {
-    if (!confirm(`Delete quote by "${quote.author}"? This cannot be undone.`)) return;
     setDeletingId(quote._id);
     try {
       await deleteQuote({ id: quote._id });
@@ -226,6 +236,7 @@ export default function LandingPageCmsPage() {
       toast.error("Failed to delete quote");
     } finally {
       setDeletingId(null);
+      setDeleteTarget(null);
     }
   }
 
@@ -334,6 +345,23 @@ export default function LandingPageCmsPage() {
           These quotes appear in the homepage carousel. Toggle visibility to show or hide individual quotes.
         </p>
 
+        <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete quote by &quot;{deleteTarget?.author}&quot;?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove the quote from the homepage carousel.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => deleteTarget && handleDeleteQuote(deleteTarget)}>
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <Dialog
           open={isQuoteDialogOpen}
           onOpenChange={(open) => !open && setQuoteDialog({ mode: "closed" })}
@@ -397,7 +425,7 @@ export default function LandingPageCmsPage() {
                     className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground hover:text-red-600 disabled:opacity-50"
                     title="Delete quote"
                     disabled={deletingId === quote._id}
-                    onClick={() => handleDeleteQuote(quote)}
+                    onClick={() => setDeleteTarget(quote)}
                   >
                     {deletingId === quote._id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
