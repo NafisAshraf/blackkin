@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Navbar } from "@/components/Navbar";
@@ -17,7 +17,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Star, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Star,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 type OrderStatus = "pending" | "processed" | "shipped" | "delivered" | "cancelled";
@@ -26,20 +34,77 @@ function getStatusVariant(
   status: string
 ): "outline" | "secondary" | "default" | "destructive" {
   switch (status as OrderStatus) {
-    case "pending":
-      return "outline";
-    case "processed":
-      return "secondary";
+    case "pending":   return "outline";
+    case "processed": return "secondary";
     case "shipped":
-    case "delivered":
-      return "default";
-    case "cancelled":
-      return "destructive";
-    default:
-      return "outline";
+    case "delivered": return "default";
+    case "cancelled": return "destructive";
+    default:          return "outline";
   }
 }
 
+// ─── Payment status banner ────────────────────────────────────────────────────
+function PaymentBanner({ outcome }: { outcome: string | null }) {
+  if (!outcome) return null;
+  if (outcome === "success") {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+        <span>Payment successful! Your order is confirmed.</span>
+      </div>
+    );
+  }
+  if (outcome === "failed") {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+        <XCircle className="h-4 w-4 shrink-0" />
+        <span>Payment was declined. You can retry below.</span>
+      </div>
+    );
+  }
+  if (outcome === "cancelled") {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-800 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-400">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Payment was cancelled. You can retry below.</span>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ─── Retry payment button ─────────────────────────────────────────────────────
+function RetryPaymentButton({ orderId }: { orderId: Id<"orders"> }) {
+  const [retrying, setRetrying] = useState(false);
+  const retryPayment = useAction(api.paymentActions.retryPayment);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    try {
+      toast.loading("Connecting to payment gateway…", { id: "ssl-retry" });
+      const result = await retryPayment({ orderId });
+      toast.dismiss("ssl-retry");
+      window.location.href = result.GatewayPageURL;
+    } catch (err: unknown) {
+      toast.dismiss("ssl-retry");
+      toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
+      setRetrying(false);
+    }
+  };
+
+  return (
+    <Button onClick={handleRetry} disabled={retrying} className="gap-2">
+      {retrying ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <RefreshCw className="h-4 w-4" />
+      )}
+      {retrying ? "Connecting…" : "Retry Payment"}
+    </Button>
+  );
+}
+
+// ─── Star rating input ────────────────────────────────────────────────────────
 function StarRatingInput({
   value,
   onChange,
@@ -72,6 +137,7 @@ function StarRatingInput({
   );
 }
 
+// ─── Review form ──────────────────────────────────────────────────────────────
 function ReviewForm({
   productId,
   orderId,
@@ -88,18 +154,10 @@ function ReviewForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (rating === 0) {
-      toast.error("Please select a rating");
-      return;
-    }
+    if (rating === 0) { toast.error("Please select a rating"); return; }
     setSubmitting(true);
     try {
-      await createReview({
-        productId,
-        orderId,
-        rating,
-        ...(comment ? { comment } : {}),
-      });
+      await createReview({ productId, orderId, rating, ...(comment ? { comment } : {}) });
       toast.success("Review submitted!");
       setSubmitted(true);
       setOpen(false);
@@ -137,18 +195,9 @@ function ReviewForm({
           </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Submit Review"
-              )}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Review"}
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setOpen(false)}
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
               Cancel
             </Button>
           </div>
@@ -158,10 +207,27 @@ function ReviewForm({
   );
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function OrderDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const paymentOutcome = searchParams.get("payment"); // "success" | "failed" | "cancelled"
   const orderId = params.orderId as Id<"orders">;
   const data = useQuery(api.orders.getMyOrder, { orderId });
+  const payments = useQuery(api.payments.getMyPaymentsForOrder, { orderId });
+
+  // Show toast once on mount based on payment outcome
+  useEffect(() => {
+    if (!paymentOutcome) return;
+    if (paymentOutcome === "success") toast.success("Payment successful!");
+    else if (paymentOutcome === "failed") toast.error("Payment failed. Please retry.");
+    else if (paymentOutcome === "cancelled") toast.info("Payment cancelled.");
+    // Remove the query param from URL without reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete("payment");
+    window.history.replaceState({}, "", url.toString());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (data === undefined) {
     return (
@@ -190,6 +256,14 @@ export default function OrderDetailPage() {
 
   const { order, items } = data;
 
+  // Show retry if the order is unpaid and was an online payment attempt (has payment records)
+  const canRetryPayment =
+    order.paymentStatus === "unpaid" &&
+    order.paymentMethod === "sslcommerz" &&
+    !!payments &&
+    payments.length > 0 &&
+    payments[0].status !== "valid";
+
   return (
     <>
       <Navbar />
@@ -203,18 +277,37 @@ export default function OrderDetailPage() {
           Back to Orders
         </Link>
 
+        {/* Payment outcome banner */}
+        <PaymentBanner outcome={paymentOutcome} />
+
         {/* Order Header */}
         <div className="space-y-2">
           <h1 className="text-xl font-semibold">Order Detail</h1>
           <p className="font-mono text-sm text-muted-foreground">{order._id}</p>
           <div className="flex gap-2 flex-wrap">
             <Badge variant={getStatusVariant(order.status)}>{order.status}</Badge>
-            <Badge variant="outline">{order.paymentStatus}</Badge>
+            <Badge variant={order.paymentStatus === "paid" ? "default" : "outline"}>
+              {order.paymentStatus}
+            </Badge>
+            {order.paymentMethod && (
+              <Badge variant="secondary">{order.paymentMethod}</Badge>
+            )}
           </div>
           <p className="text-sm text-muted-foreground">
             Placed on {new Date(order._creationTime).toLocaleDateString()}
           </p>
         </div>
+
+        {/* Retry payment */}
+        {canRetryPayment && (
+          <div className="rounded-lg border border-dashed p-4 space-y-2">
+            <p className="text-sm font-medium">Complete your payment</p>
+            <p className="text-xs text-muted-foreground">
+              This order is waiting for payment. Click below to try again.
+            </p>
+            <RetryPaymentButton orderId={orderId} />
+          </div>
+        )}
 
         <Separator />
 

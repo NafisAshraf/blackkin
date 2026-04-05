@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as addresses from "../addresses.js";
 import type * as auth from "../auth.js";
 import type * as cart from "../cart.js";
 import type * as categories from "../categories.js";
@@ -17,6 +18,9 @@ import type * as http from "../http.js";
 import type * as lib_aggregates from "../lib/aggregates.js";
 import type * as lib_discounts from "../lib/discounts.js";
 import type * as orders from "../orders.js";
+import type * as paymentActions from "../paymentActions.js";
+import type * as paymentHttp from "../paymentHttp.js";
+import type * as payments from "../payments.js";
 import type * as platformConfig from "../platformConfig.js";
 import type * as products from "../products.js";
 import type * as recommendations from "../recommendations.js";
@@ -34,6 +38,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  addresses: typeof addresses;
   auth: typeof auth;
   cart: typeof cart;
   categories: typeof categories;
@@ -43,6 +48,9 @@ declare const fullApi: ApiFromModules<{
   "lib/aggregates": typeof lib_aggregates;
   "lib/discounts": typeof lib_discounts;
   orders: typeof orders;
+  paymentActions: typeof paymentActions;
+  paymentHttp: typeof paymentHttp;
+  payments: typeof payments;
   platformConfig: typeof platformConfig;
   products: typeof products;
   recommendations: typeof recommendations;

@@ -50,8 +50,8 @@ export default function CustomerDetailPage() {
           <Link href="/admin/customers"><ArrowLeft className="h-4 w-4" /></Link>
         </Button>
         <div>
-          <h1 className="text-xl font-semibold">{user.name ?? user.email}</h1>
-          <p className="text-sm text-muted-foreground">{user.email}</p>
+          <h1 className="text-xl font-semibold">{user.name ?? user.email ?? user.phone ?? "—"}</h1>
+          <p className="text-sm text-muted-foreground">{user.email ?? user.phone ?? "—"}</p>
         </div>
       </div>
 

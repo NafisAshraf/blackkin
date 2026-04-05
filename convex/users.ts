@@ -1,8 +1,8 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { authComponent } from "./auth";
-import { requireAdmin } from "./lib/auth.helpers";
+import { requireAdmin, requireAuth } from "./lib/auth.helpers";
 import { mutation as triggerMutation } from "./triggers";
 
 const userObject = v.object({
@@ -10,7 +10,8 @@ const userObject = v.object({
   _creationTime: v.number(),
   authUserId: v.string(),
   name: v.optional(v.string()),
-  email: v.string(),
+  email: v.optional(v.string()),
+  phone: v.optional(v.string()),
   role: v.union(v.literal("customer"), v.literal("admin")),
   isActive: v.optional(v.boolean()),
 });
@@ -127,6 +128,56 @@ export const toggleActive = triggerMutation({
     if (!user) return null;
     if (user.role === "admin") return null; // cannot deactivate admins
     await ctx.db.patch(args.userId, { isActive: args.isActive });
+    return null;
+  },
+});
+
+/** Used by payment action to resolve a user from their JWT identity subject */
+export const getByAuthUserIdInternal = internalQuery({
+  args: { authUserId: v.string() },
+  handler: async (ctx, { authUserId }) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_authUserId", (q) => q.eq("authUserId", authUserId))
+      .unique();
+  },
+});
+
+/**
+ * Update the current user's Convex profile fields.
+ *
+ * - `name`  → also kept in sync by the Better Auth onUpdate trigger, but
+ *             we patch here immediately so the UI reflects changes before
+ *             the session token refreshes.
+ * - `phone` → stored only in Convex (not in Better Auth's internal tables).
+ * - `email` → for phone-auth users: stores a real contact email in Convex
+ *             without altering the synthetic Better Auth email used for sign-in.
+ *
+ * Pass `""` to clear an optional field.
+ */
+export const updateProfile = mutation({
+  args: {
+    name: v.optional(v.string()),
+    phone: v.optional(v.string()),
+    email: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await requireAuth(ctx);
+    type UserPatch = { name?: string; phone?: string; email?: string };
+    const patch: UserPatch = {};
+    if (args.name !== undefined) {
+      patch.name = args.name.trim() || undefined;
+    }
+    if (args.phone !== undefined) {
+      patch.phone = args.phone.trim() || undefined;
+    }
+    if (args.email !== undefined) {
+      patch.email = args.email.trim() || undefined;
+    }
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(user._id, patch);
+    }
     return null;
   },
 });

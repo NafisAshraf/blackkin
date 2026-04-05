@@ -277,6 +277,8 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
           productId={_id}
           variantId={selectedVariantId}
           disabled={!selectedVariantId}
+          quantity={quantity}
+          onSuccess={() => setQuantity(1)}
         />
 
         {/* Buy It Now */}

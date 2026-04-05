@@ -13,12 +13,16 @@ interface AddToCartButtonProps {
   productId: Id<"products">;
   variantId: Id<"productVariants"> | null;
   disabled?: boolean;
+  quantity?: number;
+  onSuccess?: () => void;
 }
 
 export default function AddToCartButton({
   productId,
   variantId,
   disabled,
+  quantity = 1,
+  onSuccess,
 }: AddToCartButtonProps) {
   const { data: session } = authClient.useSession();
   const addMutation = useMutation(api.cart.add);
@@ -32,16 +36,18 @@ export default function AddToCartButton({
     if (session) {
       setLoading(true);
       try {
-        await addMutation({ productId, variantId: variantId!, quantity: 1 });
-        toast.success("Added to cart");
+        await addMutation({ productId, variantId: variantId!, quantity });
+        toast.success(quantity > 1 ? `${quantity} items added to cart` : "Added to cart");
+        onSuccess?.();
       } catch {
         toast.error("Failed to add to cart");
       } finally {
         setLoading(false);
       }
     } else {
-      addToGuestCart(productId as string, variantId as string, 1);
-      toast.success("Added to cart");
+      addToGuestCart(productId as string, variantId as string, quantity);
+      toast.success(quantity > 1 ? `${quantity} items added to cart` : "Added to cart");
+      onSuccess?.();
     }
   }
 

@@ -6,13 +6,15 @@ export default defineSchema({
   users: defineTable({
     authUserId: v.string(),
     name: v.optional(v.string()),
-    email: v.string(),
+    email: v.optional(v.string()), // undefined for phone-only users
+    phone: v.optional(v.string()), // set for users who signed up with mobile number
     role: v.union(v.literal("customer"), v.literal("admin")),
     isActive: v.optional(v.boolean()), // undefined = active, false = deactivated
   })
     .index("by_authUserId", ["authUserId"])
     .index("by_role", ["role"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_phone", ["phone"]),
 
   // ─── PLATFORM CONFIG (admin-defined master lists) ──────────
   platformSizes: defineTable({
@@ -152,6 +154,20 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_userId_and_productId", ["userId", "productId"]),
 
+  // ─── USER SAVED ADDRESSES ─────────────────────────────────
+  userAddresses: defineTable({
+    userId: v.id("users"),
+    type: v.union(v.literal("home"), v.literal("work")),
+    name: v.string(),
+    phone: v.string(),
+    addressLine1: v.string(),
+    addressLine2: v.optional(v.string()),
+    city: v.string(),
+    postalCode: v.optional(v.string()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_type", ["userId", "type"]),
+
   // ─── ORDERS ───────────────────────────────────────────────
   orders: defineTable({
     userId: v.id("users"),
@@ -184,6 +200,34 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_status", ["status"])
     .index("by_userId_and_status", ["userId", "status"]),
+
+  // ─── PAYMENTS (SSLCommerz transaction tracking) ───────────
+  payments: defineTable({
+    orderId: v.id("orders"),
+    tranId: v.string(),                        // unique ID sent to SSLCommerz
+    sessionKey: v.optional(v.string()),        // SSLCommerz sessionkey
+    gatewayPageUrl: v.optional(v.string()),    // GatewayPageURL (for reference)
+    status: v.union(
+      v.literal("initiated"),   // session created, user redirected
+      v.literal("valid"),       // IPN + validation confirmed
+      v.literal("failed"),      // payment declined
+      v.literal("cancelled"),   // customer cancelled
+      v.literal("expired")      // timeout / unattempted
+    ),
+    amount: v.number(),                        // amount in BDT
+    currency: v.string(),                      // "BDT"
+    // Populated after IPN / validation
+    valId: v.optional(v.string()),
+    bankTranId: v.optional(v.string()),
+    cardType: v.optional(v.string()),
+    cardNo: v.optional(v.string()),
+    cardBrand: v.optional(v.string()),
+    storeAmount: v.optional(v.number()),
+    riskLevel: v.optional(v.string()),
+    riskTitle: v.optional(v.string()),
+  })
+    .index("by_tranId", ["tranId"])
+    .index("by_orderId", ["orderId"]),
 
   // ─── ORDER ITEMS (snapshot at purchase time) ──────────────
   orderItems: defineTable({
