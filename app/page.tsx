@@ -1,13 +1,27 @@
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { QuoteCarousel } from "@/components/QuoteCarousel";
+import { fetchAuthQuery } from "@/lib/auth-server";
+import { api } from "@/convex/_generated/api";
 
 export const metadata = {
   title: "Blackkin | Premium Comfort",
   description: "Shop premium undergarments. Crafted for lasting comfort and style.",
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Fetch CMS content server-side. Falls back gracefully if DB has no entries yet.
+  const content = await fetchAuthQuery(api.landingPage.getContent, {});
+
+  // Resolve each image URL, falling back to static public-folder images.
+  const heroSrc          = content.images.hero           ?? "/hero-banner.png";
+  const lifestyleSrc     = content.images.lifestyleBanner ?? "/lifestyle-banner.png";
+  const splitImageSrc    = content.images.splitImage      ?? "/lifestyle-banner.png";
+  const tech1Src         = content.images.tech1           ?? "/3imagesection1.png";
+  const tech2Src         = content.images.tech2           ?? "/3imagesection2.png";
+  const tech3Src         = content.images.tech3           ?? "/3imagesection3.png";
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -16,7 +30,7 @@ export default function HomePage() {
       <section className="relative w-full overflow-hidden bg-gray-100" style={{ minHeight: "90vh" }}>
         <div className="absolute inset-0">
           <img
-            src="/hero-banner.png"
+            src={heroSrc}
             alt="Blackkin Hero"
             className="w-full h-full object-cover object-center"
             style={{ objectPosition: "center top" }}
@@ -39,26 +53,25 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Tagline Section */}
-      <section className="w-full py-16 px-6 lg:px-10 text-center border-b border-border">
-        <p className="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">Own the Moment</p>
-        <h2 className="text-2xl md:text-4xl font-semibold tracking-tight">
-          Comfort Meets Confidence
+      {/* Crafted for the Modern Man */}
+      <section className="w-full py-24 md:py-32 px-6 text-center border-b border-border">
+        <h2 className="text-4xl md:text-6xl font-thin tracking-[0.22em] uppercase leading-snug">
+          <span className="block text-foreground">Crafted for the</span>
+          <span className="block text-gray-300">Modern Man.</span>
         </h2>
-        <p className="mt-4 text-sm text-muted-foreground max-w-lg mx-auto">
-          Engineered for the modern man. Premium fabrics, precision fit, lasting comfort.
+        <p className="mt-10 text-sm italic text-muted-foreground max-w-xl mx-auto leading-relaxed">
+          &ldquo;We Believe That What You Wear Closest To Your Skin Should Be Your Most Considered Choice.&rdquo;
         </p>
       </section>
 
       {/* Lifestyle Banner */}
-      <section className="w-full relative overflow-hidden bg-black" style={{ minHeight: "480px" }}>
+      <section className="w-full h-screen relative overflow-hidden bg-black">
         <img
-          src="/lifestyle-banner.png"
+          src={lifestyleSrc}
           alt="Blackkin Lifestyle"
           className="w-full h-full object-cover absolute inset-0 opacity-60"
-          style={{ minHeight: "480px" }}
         />
-        <div className="relative z-10 flex flex-col items-center justify-center text-center text-white px-6 py-24 md:py-32" style={{ minHeight: "480px" }}>
+        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center text-white px-6">
           <p className="text-xs tracking-[0.4em] uppercase text-white/70 mb-4">Upgrade The Way You Feel</p>
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight leading-tight max-w-2xl">
             Designed for<br />
@@ -73,52 +86,117 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Feature Highlight Grid */}
-      <section className="w-full py-16 px-6 lg:px-10 border-b border-border">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-0.5">
-          <div className="bg-[#f5f5f5] aspect-square flex flex-col items-center justify-center text-center px-8 py-12 gap-4">
-            <div className="text-3xl">🧊</div>
-            <h3 className="font-semibold tracking-wide text-sm uppercase">Ice Cool Fabric</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">Advanced cooling technology keeps you fresh all day long.</p>
+      {/* Split: Text Left / Image Right */}
+      <section className="w-full h-screen grid grid-cols-1 lg:grid-cols-2">
+        <div className="bg-[#111111] flex flex-col justify-center px-12 lg:px-20 py-16 h-full">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold uppercase tracking-[0.06em] leading-tight text-white">
+            Upgrade the way<br />
+            you feel, starting<br />
+            with what&apos;s<br />
+            <span className="text-white/40">Underneath</span>
+            <span className="text-white">.</span>
+          </h2>
+          <Link
+            href="/products"
+            className="mt-8 inline-block text-xs tracking-[0.25em] uppercase text-white underline underline-offset-4 hover:text-white/60 transition-colors w-fit"
+          >
+            Discover More
+          </Link>
+        </div>
+        <div className="relative h-full min-h-[50vh] lg:min-h-0">
+          <img
+            src={splitImageSrc}
+            alt="Upgrade the way you feel"
+            className="w-full h-full object-cover object-center"
+          />
+        </div>
+      </section>
+
+      {/* Premium Comfort Technology */}
+      <section className="w-full bg-white border-t border-border">
+        {/* Section Header */}
+        <div className="text-center py-16 px-6">
+          <h2 className="text-4xl md:text-5xl font-thin tracking-[0.22em] uppercase leading-snug">
+            <span className="block text-foreground">Premium Comfort</span>
+            <span className="block text-gray-300">Technology</span>
+          </h2>
+        </div>
+
+        {/* 3-Image Grid */}
+        <div className="grid grid-cols-3 w-full">
+          {/* Image 1 */}
+          <div className="flex flex-col">
+            <div className="w-full aspect-[3/4] overflow-hidden">
+              <img
+                src={tech1Src}
+                alt="Graphene Antibacterial Inner Crotch"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="py-5 px-4 text-center bg-white">
+              <p className="text-sm text-foreground tracking-wide">Graphene Antibacterial Inner Crotch</p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                Wicks away moisture, dries quickly and keep you dry all day long.
+              </p>
+              <Link
+                href="/products"
+                className="mt-2 inline-block text-xs tracking-[0.2em] uppercase underline underline-offset-2 text-foreground hover:text-muted-foreground transition-colors"
+              >
+                Discover More
+              </Link>
+            </div>
           </div>
-          <div className="bg-[#efefef] aspect-square flex flex-col items-center justify-center text-center px-8 py-12 gap-4">
-            <div className="text-3xl">🛡️</div>
-            <h3 className="font-semibold tracking-wide text-sm uppercase">Antibacterial</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">7A antibacterial protection for all-day hygiene confidence.</p>
+
+          {/* Image 2 */}
+          <div className="flex flex-col">
+            <div className="w-full aspect-[3/4] overflow-hidden">
+              <img
+                src={tech2Src}
+                alt="Dynamic Stretch"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="py-5 px-4 text-center bg-white">
+              <p className="text-sm text-foreground tracking-wide">Dynamic Stretch</p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                4-way stretch fabric that moves with you, never against you.
+              </p>
+              <Link
+                href="/products"
+                className="mt-2 inline-block text-xs tracking-[0.2em] uppercase underline underline-offset-2 text-foreground hover:text-muted-foreground transition-colors"
+              >
+                Discover More
+              </Link>
+            </div>
           </div>
-          <div className="bg-[#e8e8e8] aspect-square flex flex-col items-center justify-center text-center px-8 py-12 gap-4">
-            <div className="text-3xl">⚡</div>
-            <h3 className="font-semibold tracking-wide text-sm uppercase">Elastic Comfort</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">The bullet does not loosen — elasticity that lasts forever.</p>
+
+          {/* Image 3 */}
+          <div className="flex flex-col">
+            <div className="w-full aspect-[3/4] overflow-hidden">
+              <img
+                src={tech3Src}
+                alt="Wormwood Essential Oil Care"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="py-5 px-4 text-center bg-white">
+              <p className="text-sm text-foreground tracking-wide">Wormwood Essential Oil Care</p>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
+                7A Grade antibacterial and deodorizing.
+              </p>
+              <Link
+                href="/products"
+                className="mt-2 inline-block text-xs tracking-[0.2em] uppercase underline underline-offset-2 text-foreground hover:text-muted-foreground transition-colors"
+              >
+                Discover More
+              </Link>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Premium Top Port Banner */}
-      <section className="w-full py-16 px-6 lg:px-10 border-b border-border">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div>
-            <p className="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-4">Premium Comfort</p>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-6">
-              Premium Top Port<br />
-              <span className="text-muted-foreground font-normal">for Every Body</span>
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed mb-8">
-              Engineered with cutting-edge fabric technology for an unparalleled wearing experience. Available in a full range of sizes to fit every man.
-            </p>
-            <Link
-              href="/products"
-              className="inline-block bg-foreground text-background text-xs font-semibold tracking-[0.2em] uppercase px-8 py-3.5 hover:opacity-90 transition-opacity"
-            >
-              Explore All
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-muted aspect-square" />
-            <div className="bg-muted aspect-[4/5]" />
-          </div>
-        </div>
-      </section>
+      {/* Quotes Carousel — hidden if no quotes have been added yet */}
+      <QuoteCarousel quotes={content.quotes} />
 
       {/* Footer */}
       <Footer />
