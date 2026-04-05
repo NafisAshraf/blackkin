@@ -14,6 +14,7 @@ import {
   Star,
   Ruler,
   Sparkles,
+  Layout,
 } from "lucide-react";
 
 interface NavItem {
@@ -55,6 +56,7 @@ const navGroups: NavGroup[] = [
   {
     label: "Content",
     items: [
+      { href: "/admin/landing-page", label: "Landing Page", icon: Layout },
       { href: "/admin/recommendations", label: "Recommendations", icon: Sparkles },
       { href: "/admin/reviews", label: "Reviews", icon: Star },
     ],
