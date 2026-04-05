@@ -275,5 +275,5 @@ export default defineSchema({
     text: v.string(),
     author: v.string(),
     isActive: v.boolean(),
-  }),
+  }).index("by_isActive", ["isActive"]),
 });
