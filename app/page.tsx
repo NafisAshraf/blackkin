@@ -11,16 +11,18 @@ export const metadata = {
 };
 
 export default async function HomePage() {
-  // Fetch CMS content server-side. Falls back gracefully if DB has no entries yet.
-  const content = await fetchAuthQuery(api.landingPage.getContent, {});
+  // Fetch CMS content server-side. If Convex is unreachable, .catch returns null
+  // so the landing page falls back to static defaults and never 500s.
+  const content = await fetchAuthQuery(api.landingPage.getContent, {}).catch(() => null);
 
   // Resolve each image URL, falling back to static public-folder images.
-  const heroSrc          = content.images.hero           ?? "/hero-banner.png";
-  const lifestyleSrc     = content.images.lifestyleBanner ?? "/lifestyle-banner.png";
-  const splitImageSrc    = content.images.splitImage      ?? "/lifestyle-banner.png";
-  const tech1Src         = content.images.tech1           ?? "/3imagesection1.png";
-  const tech2Src         = content.images.tech2           ?? "/3imagesection2.png";
-  const tech3Src         = content.images.tech3           ?? "/3imagesection3.png";
+  const heroSrc       = content?.images.hero             ?? "/hero-banner.png";
+  const lifestyleSrc  = content?.images.lifestyleBanner  ?? "/lifestyle-banner.png";
+  const splitImageSrc = content?.images.splitImage       ?? "/lifestyle-banner.png";
+  const tech1Src      = content?.images.tech1            ?? "/3imagesection1.png";
+  const tech2Src      = content?.images.tech2            ?? "/3imagesection2.png";
+  const tech3Src      = content?.images.tech3            ?? "/3imagesection3.png";
+  const quotes        = content?.quotes                  ?? [];
 
   return (
     <div className="min-h-screen">
@@ -196,7 +198,7 @@ export default async function HomePage() {
       </section>
 
       {/* Quotes Carousel — hidden if no quotes have been added yet */}
-      <QuoteCarousel quotes={content.quotes} />
+      <QuoteCarousel quotes={quotes} />
 
       {/* Footer */}
       <Footer />
