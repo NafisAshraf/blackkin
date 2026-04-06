@@ -400,17 +400,71 @@ export const assignTags = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    const existing = await ctx.db
+    // Record old tag IDs before replacing
+    const oldRows = await ctx.db
       .query("productTags")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .take(100);
-    await Promise.all(existing.map((r) => ctx.db.delete(r._id)));
+    const oldTagIds = new Set(oldRows.map((r) => r.tagId));
+    const newTagSet = new Set(args.tagIds);
 
+    // Replace all tag associations
+    await Promise.all(oldRows.map((r) => ctx.db.delete(r._id)));
     await Promise.all(
       args.tagIds.map((tagId) =>
         ctx.db.insert("productTags", { productId: args.productId, tagId })
       )
     );
+
+    // Compute diff between old and new tags
+    const addedTagIds = args.tagIds.filter((tagId) => !oldTagIds.has(tagId));
+    const removedTagIds = [...oldTagIds].filter((tagId) => !newTagSet.has(tagId));
+
+    // For removed tags: remove this product from sections using those tags
+    for (const tagId of removedTagIds) {
+      const sections = await ctx.db
+        .query("landingPageProductSections")
+        .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
+        .collect();
+      for (const section of sections) {
+        const item = await ctx.db
+          .query("landingPageProductSectionItems")
+          .withIndex("by_sectionId_and_productId", (q) =>
+            q.eq("sectionId", section._id).eq("productId", args.productId)
+          )
+          .first();
+        if (item) await ctx.db.delete(item._id);
+      }
+    }
+
+    // For added tags: append this product to sections using those tags
+    for (const tagId of addedTagIds) {
+      const sections = await ctx.db
+        .query("landingPageProductSections")
+        .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
+        .collect();
+      for (const section of sections) {
+        const existingItem = await ctx.db
+          .query("landingPageProductSectionItems")
+          .withIndex("by_sectionId_and_productId", (q) =>
+            q.eq("sectionId", section._id).eq("productId", args.productId)
+          )
+          .first();
+        if (!existingItem) {
+          const allItems = await ctx.db
+            .query("landingPageProductSectionItems")
+            .withIndex("by_sectionId", (q) => q.eq("sectionId", section._id))
+            .collect();
+          const maxSort = allItems.reduce((max, i) => Math.max(max, i.sortOrder), -1);
+          await ctx.db.insert("landingPageProductSectionItems", {
+            sectionId: section._id,
+            productId: args.productId,
+            sortOrder: maxSort + 1,
+          });
+        }
+      }
+    }
+
     return null;
   },
 });
