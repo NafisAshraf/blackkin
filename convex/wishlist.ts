@@ -36,10 +36,10 @@ export const get = query({
         if (!product) return null;
 
         const { discountedPrice } = await getProductDiscountedPrice(ctx, product);
-        const imageUrl =
-          product.media.length > 0
-            ? await ctx.storage.getUrl(product.media[0].storageId)
-            : null;
+        const firstImage = product.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await ctx.storage.getUrl(firstImage.storageId)
+          : null;
 
         return {
           ...item,

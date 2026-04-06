@@ -41,10 +41,10 @@ export const getAlsoLike = query({
         if (!product || !product.isActive) return null;
 
         const { discountedPrice } = await getProductDiscountedPrice(ctx, product);
-        const imageUrl =
-          product.media.length > 0
-            ? await ctx.storage.getUrl(product.media[0].storageId)
-            : null;
+        const firstImage = product.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await ctx.storage.getUrl(firstImage.storageId)
+          : null;
 
         return {
           _id: product._id,
@@ -110,10 +110,10 @@ export const getAlsoBought = query({
           if (!product || !product.isActive) return null;
 
           const { discountedPrice } = await getProductDiscountedPrice(ctx, product);
-          const imageUrl =
-            product.media.length > 0
-              ? await ctx.storage.getUrl(product.media[0].storageId)
-              : null;
+          const firstImage = product.media.find((m) => m.type === "image");
+          const imageUrl = firstImage
+            ? await ctx.storage.getUrl(firstImage.storageId)
+            : null;
 
           return {
             _id: product._id,
