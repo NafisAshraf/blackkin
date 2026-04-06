@@ -110,6 +110,30 @@ export const remove = mutation({
       }
     }
 
+    // Clear landing page sections that used this tag
+    const sectionsWithTag = await ctx.db
+      .query("landingPageProductSections")
+      .withIndex("by_tagId", (q) => q.eq("tagId", args.id))
+      .collect();
+
+    for (const section of sectionsWithTag) {
+      // Delete all items for this section in batches
+      let sectionDone = false;
+      while (!sectionDone) {
+        const items = await ctx.db
+          .query("landingPageProductSectionItems")
+          .withIndex("by_sectionId", (q) => q.eq("sectionId", section._id))
+          .take(64);
+        if (items.length === 0) {
+          sectionDone = true;
+        } else {
+          await Promise.all(items.map((item) => ctx.db.delete(item._id)));
+        }
+      }
+      // Clear the tagId from the section
+      await ctx.db.patch(section._id, { tagId: undefined });
+    }
+
     await ctx.db.delete(args.id);
     return null;
   },
