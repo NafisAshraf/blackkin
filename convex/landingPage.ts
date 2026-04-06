@@ -363,56 +363,6 @@ export const toggleProductSection = mutation({
   },
 });
 
-// ─── ADMIN MUTATION — add product to section ──────────────────────────────
-export const addProductToSection = mutation({
-  args: {
-    sectionId: v.id("landingPageProductSections"),
-    productId: v.id("products"),
-  },
-  handler: async (ctx, { sectionId, productId }) => {
-    await requireAdmin(ctx);
-
-    const section = await ctx.db.get(sectionId);
-    if (!section) throw new ConvexError("Section not found");
-
-    // Check if product already exists in section using the composite index
-    const alreadyAdded = await ctx.db
-      .query("landingPageProductSectionItems")
-      .withIndex("by_sectionId_and_productId", (q) =>
-        q.eq("sectionId", sectionId).eq("productId", productId)
-      )
-      .first();
-    if (alreadyAdded) throw new ConvexError("Product already in section");
-
-    // Set sortOrder to be after the last item
-    const existing = await ctx.db
-      .query("landingPageProductSectionItems")
-      .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
-      .collect();
-    const maxSort = existing.reduce(
-      (max, item) => Math.max(max, item.sortOrder),
-      -1
-    );
-
-    await ctx.db.insert("landingPageProductSectionItems", {
-      sectionId,
-      productId,
-      sortOrder: maxSort + 1,
-    });
-  },
-});
-
-// ─── ADMIN MUTATION — remove product from section ─────────────────────────
-export const removeProductFromSection = mutation({
-  args: { id: v.id("landingPageProductSectionItems") },
-  handler: async (ctx, { id }) => {
-    await requireAdmin(ctx);
-    const item = await ctx.db.get(id);
-    if (!item) throw new ConvexError("Item not found");
-    await ctx.db.delete(id);
-  },
-});
-
 // ─── ADMIN MUTATION — reorder products in section ─────────────────────────
 export const reorderSectionProducts = mutation({
   args: {
