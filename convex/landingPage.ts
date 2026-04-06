@@ -295,11 +295,17 @@ export const adminGetProductSections = query({
 
         products.sort((a, b) => a.sortOrder - b.sortOrder);
 
+        const tagName = section.tagId
+          ? (await ctx.db.get(section.tagId))?.name ?? null
+          : null;
+
         sections.push({
           _id: section._id,
           position: section.position,
           heading: section.heading,
           isActive: section.isActive,
+          tagId: section.tagId ?? null,
+          tagName,
           products,
         });
       } else {
@@ -308,6 +314,8 @@ export const adminGetProductSections = query({
           position: pos,
           heading: "",
           isActive: false,
+          tagId: null,
+          tagName: null,
           products: [],
         });
       }
