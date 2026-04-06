@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, ArrowUp, ArrowDown, Loader2, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, ArrowDown, Loader2, Upload, X, Box } from "lucide-react";
 import {
   VariantMatrix,
   matrixToVariants,
@@ -23,10 +23,17 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface MediaItem {
+interface VideoMediaItem {
   storageId: Id<"_storage">;
-  previewUrl: string;
-  type: "image" | "video";
+  previewUrl: string | null;
+}
+interface Model3DItem {
+  storageId: Id<"_storage">;
+  fileName: string;
+}
+interface ImageMediaItem {
+  storageId: Id<"_storage">;
+  previewUrl: string | null;
 }
 
 function slugify(str: string) {
@@ -110,9 +117,15 @@ export default function NewProductPage() {
   }, []);
 
   // ── Media ───────────────────────────────────────────────────
-  const [media, setMedia] = useState<MediaItem[]>([]);
-  const [uploadingMedia, setUploadingMedia] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [videoItem, setVideoItem] = useState<VideoMediaItem | null>(null);
+  const [model3dItem, setModel3dItem] = useState<Model3DItem | null>(null);
+  const [images, setImages] = useState<ImageMediaItem[]>([]);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingModel3d, setUploadingModel3d] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const model3dInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // ── Tags ─────────────────────────────────────────────────────
   const [selectedTagIds, setSelectedTagIds] = useState<Set<Id<"tags">>>(new Set());
@@ -132,13 +145,12 @@ export default function NewProductPage() {
     setSlugManual(true);
   }
 
-  async function handleFileUpload(file: File) {
-    // Validate file type
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
-      toast.error("Only image and video files are allowed");
+  async function handleVideoUpload(file: File) {
+    if (!file.type.startsWith("video/")) {
+      toast.error("Only video files are allowed");
       return;
     }
-    setUploadingMedia(true);
+    setUploadingVideo(true);
     try {
       const uploadUrl = await generateUploadUrl({});
       const result = await fetch(uploadUrl, {
@@ -148,22 +160,66 @@ export default function NewProductPage() {
       });
       if (!result.ok) throw new Error("Upload failed");
       const { storageId } = await result.json();
-      const previewUrl = URL.createObjectURL(file);
-      const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
-      setMedia((prev) => [...prev, { storageId, previewUrl, type }]);
+      setVideoItem({ storageId, previewUrl: URL.createObjectURL(file) });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Media upload failed");
+      toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
-      setUploadingMedia(false);
+      setUploadingVideo(false);
     }
   }
 
-  function removeMedia(index: number) {
-    setMedia((prev) => prev.filter((_, i) => i !== index));
+  async function handleModel3DUpload(file: File) {
+    if (!file.name.toLowerCase().endsWith(".glb")) {
+      toast.error("Only .glb files are supported");
+      return;
+    }
+    setUploadingModel3d(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const result = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": "model/gltf-binary" },
+        body: file,
+      });
+      if (!result.ok) throw new Error("Upload failed");
+      const { storageId } = await result.json();
+      setModel3dItem({ storageId, fileName: file.name });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingModel3d(false);
+    }
   }
 
-  function moveMedia(index: number, direction: "up" | "down") {
-    setMedia((prev) => {
+  async function handleImageUpload(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed");
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const uploadUrl = await generateUploadUrl({});
+      const result = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!result.ok) throw new Error("Upload failed");
+      const { storageId } = await result.json();
+      setImages((prev) => [...prev, { storageId, previewUrl: URL.createObjectURL(file) }]);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function removeImage(index: number) {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function moveImage(index: number, direction: "up" | "down") {
+    setImages((prev) => {
       const next = [...prev];
       const swap = direction === "up" ? index - 1 : index + 1;
       if (swap < 0 || swap >= next.length) return prev;
@@ -207,7 +263,11 @@ export default function NewProductPage() {
         description: description.trim(),
         categoryId: categoryId as Id<"categories">,
         basePrice: Number(basePrice),
-        media: media.map((m, i) => ({ storageId: m.storageId, type: m.type, sortOrder: i })),
+        media: [
+          ...(videoItem ? [{ storageId: videoItem.storageId, type: "video" as const, sortOrder: 0 }] : []),
+          ...(model3dItem ? [{ storageId: model3dItem.storageId, type: "model3d" as const, sortOrder: 1 }] : []),
+          ...images.map((img, i) => ({ storageId: img.storageId, type: "image" as const, sortOrder: 2 + i })),
+        ],
         variants: variants.map((v) => ({ size: v.size, color: v.color, stock: v.stock })),
       });
 
@@ -325,57 +385,197 @@ export default function NewProductPage() {
           </CardContent>
         </Card>
 
-        {/* ── 3. Media ── */}
+        {/* ── 3a. Video ── */}
         <Card>
-          <CardHeader><CardTitle>Media</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
+          <CardHeader>
+            <CardTitle>
+              Video{" "}
+              <span className="text-sm font-normal text-muted-foreground">(optional)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <input
-              ref={fileInputRef}
+              ref={videoInputRef}
               type="file"
-              accept="image/*,video/*"
+              accept="video/*"
               className="hidden"
               onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (file) await handleFileUpload(file);
+                const f = e.target.files?.[0];
+                if (f) await handleVideoUpload(f);
+                e.target.value = "";
+              }}
+            />
+            {videoItem ? (
+              <div className="relative group w-48 h-28 rounded-md overflow-hidden border bg-muted">
+                {videoItem.previewUrl ? (
+                  <video src={videoItem.previewUrl} className="w-full h-full object-cover" muted />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                    video
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setVideoItem(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={uploadingVideo}
+                onClick={() => videoInputRef.current?.click()}
+              >
+                {uploadingVideo ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</>
+                ) : (
+                  <><Upload className="mr-2 h-4 w-4" />Upload Video</>
+                )}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── 3b. 3D Model ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              3D Model{" "}
+              <span className="text-sm font-normal text-muted-foreground">(optional — GLB format)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <input
+              ref={model3dInputRef}
+              type="file"
+              accept=".glb"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (f) await handleModel3DUpload(f);
+                e.target.value = "";
+              }}
+            />
+            {model3dItem ? (
+              <div className="flex items-center gap-3 p-3 rounded-md border bg-muted">
+                <Box className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm truncate flex-1">{model3dItem.fileName}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => setModel3dItem(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={uploadingModel3d}
+                  onClick={() => model3dInputRef.current?.click()}
+                >
+                  {uploadingModel3d ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</>
+                  ) : (
+                    <><Upload className="mr-2 h-4 w-4" />Upload 3D Model</>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">Only .glb files are supported</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── 3c. Images ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Images{" "}
+              <span className="text-sm font-normal text-muted-foreground">(optional, multiple allowed)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                if (f) await handleImageUpload(f);
                 e.target.value = "";
               }}
             />
             <Button
               type="button"
               variant="outline"
-              disabled={uploadingMedia}
-              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingImage}
+              onClick={() => imageInputRef.current?.click()}
             >
-              {uploadingMedia ? (
+              {uploadingImage ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</>
               ) : (
-                <><Upload className="mr-2 h-4 w-4" />Upload Image / Video</>
+                <><Upload className="mr-2 h-4 w-4" />Upload Image</>
               )}
             </Button>
-
-            {media.length > 0 && (
+            {images.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {media.map((item, i) => (
-                  <div key={item.storageId} className="relative group rounded-md overflow-hidden border">
-                    {item.type === "image" ? (
+                {images.map((item, i) => (
+                  <div key={item.storageId} className="relative group rounded-md overflow-hidden border bg-muted">
+                    {item.previewUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.previewUrl} alt={`media-${i}`} className="w-full h-28 object-cover" />
+                      <img src={item.previewUrl} alt={`image-${i}`} className="w-full h-28 object-cover" />
                     ) : (
-                      <video src={item.previewUrl} className="w-full h-28 object-cover" muted />
+                      <div className="w-full h-28 flex items-center justify-center text-xs text-muted-foreground">
+                        image
+                      </div>
                     )}
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                      <Button type="button" variant="secondary" size="icon" className="h-7 w-7" disabled={i === 0} onClick={() => moveMedia(i, "up")}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        className="h-7 w-7"
+                        disabled={i === 0}
+                        onClick={() => moveImage(i, "up")}
+                      >
                         <ArrowUp className="h-3 w-3" />
                       </Button>
-                      <Button type="button" variant="secondary" size="icon" className="h-7 w-7" disabled={i === media.length - 1} onClick={() => moveMedia(i, "down")}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        className="h-7 w-7"
+                        disabled={i === images.length - 1}
+                        onClick={() => moveImage(i, "down")}
+                      >
                         <ArrowDown className="h-3 w-3" />
                       </Button>
-                      <Button type="button" variant="destructive" size="icon" className="h-7 w-7" onClick={() => removeMedia(i)}>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => removeImage(i)}
+                      >
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
                     {i === 0 && (
-                      <span className="absolute top-1 left-1 text-[10px] bg-black/70 text-white px-1 rounded">Cover</span>
+                      <span className="absolute top-1 left-1 text-[10px] bg-black/70 text-white px-1 rounded">
+                        Cover
+                      </span>
                     )}
                   </div>
                 ))}
