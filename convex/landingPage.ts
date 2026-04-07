@@ -397,11 +397,18 @@ export const setTagForSection = mutation({
     if (!tag) throw new ConvexError("Tag not found");
 
     // Clear all existing items
-    const existingItems = await ctx.db
-      .query("landingPageProductSectionItems")
-      .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
-      .collect();
-    await Promise.all(existingItems.map((item) => ctx.db.delete(item._id)));
+    let clearDone = false;
+    while (!clearDone) {
+      const existingItems = await ctx.db
+        .query("landingPageProductSectionItems")
+        .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
+        .take(64);
+      if (existingItems.length === 0) {
+        clearDone = true;
+      } else {
+        await Promise.all(existingItems.map((item) => ctx.db.delete(item._id)));
+      }
+    }
 
     // Set the new tag
     await ctx.db.patch(sectionId, { tagId });
@@ -443,14 +450,21 @@ export const clearSection = mutation({
     const section = await ctx.db.get(sectionId);
     if (!section) throw new ConvexError("Section not found");
 
-    // Remove tag
-    await ctx.db.patch(sectionId, { tagId: undefined });
+    // Remove tag and hide the section
+    await ctx.db.patch(sectionId, { tagId: undefined, isActive: false });
 
     // Delete all items
-    const items = await ctx.db
-      .query("landingPageProductSectionItems")
-      .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
-      .collect();
-    await Promise.all(items.map((item) => ctx.db.delete(item._id)));
+    let clearDone = false;
+    while (!clearDone) {
+      const items = await ctx.db
+        .query("landingPageProductSectionItems")
+        .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
+        .take(64);
+      if (items.length === 0) {
+        clearDone = true;
+      } else {
+        await Promise.all(items.map((item) => ctx.db.delete(item._id)));
+      }
+    }
   },
 });

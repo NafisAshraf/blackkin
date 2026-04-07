@@ -35,6 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SortableList } from "@/components/admin/SortableList";
 
 // ─── Image slot metadata ────────────────────────────────────────────────────
@@ -214,7 +220,6 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
   const [isSettingTag, setIsSettingTag] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const upsertSection = useMutation(api.landingPage.upsertProductSection);
   const toggleSection = useMutation(api.landingPage.toggleProductSection);
@@ -330,29 +335,24 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
             </Badge>
           )}
           {/* 3-dots menu */}
-          <div className="relative">
-            <button
-              className="h-7 w-7 flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
-              title="Section options"
-              disabled={!canClear}
-              onClick={() => setMenuOpen((o) => !o)}
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-8 z-10 bg-background border border-border shadow-md w-36">
-                <button
-                  className="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-muted transition-colors"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setShowClearConfirm(true);
-                  }}
-                >
-                  Clear Section
-                </button>
-              </div>
-            )}
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={!canClear}>
+              <button
+                className="h-7 w-7 flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+                title="Section options"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem
+                className="text-xs text-red-600 focus:text-red-600 cursor-pointer"
+                onClick={() => setShowClearConfirm(true)}
+              >
+                Clear Section
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {/* Visibility toggle */}
           <button
             className="h-7 w-7 flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
