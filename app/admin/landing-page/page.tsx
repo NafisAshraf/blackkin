@@ -357,7 +357,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
           <button
             className="h-7 w-7 flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
             title={section.isActive ? "Hide section" : "Show section"}
-            disabled={isToggling || !section._id}
+            disabled={isToggling || !section._id || (!section.tagId && !section.isActive)}
             onClick={handleToggle}
           >
             {isToggling ? (

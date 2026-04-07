@@ -387,6 +387,7 @@ export const setTagForSection = mutation({
     sectionId: v.id("landingPageProductSections"),
     tagId: v.id("tags"),
   },
+  returns: v.null(),
   handler: async (ctx, { sectionId, tagId }) => {
     await requireAdmin(ctx);
 
@@ -436,6 +437,7 @@ export const setTagForSection = mutation({
         })
       )
     );
+    return null;
   },
 });
 
@@ -444,6 +446,7 @@ export const clearSection = mutation({
   args: {
     sectionId: v.id("landingPageProductSections"),
   },
+  returns: v.null(),
   handler: async (ctx, { sectionId }) => {
     await requireAdmin(ctx);
 
@@ -466,5 +469,6 @@ export const clearSection = mutation({
         await Promise.all(items.map((item) => ctx.db.delete(item._id)));
       }
     }
+    return null;
   },
 });
