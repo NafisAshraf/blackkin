@@ -46,7 +46,6 @@ import { SortableList } from "@/components/admin/SortableList";
 // ─── Image slot metadata ────────────────────────────────────────────────────
 type ImageSlot =
   | "hero"
-  | "lifestyleBanner"
   | "splitImage"
   | "tech1"
   | "tech2"
@@ -57,11 +56,6 @@ const IMAGE_SLOTS: { slot: ImageSlot; label: string; description: string }[] = [
     slot: "hero",
     label: "Hero Banner",
     description: 'Full-screen background image behind "BE BOLD"',
-  },
-  {
-    slot: "lifestyleBanner",
-    label: "Lifestyle Banner",
-    description: '"Upgrade The Way You Feel" full-screen section background',
   },
   {
     slot: "splitImage",
@@ -668,67 +662,13 @@ export default function LandingPageCmsPage() {
               })()}
             </div>
 
-            {/* ── Row B: Lifestyle Banner (full-width, "Everyday Heroes" overlay) ── */}
-            <div className="space-y-2">
-              <p className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground">
-                Lifestyle Banner — &ldquo;Everyday Heroes&rdquo;
-              </p>
-              {(() => {
-                const { slot, label } = IMAGE_SLOTS[1];
-                const currentUrl = imageMap[slot];
-                const isUploading = uploading[slot] ?? false;
-                return (
-                  <div className="relative w-full aspect-video overflow-hidden bg-black">
-                    {currentUrl ? (
-                      <img src={currentUrl} alt={label} className="w-full h-full object-cover opacity-60" />
-                    ) : (
-                      <div className="w-full h-full bg-neutral-900 flex items-center justify-center">
-                        <Upload className="h-8 w-8 text-white/20" />
-                      </div>
-                    )}
-                    {/* Top + bottom fade, transparent middle — matching the lifestyle banner */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/40" />
-                    {/* Centered overlay text */}
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center pointer-events-none">
-                      <p className="text-white/70 text-[9px] tracking-[0.4em] uppercase mb-1">Upgrade The Way You Feel</p>
-                      <p className="text-white text-xl font-bold tracking-tight leading-tight">Everyday Heroes</p>
-                    </div>
-                    {/* Upload badge */}
-                    <button
-                      className="absolute top-3 right-3 z-20 flex items-center gap-1.5 bg-black/60 hover:bg-black/80 text-white text-[10px] tracking-[0.15em] uppercase px-3 py-1.5 transition-colors disabled:opacity-50"
-                      disabled={isUploading}
-                      onClick={() => fileInputRefs.current[slot]?.click()}
-                    >
-                      {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                      {currentUrl ? "Replace" : "Upload"}
-                    </button>
-                    {isUploading && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
-                        <Loader2 className="h-6 w-6 animate-spin text-white" />
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 right-0 z-10 bg-black/40 px-3 py-1.5 pointer-events-none">
-                      <p className="text-white text-[9px] tracking-[0.2em] uppercase">{label}</p>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      ref={(el) => { fileInputRefs.current[slot] = el; }}
-                      onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileChange(slot, file); }}
-                    />
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* ── Row C: Split Section (2-col: dark left / image right) ── */}
+            {/* ── Row B: Split Section (2-col: dark left / image right) ── */}
             <div className="space-y-2">
               <p className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground">
                 Split Section — Dark Left / Image Right
               </p>
               {(() => {
-                const { slot, label } = IMAGE_SLOTS[2];
+                const { slot, label } = IMAGE_SLOTS[1];
                 const currentUrl = imageMap[slot];
                 const isUploading = uploading[slot] ?? false;
                 return (
@@ -786,7 +726,7 @@ export default function LandingPageCmsPage() {
                 Premium Comfort Technology — 3 Images
               </p>
               <div className="grid grid-cols-3 gap-0 border border-border">
-                {IMAGE_SLOTS.slice(3).map(({ slot, label, description }) => {
+                {IMAGE_SLOTS.slice(2).map(({ slot, label, description }) => {
                   const currentUrl = imageMap[slot];
                   const isUploading = uploading[slot] ?? false;
                   return (
@@ -876,7 +816,7 @@ export default function LandingPageCmsPage() {
         <div className="flex items-end justify-between border-b border-border pb-4">
           <div>
             <p className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground mb-1">
-              Section 08
+              Section 04
             </p>
             <h2 className="text-base font-thin tracking-[0.2em] uppercase text-foreground">
               Quote Carousel

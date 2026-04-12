@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireAuth } from "./lib/auth.helpers";
-import { getProductDiscountedPrice } from "./lib/discounts";
+import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 
 const wishlistItemFull = v.object({
   _id: v.id("wishlistItems"),
@@ -35,7 +35,7 @@ export const get = query({
         const product = await ctx.db.get(item.productId);
         if (!product) return null;
 
-        const { discountedPrice } = await getProductDiscountedPrice(ctx, product);
+        const { effectivePrice: discountedPrice } = await getEffectivePrice(ctx, product);
         const firstImage = product.media.find((m) => m.type === "image");
         const imageUrl = firstImage
           ? await ctx.storage.getUrl(firstImage.storageId)
@@ -48,7 +48,7 @@ export const get = query({
           basePrice: product.basePrice,
           discountedPrice,
           imageUrl,
-          isActive: product.isActive,
+          isActive: isProductVisible(product),
           averageRating: product.averageRating,
           totalRatings: product.totalRatings,
         };

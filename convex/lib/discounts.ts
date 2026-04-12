@@ -1,132 +1,140 @@
-import { Doc, Id } from "../_generated/dataModel";
+import { Doc } from "../_generated/dataModel";
 import { QueryCtx, MutationCtx } from "../_generated/server";
 
-type ScopeType = Doc<"salesCampaigns">["scope"]["type"];
-
-// Priority order: most specific wins
-const SCOPE_PRIORITY: Record<ScopeType, number> = {
-  product: 4,
-  tag: 3,
-  category: 2,
-  storewide: 1,
-};
-
 /**
- * Finds all currently active sales campaigns that apply to a given product.
- * Returns them sorted by priority (most specific first).
+ * Pure function: checks if a product is visible on the storefront.
+ * No cron jobs — "scheduled" products become visible dynamically once their time passes.
  */
-export async function getApplicableCampaigns(
-  ctx: QueryCtx | MutationCtx,
-  product: Doc<"products">
-): Promise<Doc<"salesCampaigns">[]> {
-  const now = Date.now();
-
-  // Query campaigns that are active and not yet expired
-  const campaigns = await ctx.db
-    .query("salesCampaigns")
-    .withIndex("by_isActive", (q) => q.eq("isActive", true))
-    .collect();
-
-  const applicable: Doc<"salesCampaigns">[] = [];
-
-  for (const campaign of campaigns) {
-    // Check time window
-    if (campaign.startTime > now || campaign.endTime < now) continue;
-
-    const scope = campaign.scope;
-
-    if (scope.type === "storewide") {
-      applicable.push(campaign);
-      continue;
-    }
-
-    if (scope.type === "category" && scope.categoryId === product.categoryId) {
-      applicable.push(campaign);
-      continue;
-    }
-
-    if (scope.type === "product" && scope.productId === product._id) {
-      applicable.push(campaign);
-      continue;
-    }
-
-    if (scope.type === "tag") {
-      const productTag = await ctx.db
-        .query("productTags")
-        .withIndex("by_productId_and_tagId", (q) =>
-          q.eq("productId", product._id).eq("tagId", scope.tagId)
-        )
-        .unique();
-      if (productTag) {
-        applicable.push(campaign);
-      }
-    }
-  }
-
-  // Sort by priority descending (most specific first)
-  applicable.sort(
-    (a, b) => SCOPE_PRIORITY[b.scope.type] - SCOPE_PRIORITY[a.scope.type]
-  );
-
-  return applicable;
+export function isProductVisible(
+  product: Doc<"products">,
+  now: number = Date.now()
+): boolean {
+  if (product.status === "active") return true;
+  if (
+    product.status === "scheduled" &&
+    product.scheduledPublishTime !== undefined &&
+    product.scheduledPublishTime <= now
+  )
+    return true;
+  return false;
 }
 
 /**
- * Calculates the discounted price for a product given applicable campaigns.
- * Uses the highest-priority campaign. If same priority, picks highest discount.
- * Price never goes below 0.
+ * Checks whether the product's individual sale is currently active.
  */
-export function calculateDiscountedPrice(
-  basePrice: number,
-  campaigns: Doc<"salesCampaigns">[]
-): { discountedPrice: number; discountAmount: number; campaignName: string | null } {
-  if (campaigns.length === 0) {
-    return { discountedPrice: basePrice, discountAmount: 0, campaignName: null };
+function isIndividualSaleActive(
+  product: Doc<"products">,
+  now: number
+): boolean {
+  if (!product.saleEnabled) return false;
+  if (product.salePrice === undefined) return false;
+
+  // Check start condition
+  if (product.saleStartMode === "custom") {
+    if (
+      product.saleStartTime === undefined ||
+      product.saleStartTime > now
+    )
+      return false;
   }
 
-  // Get highest priority level
-  const maxPriority = Math.max(...campaigns.map((c) => SCOPE_PRIORITY[c.scope.type]));
-  const topCampaigns = campaigns.filter(
-    (c) => SCOPE_PRIORITY[c.scope.type] === maxPriority
-  );
+  // Check end condition
+  if (product.saleEndMode === "custom") {
+    if (
+      product.saleEndTime !== undefined &&
+      product.saleEndTime <= now
+    )
+      return false;
+  }
 
-  // Among same priority, find best (highest) discount
-  let bestCampaign = topCampaigns[0];
-  let bestDiscount = computeDiscount(basePrice, topCampaigns[0]);
+  return true;
+}
 
-  for (let i = 1; i < topCampaigns.length; i++) {
-    const d = computeDiscount(basePrice, topCampaigns[i]);
-    if (d > bestDiscount) {
-      bestDiscount = d;
-      bestCampaign = topCampaigns[i];
+/**
+ * Computes the effective (display) price for a product.
+ *
+ * Priority:
+ *   1. Discount group (highest) — if product is in an active group, group discount applies.
+ *      Among multiple active groups, the one yielding the lowest price wins.
+ *   2. Individual sale — only if no active group discount.
+ *
+ * When a group expires/is deactivated, the individual sale naturally returns.
+ */
+export async function getEffectivePrice(
+  ctx: QueryCtx | MutationCtx,
+  product: Doc<"products">
+): Promise<{
+  effectivePrice: number;
+  discountAmount: number;
+  discountSource: "group" | "individual" | null;
+  discountGroupName: string | null;
+}> {
+  const now = Date.now();
+  const basePrice = product.basePrice;
+
+  // ── 1. Check discount groups ───────────────────────────────
+  const groupProductRows = await ctx.db
+    .query("discountGroupProducts")
+    .withIndex("by_productId", (q) => q.eq("productId", product._id))
+    .take(20);
+
+  let bestGroupPrice = basePrice;
+  let bestGroupName: string | null = null;
+
+  for (const row of groupProductRows) {
+    const group = await ctx.db.get(row.groupId);
+    if (!group) continue;
+    if (!group.isActive) continue;
+    if (group.startTime > now) continue;
+    if (group.endTime !== undefined && group.endTime <= now) continue;
+
+    const groupPrice = computeGroupDiscount(basePrice, group);
+    if (groupPrice < bestGroupPrice) {
+      bestGroupPrice = groupPrice;
+      bestGroupName = group.name;
     }
   }
 
-  const discountAmount = Math.min(bestDiscount, basePrice);
-  const discountedPrice = Math.max(0, basePrice - discountAmount);
+  if (bestGroupName !== null) {
+    const discountAmount = basePrice - bestGroupPrice;
+    return {
+      effectivePrice: bestGroupPrice,
+      discountAmount,
+      discountSource: "group",
+      discountGroupName: bestGroupName,
+    };
+  }
 
+  // ── 2. Check individual sale ───────────────────────────────
+  if (isIndividualSaleActive(product, now)) {
+    const salePrice = product.salePrice!;
+    const effectivePrice = Math.max(0, salePrice);
+    const discountAmount = Math.max(0, basePrice - effectivePrice);
+    return {
+      effectivePrice,
+      discountAmount,
+      discountSource: "individual",
+      discountGroupName: null,
+    };
+  }
+
+  // ── 3. No discount ────────────────────────────────────────
   return {
-    discountedPrice,
-    discountAmount,
-    campaignName: bestCampaign.name,
+    effectivePrice: basePrice,
+    discountAmount: 0,
+    discountSource: null,
+    discountGroupName: null,
   };
 }
 
-function computeDiscount(basePrice: number, campaign: Doc<"salesCampaigns">): number {
-  if (campaign.discountType === "percentage") {
-    return Math.round((basePrice * campaign.discountValue) / 100);
+function computeGroupDiscount(
+  basePrice: number,
+  group: Doc<"discountGroups">
+): number {
+  if (group.discountType === "percentage") {
+    const off = Math.round((basePrice * group.discountValue) / 100);
+    return Math.max(0, basePrice - off);
   }
-  return campaign.discountValue;
-}
-
-/**
- * Convenience: get discounted price for a product, querying campaigns automatically.
- */
-export async function getProductDiscountedPrice(
-  ctx: QueryCtx | MutationCtx,
-  product: Doc<"products">
-) {
-  const campaigns = await getApplicableCampaigns(ctx, product);
-  const effectivePrice = product.basePrice;
-  return calculateDiscountedPrice(effectivePrice, campaigns);
+  // fixed amount off
+  return Math.max(0, basePrice - group.discountValue);
 }

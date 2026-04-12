@@ -99,17 +99,6 @@ export const remove = mutation({
       }
     }
 
-    // Also remove the tag from salesCampaigns that used it — set them inactive
-    const campaigns = await ctx.db
-      .query("salesCampaigns")
-      .withIndex("by_isActive", (q) => q.eq("isActive", true))
-      .take(100);
-    for (const c of campaigns) {
-      if (c.scope.type === "tag" && c.scope.tagId === args.id) {
-        await ctx.db.patch(c._id, { isActive: false });
-      }
-    }
-
     // Clear landing page sections that used this tag
     const sectionsWithTag = await ctx.db
       .query("landingPageProductSections")

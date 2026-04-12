@@ -6,16 +6,33 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Package,
-  Tag,
-  FolderOpen,
   ShoppingCart,
   Users,
   Megaphone,
-  Star,
-  Ruler,
-  Sparkles,
+  Settings,
+  UserCog,
   Layout,
 } from "lucide-react";
+
+export interface SidebarUser {
+  role: "customer" | "admin" | "superadmin";
+  permissions?: {
+    orders: boolean;
+    marketing: boolean;
+    products: boolean;
+    settings: boolean;
+    pages: boolean;
+    users: boolean;
+  };
+}
+
+function hasPermission(
+  user: SidebarUser,
+  permission: keyof NonNullable<SidebarUser["permissions"]>
+): boolean {
+  if (user.role === "superadmin") return true;
+  return user.permissions?.[permission] === true;
+}
 
 interface NavItem {
   href: string;
@@ -24,51 +41,60 @@ interface NavItem {
   exact?: boolean;
 }
 
-interface NavGroup {
-  label: string;
-  items: NavItem[];
+function buildNavItems(user: SidebarUser): NavItem[] {
+  const items: NavItem[] = [];
+
+  // Dashboard — always visible
+  items.push({ href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true });
+
+  // Products (includes categories, tags, discounts, recommendations as tabs)
+  if (hasPermission(user, "products")) {
+    items.push({ href: "/admin/products", label: "Products", icon: Package });
+  }
+
+
+
+  // Orders
+  if (hasPermission(user, "orders")) {
+    items.push({ href: "/admin/orders", label: "Orders", icon: ShoppingCart });
+  }
+
+  // Customers (includes Reviews as a tab)
+  if (hasPermission(user, "users")) {
+    items.push({ href: "/admin/customers", label: "Customers", icon: Users });
+  }
+
+  // Marketing hub
+  if (hasPermission(user, "marketing")) {
+    items.push({ href: "/admin/marketing", label: "Marketing", icon: Megaphone });
+  }
+
+  // Landing Page
+  if (hasPermission(user, "pages")) {
+    items.push({ href: "/admin/landing-page", label: "Landing Page", icon: Layout });
+  }
+
+  // Settings (sizes, colors, platform config)
+  if (hasPermission(user, "settings")) {
+    items.push({ href: "/admin/settings", label: "Settings", icon: Settings });
+  }
+
+  // Employees — superadmin only
+  if (user.role === "superadmin") {
+    items.push({ href: "/admin/employees", label: "Employees", icon: UserCog });
+  }
+
+  return items;
 }
 
-const navGroups: NavGroup[] = [
-  {
-    label: "Overview",
-    items: [
-      { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-    ],
-  },
-  {
-    label: "Catalog",
-    items: [
-      { href: "/admin/products", label: "Products", icon: Package },
-      { href: "/admin/categories", label: "Categories", icon: FolderOpen },
-      { href: "/admin/tags", label: "Tags", icon: Tag },
-      { href: "/admin/sizes", label: "Sizes & Colors", icon: Ruler },
-    ],
-  },
-  {
-    label: "Sales",
-    items: [
-      { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
-      { href: "/admin/campaigns", label: "Campaigns", icon: Megaphone },
-      { href: "/admin/customers", label: "Customers", icon: Users },
-    ],
-  },
-  {
-    label: "Content",
-    items: [
-      { href: "/admin/landing-page", label: "Landing Page", icon: Layout },
-      { href: "/admin/recommendations", label: "Recommendations", icon: Sparkles },
-      { href: "/admin/reviews", label: "Reviews", icon: Star },
-    ],
-  },
-];
-
 interface AdminSidebarProps {
+  user: SidebarUser;
   onClose?: () => void;
 }
 
-export function AdminSidebar({ onClose }: AdminSidebarProps) {
+export function AdminSidebar({ user, onClose }: AdminSidebarProps) {
   const pathname = usePathname();
+  const navItems = buildNavItems(user);
 
   return (
     <aside className="w-56 flex-shrink-0 flex flex-col bg-background border-r border-border min-h-full">
@@ -86,38 +112,29 @@ export function AdminSidebar({ onClose }: AdminSidebarProps) {
         </Link>
       </div>
 
-      {/* Navigation groups */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
-        {navGroups.map((group) => (
-          <div key={group.label}>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.15em] px-3 mb-2">
-              {group.label}
-            </p>
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
-                const isActive = item.exact
-                  ? pathname === item.href
-                  : pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2 text-sm transition-colors rounded",
-                      isActive
-                        ? "bg-foreground text-background font-medium"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
-                    )}
-                  >
-                    <item.icon className="h-4 w-4 flex-shrink-0" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-0.5">
+        {navItems.map((item) => {
+          const isActive = item.exact
+            ? pathname === item.href
+            : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onClose}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 text-sm transition-colors rounded",
+                isActive
+                  ? "bg-foreground text-background font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+              )}
+            >
+              <item.icon className="h-4 w-4 flex-shrink-0" />
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Back to store link */}

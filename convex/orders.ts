@@ -1,9 +1,10 @@
 import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { requireAuth, requireAdmin } from "./lib/auth.helpers";
+import { requireAuth, requirePermission } from "./lib/auth.helpers";
 import { aggregateOrders } from "./lib/aggregates";
-import { getProductDiscountedPrice } from "./lib/discounts";
+import { getEffectivePrice, isProductVisible } from "./lib/discounts";
+import { orderStatusValidator, ORDER_STATUS_LIST, type OrderStatus } from "./lib/validators";
 
 const shippingAddressValidator = v.object({
   name: v.string(),
@@ -32,13 +33,7 @@ const orderObject = v.object({
   _id: v.id("orders"),
   _creationTime: v.number(),
   userId: v.id("users"),
-  status: v.union(
-    v.literal("pending"),
-    v.literal("processed"),
-    v.literal("shipped"),
-    v.literal("delivered"),
-    v.literal("cancelled")
-  ),
+  status: orderStatusValidator,
   shippingAddress: shippingAddressValidator,
   subtotal: v.number(),
   discountAmount: v.number(),
@@ -50,6 +45,7 @@ const orderObject = v.object({
     v.literal("refunded")
   ),
   notes: v.optional(v.string()),
+  courierName: v.optional(v.string()),
 });
 
 /**
@@ -80,7 +76,7 @@ export const create = mutation({
     const enrichedItems = await Promise.all(
       cartItems.map(async (item) => {
         const product = await ctx.db.get(item.productId);
-        if (!product || !product.isActive) {
+        if (!product || !isProductVisible(product)) {
           throw new ConvexError(`Product "${item.productId}" is no longer available`);
         }
 
@@ -95,8 +91,8 @@ export const create = mutation({
         }
 
         // Server-side price calculation - never trust client
-        const { discountedPrice, discountAmount: itemDiscount } =
-          await getProductDiscountedPrice(ctx, product);
+        const { effectivePrice: discountedPrice, discountAmount: itemDiscount } =
+          await getEffectivePrice(ctx, product);
 
         const unitPrice = discountedPrice;
         const itemTotal = unitPrice * item.quantity;
@@ -124,7 +120,7 @@ export const create = mutation({
     // Create the order
     const orderId = await ctx.db.insert("orders", {
       userId: user._id,
-      status: "pending",
+      status: "new",
       shippingAddress: args.shippingAddress,
       subtotal,
       discountAmount,
@@ -135,6 +131,17 @@ export const create = mutation({
 
     const order = await ctx.db.get(orderId);
     if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
+
+    // Update orderStatusAmounts for "new"
+    const existing = await ctx.db
+      .query("orderStatusAmounts")
+      .withIndex("by_status", (q) => q.eq("status", "new"))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, { totalAmount: existing.totalAmount + total });
+    } else {
+      await ctx.db.insert("orderStatusAmounts", { status: "new", totalAmount: total });
+    }
 
     // Insert order items and decrement color stock
     await Promise.all(
@@ -215,18 +222,10 @@ export const getMyOrder = query({
 export const listAll = query({
   args: {
     paginationOpts: paginationOptsValidator,
-    status: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("processed"),
-        v.literal("shipped"),
-        v.literal("delivered"),
-        v.literal("cancelled")
-      )
-    ),
+    status: v.optional(orderStatusValidator),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requirePermission(ctx, "orders");
     if (args.status) {
       return await ctx.db
         .query("orders")
@@ -251,7 +250,7 @@ export const getById = query({
     v.null()
   ),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requirePermission(ctx, "orders");
     const order = await ctx.db.get(args.orderId);
     if (!order) return null;
 
@@ -275,23 +274,36 @@ export const getById = query({
 export const updateStatus = mutation({
   args: {
     orderId: v.id("orders"),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("processed"),
-      v.literal("shipped"),
-      v.literal("delivered"),
-      v.literal("cancelled")
-    ),
+    status: orderStatusValidator,
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requirePermission(ctx, "orders");
     const oldOrder = await ctx.db.get(args.orderId);
     if (!oldOrder) throw new ConvexError("Order not found");
 
     await ctx.db.patch(args.orderId, { status: args.status });
     const newOrder = await ctx.db.get(args.orderId);
     if (newOrder) await aggregateOrders.replaceOrInsert(ctx, oldOrder, newOrder);
+
+    // Decrement old status amount
+    const oldAmountDoc = await ctx.db
+      .query("orderStatusAmounts")
+      .withIndex("by_status", (q) => q.eq("status", oldOrder.status))
+      .unique();
+    if (oldAmountDoc) {
+      await ctx.db.patch(oldAmountDoc._id, { totalAmount: Math.max(0, oldAmountDoc.totalAmount - oldOrder.total) });
+    }
+    // Increment new status amount
+    const newAmountDoc = await ctx.db
+      .query("orderStatusAmounts")
+      .withIndex("by_status", (q) => q.eq("status", args.status))
+      .unique();
+    if (newAmountDoc) {
+      await ctx.db.patch(newAmountDoc._id, { totalAmount: newAmountDoc.totalAmount + oldOrder.total });
+    } else {
+      await ctx.db.insert("orderStatusAmounts", { status: args.status, totalAmount: oldOrder.total });
+    }
 
     return null;
   },
@@ -370,7 +382,7 @@ export const createInternal = internalMutation({
     const enrichedItems = await Promise.all(
       cartItems.map(async (item) => {
         const product = await ctx.db.get(item.productId);
-        if (!product || !product.isActive) {
+        if (!product || !isProductVisible(product)) {
           throw new ConvexError(`Product "${item.productId}" is no longer available`);
         }
         const variant = await ctx.db.get(item.variantId);
@@ -382,8 +394,8 @@ export const createInternal = internalMutation({
             `Insufficient stock for "${product.name}" (${variant.size})`
           );
         }
-        const { discountedPrice, discountAmount: itemDiscount } =
-          await getProductDiscountedPrice(ctx, product);
+        const { effectivePrice: discountedPrice, discountAmount: itemDiscount } =
+          await getEffectivePrice(ctx, product);
         const unitPrice = discountedPrice;
         const itemTotal = unitPrice * item.quantity;
         subtotal += product.basePrice * item.quantity;
@@ -407,7 +419,7 @@ export const createInternal = internalMutation({
 
     const orderId = await ctx.db.insert("orders", {
       userId,
-      status: "pending",
+      status: "new",
       shippingAddress,
       subtotal,
       discountAmount,
@@ -419,6 +431,17 @@ export const createInternal = internalMutation({
 
     const order = await ctx.db.get(orderId);
     if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
+
+    // Update orderStatusAmounts for "new"
+    const existing = await ctx.db
+      .query("orderStatusAmounts")
+      .withIndex("by_status", (q) => q.eq("status", "new"))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, { totalAmount: existing.totalAmount + total });
+    } else {
+      await ctx.db.insert("orderStatusAmounts", { status: "new", totalAmount: total });
+    }
 
     await Promise.all(
       enrichedItems.map(async (item) => {
@@ -550,5 +573,203 @@ export const cancelAndRestockInternal = internalMutation({
         });
       }
     }
+  },
+});
+
+// ─── ADMIN: Status counts ─────────────────────────────────────────────────────
+
+export const getStatusCounts = query({
+  args: {},
+  returns: v.array(v.object({
+    status: v.string(),
+    count: v.number(),
+    totalAmount: v.number(),
+  })),
+  handler: async (ctx) => {
+    await requirePermission(ctx, "orders");
+    const statuses: OrderStatus[] = ORDER_STATUS_LIST;
+    const results = await Promise.all(
+      statuses.map(async (status) => {
+        const count = await aggregateOrders.count(ctx, { namespace: status });
+        const amountDoc = await ctx.db
+          .query("orderStatusAmounts")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .unique();
+        return { status, count, totalAmount: amountDoc?.totalAmount ?? 0 };
+      })
+    );
+    return results;
+  },
+});
+
+// ─── ADMIN: Enriched paginated orders ────────────────────────────────────────
+
+export const listAllEnriched = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    status: v.optional(orderStatusValidator),
+    excludeStatuses: v.optional(v.array(orderStatusValidator)),
+  },
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    const page = args.status
+      ? await ctx.db.query("orders").withIndex("by_status", (q) => q.eq("status", args.status!)).order("desc").paginate(args.paginationOpts)
+      : await ctx.db.query("orders").order("desc").paginate(args.paginationOpts);
+
+    const exclude = new Set(args.excludeStatuses ?? []);
+    const filteredPage = exclude.size > 0
+      ? { ...page, page: page.page.filter((o) => !exclude.has(o.status)) }
+      : page;
+
+    const enriched = await Promise.all(filteredPage.page.map(async (order) => {
+      const customer = await ctx.db.get(order.userId);
+      const items = await ctx.db.query("orderItems").withIndex("by_orderId", (q) => q.eq("orderId", order._id)).take(20);
+      const thumbnails = await Promise.all(items.map(async (item) => {
+        const product = await ctx.db.get(item.productId);
+        let imageUrl: string | null = null;
+        if (product) {
+          const firstImage = product.media.find((m) => m.type === "image");
+          if (firstImage) imageUrl = await ctx.storage.getUrl(firstImage.storageId);
+        }
+        return {
+          productId: item.productId,
+          productName: item.productName,
+          imageUrl,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        };
+      }));
+      return {
+        _id: order._id,
+        _creationTime: order._creationTime,
+        userId: order.userId,
+        status: order.status,
+        total: order.total,
+        subtotal: order.subtotal,
+        discountAmount: order.discountAmount,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        notes: order.notes,
+        adminNote: order.adminNote,
+        courierName: order.courierName,
+        shippingAddress: order.shippingAddress,
+        customerName: customer?.name,
+        customerPhone: customer?.phone,
+        customerEmail: customer?.email,
+        productThumbnails: thumbnails,
+      };
+    }));
+    return { ...filteredPage, page: enriched };
+  },
+});
+
+// ─── ADMIN: Courier update ────────────────────────────────────────────────────
+
+export const updateCourier = mutation({
+  args: { orderId: v.id("orders"), courierName: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new ConvexError("Order not found");
+    await ctx.db.patch(args.orderId, { courierName: args.courierName });
+    return null;
+  },
+});
+
+// ─── ADMIN: Order notes ───────────────────────────────────────────────────────
+
+export const addNote = mutation({
+  args: { orderId: v.id("orders"), text: v.string() },
+  returns: v.id("orderNotes"),
+  handler: async (ctx, args) => {
+    const admin = await requirePermission(ctx, "orders");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new ConvexError("Order not found");
+    const id = await ctx.db.insert("orderNotes", {
+      orderId: args.orderId,
+      adminId: admin._id,
+      adminName: admin.name ?? "Admin",
+      text: args.text.trim(),
+    });
+    return id;
+  },
+});
+
+export const deleteNote = mutation({
+  args: { noteId: v.id("orderNotes") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    await ctx.db.delete(args.noteId);
+    return null;
+  },
+});
+
+export const getNotes = query({
+  args: { orderId: v.id("orders") },
+  returns: v.array(v.object({
+    _id: v.id("orderNotes"),
+    _creationTime: v.number(),
+    orderId: v.id("orders"),
+    adminId: v.id("users"),
+    adminName: v.string(),
+    text: v.string(),
+  })),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    return await ctx.db
+      .query("orderNotes")
+      .withIndex("by_orderId", (q) => q.eq("orderId", args.orderId))
+      .order("asc")
+      .take(100);
+  },
+});
+
+// ─── ADMIN: Single admin note (replaces chat-based notes) ─────────────────────
+
+export const updateAdminNote = mutation({
+  args: { orderId: v.id("orders"), adminNote: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    const order = await ctx.db.get(args.orderId);
+    if (!order) throw new ConvexError("Order not found");
+    await ctx.db.patch(args.orderId, {
+      adminNote: args.adminNote.trim() || undefined,
+    });
+    return null;
+  },
+});
+
+// ─── ADMIN: Orders by user (for customer details dialog) ──────────────────────
+
+export const getOrdersByUserId = query({
+  args: { userId: v.id("users") },
+  returns: v.array(v.object({
+    _id: v.id("orders"),
+    _creationTime: v.number(),
+    status: orderStatusValidator,
+    total: v.number(),
+    paymentStatus: v.union(v.literal("unpaid"), v.literal("paid"), v.literal("refunded")),
+  })),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(10);
+    
+    return orders.map((order) => ({
+      _id: order._id,
+      _creationTime: order._creationTime,
+      status: order.status,
+      total: order.total,
+      paymentStatus: order.paymentStatus,
+    }));
   },
 });

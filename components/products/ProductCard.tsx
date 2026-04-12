@@ -9,9 +9,9 @@ interface ProductCardProps {
     name: string;
     slug: string;
     basePrice: number;
-    discountedPrice: number;
+    effectivePrice: number;
     discountAmount: number;
-    campaignName: string | null;
+    discountGroupName: string | null;
     averageRating: number;
     totalRatings: number;
     media: Array<{
@@ -100,9 +100,9 @@ export default function ProductCard({ product, imageUrl }: ProductCardProps) {
     name,
     slug,
     basePrice,
-    discountedPrice,
+    effectivePrice,
     discountAmount,
-    campaignName,
+    discountGroupName: _discountGroupName,
     averageRating,
     totalRatings,
     tags,
@@ -162,7 +162,7 @@ export default function ProductCard({ product, imageUrl }: ProductCardProps) {
           <p className="text-sm leading-tight line-clamp-2">{name}</p>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold">
-              ৳{discountedPrice.toLocaleString()}
+              ৳{effectivePrice.toLocaleString()}
             </span>
             {isDiscounted && (
               <span className="text-xs text-muted-foreground line-through">

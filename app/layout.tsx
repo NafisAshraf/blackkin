@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/components/cart/CartProvider";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { Toaster } from "@/components/ui/sonner";
+import { MarketingScripts } from "@/components/MarketingScripts";
 
 const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -47,6 +48,7 @@ export default function RootLayout({
               {children}
               <CartDrawer />
               <Toaster />
+              <MarketingScripts />
             </CartProvider>
           </TooltipProvider>
         </ConvexClientProvider>

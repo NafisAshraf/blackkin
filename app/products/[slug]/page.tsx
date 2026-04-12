@@ -67,8 +67,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
       name: string;
       slug: string;
       basePrice: number;
-      discountedPrice: number;
+      effectivePrice: number;
       discountAmount: number;
+      discountGroupName: string | null;
       averageRating: number;
       totalRatings: number;
       imageUrl: string | null;
@@ -158,8 +159,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
                 name: string;
                 slug: string;
                 basePrice: number;
-                discountedPrice: number;
+                effectivePrice: number;
                 discountAmount: number;
+                discountGroupName: string | null;
                 averageRating: number;
                 totalRatings: number;
                 imageUrl: string | null;
@@ -173,9 +175,9 @@ export default async function ProductDetailPage({ params }: PageProps) {
                   name: rec.name,
                   slug: rec.slug,
                   basePrice: rec.basePrice,
-                  discountedPrice: rec.discountedPrice,
-                  discountAmount: rec.discountAmount ?? (rec.basePrice - rec.discountedPrice),
-                  campaignName: null,
+                  effectivePrice: rec.effectivePrice,
+                  discountAmount: rec.discountAmount,
+                  discountGroupName: rec.discountGroupName,
                   averageRating: rec.averageRating,
                   totalRatings: rec.totalRatings,
                   media: [],

@@ -102,7 +102,7 @@ export default function CustomerDetailPage() {
                 <Badge variant="outline" className="text-xs capitalize">{order.status}</Badge>
               </div>
               <Button variant="ghost" size="sm" asChild>
-                <Link href={`/admin/orders/${order._id}`}>View</Link>
+                <Link href={`/admin/orders?orderId=${order._id}`}>View</Link>
               </Button>
             </div>
           ))}

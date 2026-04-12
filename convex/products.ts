@@ -3,8 +3,54 @@ import { v, ConvexError } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { requireAdmin } from "./lib/auth.helpers";
 import { aggregateProducts } from "./lib/aggregates";
-import { getProductDiscountedPrice } from "./lib/discounts";
+import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { Doc, Id } from "./_generated/dataModel";
+
+// ─── SKU HELPERS ───────────────────────────────────────────
+
+const SKU_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+/** Build a name-derived 3-letter prefix (uppercase, letters only, padded with X). */
+function skuPrefix(name: string): string {
+  const letters = name.toUpperCase().replace(/[^A-Z]/g, "");
+  return (letters + "XXX").slice(0, 3);
+}
+
+/** Generate a random 6-char alphanumeric suffix. */
+function skuRandomSuffix(): string {
+  let s = "";
+  for (let i = 0; i < 6; i++) {
+    s += SKU_CHARS[Math.floor(Math.random() * SKU_CHARS.length)];
+  }
+  return s;
+}
+
+/** Build a full SKU string: "PREFIX-SUFFIX" */
+function buildSku(name: string): string {
+  return `${skuPrefix(name)}-${skuRandomSuffix()}`;
+}
+
+/**
+ * Generates a unique SKU for a product. Retries up to 10 times on collision
+ * (collision probability with 36^6 ≈ 2.18B combinations is negligible but handled).
+ */
+async function generateUniqueSku(
+  ctx: { db: any },
+  name: string,
+  excludeId?: Id<"products">
+): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const sku = buildSku(name);
+    const existing = await ctx.db
+      .query("products")
+      .withIndex("by_sku", (q: any) => q.eq("sku", sku))
+      .unique();
+    if (!existing || (excludeId && existing._id === excludeId)) return sku;
+  }
+  throw new ConvexError(
+    "Could not generate a unique SKU after 10 attempts. Please try again."
+  );
+}
 
 // ─── SHARED VALIDATORS ─────────────────────────────────────
 
@@ -25,18 +71,39 @@ const variantValidator = v.object({
   priceOverride: v.optional(v.number()),
 });
 
+const productStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("active"),
+  v.literal("scheduled"),
+  v.literal("archived")
+);
+
 const productWithPricingValidator = v.object({
   _id: v.id("products"),
   _creationTime: v.number(),
   name: v.string(),
   slug: v.string(),
+  sku: v.string(),
   description: v.string(),
-  categoryId: v.id("categories"),
+  categoryId: v.optional(v.id("categories")),
   basePrice: v.number(),
-  discountedPrice: v.number(),
+  status: productStatusValidator,
+  scheduledPublishTime: v.optional(v.number()),
+  saleEnabled: v.boolean(),
+  salePrice: v.optional(v.number()),
+  saleStartMode: v.union(v.literal("immediately"), v.literal("custom")),
+  saleStartTime: v.optional(v.number()),
+  saleEndMode: v.union(v.literal("indefinite"), v.literal("custom")),
+  saleEndTime: v.optional(v.number()),
+  saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))),
+  metaTitle: v.optional(v.string()),
+  metaDescription: v.optional(v.string()),
+  globalSortOrder: v.number(),
+  categorySortOrder: v.number(),
+  effectivePrice: v.number(),
   discountAmount: v.number(),
-  campaignName: v.union(v.string(), v.null()),
-  isActive: v.boolean(),
+  discountSource: v.union(v.literal("group"), v.literal("individual"), v.null()),
+  discountGroupName: v.union(v.string(), v.null()),
   totalRatings: v.number(),
   averageRating: v.number(),
   media: v.array(mediaItemValidator),
@@ -47,8 +114,8 @@ const productWithPricingValidator = v.object({
 // ─── HELPERS ───────────────────────────────────────────────
 
 async function enrichProduct(ctx: any, product: Doc<"products">) {
-  const { discountedPrice, discountAmount, campaignName } =
-    await getProductDiscountedPrice(ctx, product);
+  const { effectivePrice, discountAmount, discountSource, discountGroupName } =
+    await getEffectivePrice(ctx, product);
 
   const productTagRows = await ctx.db
     .query("productTags")
@@ -56,10 +123,10 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
     .take(50);
 
   const tags = (
-    await Promise.all(
-      productTagRows.map((pt: any) => ctx.db.get(pt.tagId))
-    )
-  ).filter(Boolean).map((t: any) => ({ _id: t._id, name: t.name, slug: t.slug }));
+    await Promise.all(productTagRows.map((pt: any) => ctx.db.get(pt.tagId)))
+  )
+    .filter(Boolean)
+    .map((t: any) => ({ _id: t._id, name: t.name, slug: t.slug }));
 
   const variants = await ctx.db
     .query("productVariants")
@@ -68,9 +135,10 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
 
   return {
     ...product,
-    discountedPrice,
+    effectivePrice,
     discountAmount,
-    campaignName,
+    discountSource,
+    discountGroupName,
     tags,
     variants,
   };
@@ -85,17 +153,36 @@ export const search = query({
     categoryId: v.optional(v.id("categories")),
   },
   handler: async (ctx, args) => {
-    let searchQuery = ctx.db
-      .query("products")
-      .withSearchIndex("search_name", (q) => {
-        let sq = q.search("name", args.query);
-        if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
-        return sq.eq("isActive", true);
-      });
+    const now = Date.now();
 
-    const result = await searchQuery.paginate(args.paginationOpts);
-    const enriched = await Promise.all(result.page.map((p) => enrichProduct(ctx, p)));
-    return { ...result, page: enriched };
+    // Search active products
+    const activeResult = await ctx.db
+      .query("products")
+      .withSearchIndex("search_name", (q: any) => {
+        let sq = q.search("name", args.query).eq("status", "active");
+        if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
+        return sq;
+      })
+      .paginate(args.paginationOpts);
+
+    // Also search scheduled products whose time has passed (treated as active)
+    const scheduledProducts = await ctx.db
+      .query("products")
+      .withSearchIndex("search_name", (q: any) => {
+        let sq = q.search("name", args.query).eq("status", "scheduled");
+        if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
+        return sq;
+      })
+      .take(100);
+
+    const scheduledVisible = scheduledProducts.filter(
+      (p: Doc<"products">) =>
+        p.scheduledPublishTime !== undefined && p.scheduledPublishTime <= now
+    );
+
+    const combined = [...activeResult.page, ...scheduledVisible];
+    const enriched = await Promise.all(combined.map((p) => enrichProduct(ctx, p)));
+    return { ...activeResult, page: enriched };
   },
 });
 
@@ -110,6 +197,8 @@ export const listFiltered = query({
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const now = Date.now();
+
     let tagProductIds: Set<Id<"products">> | null = null;
     if (args.tagId) {
       const rows = await ctx.db
@@ -121,39 +210,59 @@ export const listFiltered = query({
 
     let variantProductIds: Set<Id<"products">> | null = null;
     if (args.size || args.color) {
-      if (args.size) {
-        const sizeVariants = await ctx.db
-          .query("productVariants")
-          .order("asc")
-          .take(2000);
-        variantProductIds = new Set(
-          sizeVariants
-            .filter(
-              (v) =>
-                (!args.size || v.size === args.size) &&
-                (!args.color || v.color === args.color)
-            )
-            .map((v) => v.productId)
-        );
-      }
+      const allVariants = await ctx.db
+        .query("productVariants")
+        .order("asc")
+        .take(2000);
+      variantProductIds = new Set(
+        allVariants
+          .filter(
+            (v) =>
+              (!args.size || v.size === args.size) &&
+              (!args.color || v.color === args.color)
+          )
+          .map((v) => v.productId)
+      );
     }
 
-    let dbQuery;
+    // Fetch active products, sorted by globalSortOrder
+    let activeResult;
     if (args.categoryId) {
-      dbQuery = ctx.db
+      activeResult = await ctx.db
         .query("products")
-        .withIndex("by_categoryId_and_isActive", (q: any) =>
-          q.eq("categoryId", args.categoryId).eq("isActive", true)
-        );
+        .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
+          q.eq("categoryId", args.categoryId)
+        )
+        .paginate(args.paginationOpts);
+      // Filter to only active/visible
+      activeResult = {
+        ...activeResult,
+        page: activeResult.page.filter((p: Doc<"products">) =>
+          isProductVisible(p, now)
+        ),
+      };
     } else {
-      dbQuery = ctx.db
+      activeResult = await ctx.db
         .query("products")
-        .withIndex("by_isActive", (q: any) => q.eq("isActive", true));
+        .withIndex("by_status_and_globalSortOrder", (q: any) =>
+          q.eq("status", "active")
+        )
+        .paginate(args.paginationOpts);
+
+      // Fetch scheduled products that have gone live
+      const scheduled = await ctx.db
+        .query("products")
+        .withIndex("by_status", (q) => q.eq("status", "scheduled"))
+        .take(200);
+      const scheduledVisible = scheduled.filter((p) => isProductVisible(p, now));
+
+      activeResult = {
+        ...activeResult,
+        page: [...activeResult.page, ...scheduledVisible],
+      };
     }
 
-    const result = await dbQuery.paginate(args.paginationOpts);
-
-    const filtered = result.page.filter((p: Doc<"products">) => {
+    const filtered = activeResult.page.filter((p: Doc<"products">) => {
       if (tagProductIds && !tagProductIds.has(p._id)) return false;
       if (variantProductIds && !variantProductIds.has(p._id)) return false;
       if (args.minPrice !== undefined && p.basePrice < args.minPrice) return false;
@@ -161,8 +270,10 @@ export const listFiltered = query({
       return true;
     });
 
-    const enriched = await Promise.all(filtered.map((p: Doc<"products">) => enrichProduct(ctx, p)));
-    return { ...result, page: enriched };
+    const enriched = await Promise.all(
+      filtered.map((p: Doc<"products">) => enrichProduct(ctx, p))
+    );
+    return { ...activeResult, page: enriched };
   },
 });
 
@@ -174,12 +285,12 @@ export const getBySlug = query({
       .query("products")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .unique();
-    if (!product || !product.isActive) return null;
+    if (!product || !isProductVisible(product)) return null;
     return enrichProduct(ctx, product);
   },
 });
 
-/** Admin: get product by id including inactive */
+/** Admin: get product by id including non-visible */
 export const getById = query({
   args: { id: v.id("products") },
   returns: v.union(productWithPricingValidator, v.null()),
@@ -191,7 +302,7 @@ export const getById = query({
   },
 });
 
-/** Check if a slug is available (for inline validation on product forms) */
+/** Check if a slug is available */
 export const checkSlugAvailable = query({
   args: {
     slug: v.string(),
@@ -210,7 +321,27 @@ export const checkSlugAvailable = query({
   },
 });
 
-/** Admin: lightweight product search for the recommendations picker */
+/** Check if a SKU is available (case-insensitive, stored uppercase) */
+export const checkSkuAvailable = query({
+  args: {
+    sku: v.string(),
+    excludeId: v.optional(v.id("products")),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const normalized = args.sku.trim().toUpperCase();
+    if (!normalized) return true;
+    const existing = await ctx.db
+      .query("products")
+      .withIndex("by_sku", (q) => q.eq("sku", normalized))
+      .unique();
+    if (!existing) return true;
+    if (args.excludeId && existing._id === args.excludeId) return true;
+    return false;
+  },
+});
+
+/** Admin: lightweight product search for pickers */
 export const searchForPicker = query({
   args: { query: v.string() },
   returns: v.array(
@@ -231,7 +362,56 @@ export const searchForPicker = query({
   },
 });
 
-/** Admin: list all products paginated */
+/**
+ * Admin: fetch ALL products in one query (no pagination).
+ * Used by the admin products page — all tab filtering/grouping happens client-side.
+ */
+export const listAllAdminFlat = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+
+    const products = await ctx.db.query("products").order("asc").take(500);
+
+    const enriched = await Promise.all(
+      products.map(async (p) => {
+        const pricing = await getEffectivePrice(ctx, p);
+
+        const productTagRows = await ctx.db
+          .query("productTags")
+          .withIndex("by_productId", (q) => q.eq("productId", p._id))
+          .take(50);
+
+        const tagIds = productTagRows.map((pt) => pt.tagId);
+        // Include productTagId for drag-and-drop reordering within tags
+        const productTagEntries = productTagRows.map((pt) => ({ productTagId: pt._id, tagId: pt.tagId, sortOrder: pt.sortOrder }));
+
+        const variants = await ctx.db
+          .query("productVariants")
+          .withIndex("by_productId", (q) => q.eq("productId", p._id))
+          .take(50);
+
+        const firstImage = p.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await ctx.storage.getUrl(firstImage.storageId)
+          : null;
+
+        return {
+          ...p,
+          ...pricing,
+          tagIds,
+          productTagEntries,
+          variants,
+          imageUrl,
+        };
+      })
+    );
+
+    return enriched;
+  },
+});
+
+/** Legacy paginated admin list — kept for backwards compat with other pages */
 export const listAllAdmin = query({
   args: {
     paginationOpts: paginationOptsValidator,
@@ -257,9 +437,25 @@ export const create = mutation({
   args: {
     name: v.string(),
     slug: v.string(),
+    sku: v.optional(v.string()), // auto-generated server-side if omitted
     description: v.string(),
-    categoryId: v.id("categories"),
+    categoryId: v.optional(v.id("categories")),
     basePrice: v.number(),
+    // Publishing
+    status: v.optional(productStatusValidator),
+    scheduledPublishTime: v.optional(v.number()),
+    // Sale pricing
+    saleEnabled: v.optional(v.boolean()),
+    salePrice: v.optional(v.number()),
+    saleStartMode: v.optional(v.union(v.literal("immediately"), v.literal("custom"))),
+    saleStartTime: v.optional(v.number()),
+    saleEndMode: v.optional(v.union(v.literal("indefinite"), v.literal("custom"))),
+    saleEndTime: v.optional(v.number()),
+    saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))),
+    // SEO
+    metaTitle: v.optional(v.string()),
+    metaDescription: v.optional(v.string()),
+    // Media & Variants
     media: v.array(mediaItemValidator),
     variants: v.array(
       v.object({
@@ -284,11 +480,54 @@ export const create = mutation({
       .unique();
     if (existing) throw new ConvexError("Slug already in use");
 
-    const { variants, ...productData } = args;
+    // SKU: validate provided or auto-generate a unique one
+    let sku: string;
+    if (args.sku?.trim()) {
+      sku = args.sku.trim().toUpperCase();
+      const skuExists = await ctx.db
+        .query("products")
+        .withIndex("by_sku", (q) => q.eq("sku", sku))
+        .unique();
+      if (skuExists) throw new ConvexError("SKU already in use");
+    } else {
+      sku = await generateUniqueSku(ctx, args.name);
+    }
+
+    // Compute globalSortOrder: new product goes to top (min - 1)
+    const topGlobal = await ctx.db
+      .query("products")
+      .withIndex("by_status_and_globalSortOrder", (q: any) =>
+        q.eq("status", args.status ?? "draft")
+      )
+      .order("asc")
+      .take(1);
+    const globalSortOrder =
+      topGlobal.length > 0 ? topGlobal[0].globalSortOrder - 1 : 0;
+
+    // Compute categorySortOrder: top of its category
+    let categorySortOrder = 0;
+    if (args.categoryId) {
+      const topCategory = await ctx.db
+        .query("products")
+        .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
+          q.eq("categoryId", args.categoryId!)
+        )
+        .order("asc")
+        .take(1);
+      categorySortOrder = topCategory.length > 0 ? topCategory[0].categorySortOrder - 1 : 0;
+    }
+
+    const { variants, sku: _skuArg, ...productData } = args;
 
     const productId = await ctx.db.insert("products", {
       ...productData,
-      isActive: true,
+      sku,
+      status: args.status ?? "draft",
+      saleEnabled: args.saleEnabled ?? true,
+      saleStartMode: args.saleStartMode ?? "immediately",
+      saleEndMode: args.saleEndMode ?? "indefinite",
+      globalSortOrder,
+      categorySortOrder,
       totalRatings: 0,
       averageRating: 0,
     });
@@ -309,9 +548,25 @@ export const update = mutation({
     id: v.id("products"),
     name: v.optional(v.string()),
     slug: v.optional(v.string()),
+    sku: v.optional(v.string()),
     description: v.optional(v.string()),
-    categoryId: v.optional(v.id("categories")),
+    categoryId: v.optional(v.union(v.id("categories"), v.null())),
     basePrice: v.optional(v.number()),
+    // Publishing
+    status: v.optional(productStatusValidator),
+    scheduledPublishTime: v.optional(v.number()),
+    // Sale pricing
+    saleEnabled: v.optional(v.boolean()),
+    salePrice: v.optional(v.number()),
+    saleStartMode: v.optional(v.union(v.literal("immediately"), v.literal("custom"))),
+    saleStartTime: v.optional(v.number()),
+    saleEndMode: v.optional(v.union(v.literal("indefinite"), v.literal("custom"))),
+    saleEndTime: v.optional(v.number()),
+    saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))),
+    // SEO
+    metaTitle: v.optional(v.string()),
+    metaDescription: v.optional(v.string()),
+    // Media
     media: v.optional(v.array(mediaItemValidator)),
   },
   returns: v.null(),
@@ -331,8 +586,38 @@ export const update = mutation({
       if (existing && existing._id !== id) throw new ConvexError("Slug already in use");
     }
 
+    // Normalize and validate SKU uniqueness if provided
+    if (updates.sku !== undefined) {
+      updates.sku = updates.sku.trim().toUpperCase();
+      if (updates.sku) {
+        const existing = await ctx.db
+          .query("products")
+          .withIndex("by_sku", (q: any) => q.eq("sku", updates.sku!))
+          .unique();
+        if (existing && existing._id !== id) throw new ConvexError("SKU already in use");
+      }
+    }
+
+    // Convert null categoryId to undefined (explicit removal)
+    let explicitRemoveCategory = false;
+    if (updates.categoryId === null) {
+      (updates as any).categoryId = undefined;
+      explicitRemoveCategory = true;
+    } else if (updates.categoryId !== undefined) {
+      // If category changed, recompute categorySortOrder to top of new category
+      const topCategory = await ctx.db
+        .query("products")
+        .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
+          q.eq("categoryId", updates.categoryId!)
+        )
+        .order("asc")
+        .take(1);
+      (updates as any).categorySortOrder =
+        topCategory.length > 0 ? topCategory[0].categorySortOrder - 1 : 0;
+    }
+
     const clean = Object.fromEntries(
-      Object.entries(updates).filter(([, v]) => v !== undefined)
+      Object.entries(updates).filter(([k, v]) => v !== undefined || (k === "categoryId" && explicitRemoveCategory))
     );
     if (Object.keys(clean).length > 0) await ctx.db.patch(id, clean);
     return null;
@@ -376,20 +661,6 @@ export const updateVariants = mutation({
   },
 });
 
-export const toggleActive = mutation({
-  args: { id: v.id("products"), isActive: v.boolean() },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-    const old = await ctx.db.get(args.id);
-    if (!old) throw new ConvexError("Product not found");
-    await ctx.db.patch(args.id, { isActive: args.isActive });
-    const updated = await ctx.db.get(args.id);
-    if (updated) await aggregateProducts.replaceOrInsert(ctx, old, updated);
-    return null;
-  },
-});
-
 /** Replace all tags for a product */
 export const assignTags = mutation({
   args: {
@@ -400,27 +671,37 @@ export const assignTags = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
-    // Record old tag IDs before replacing
     const oldRows = await ctx.db
       .query("productTags")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .take(100);
     const oldTagIds = new Set(oldRows.map((r) => r.tagId));
     const newTagSet = new Set(args.tagIds);
+    // Preserve existing sortOrders for tags that remain
+    const oldSortOrderByTagId = new Map(oldRows.map((r) => [r.tagId as string, r.sortOrder]));
 
-    // Replace all tag associations
     await Promise.all(oldRows.map((r) => ctx.db.delete(r._id)));
     await Promise.all(
-      args.tagIds.map((tagId) =>
-        ctx.db.insert("productTags", { productId: args.productId, tagId })
-      )
+      args.tagIds.map(async (tagId) => {
+        let sortOrder: number;
+        const existing = oldSortOrderByTagId.get(tagId as string);
+        if (existing !== undefined) {
+          sortOrder = existing;
+        } else {
+          // New tag assignment — put at end of this tag's product list
+          const tagRows = await ctx.db
+            .query("productTags")
+            .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
+            .take(500);
+          sortOrder = tagRows.length > 0 ? Math.max(...tagRows.map((r) => r.sortOrder)) + 1 : 0;
+        }
+        return ctx.db.insert("productTags", { productId: args.productId, tagId, sortOrder });
+      })
     );
 
-    // Compute diff between old and new tags
     const addedTagIds = args.tagIds.filter((tagId) => !oldTagIds.has(tagId));
     const removedTagIds = [...oldTagIds].filter((tagId) => !newTagSet.has(tagId));
 
-    // For removed tags: remove this product from sections using those tags
     for (const tagId of removedTagIds) {
       const sections = await ctx.db
         .query("landingPageProductSections")
@@ -437,7 +718,6 @@ export const assignTags = mutation({
       }
     }
 
-    // For added tags: append this product to sections using those tags
     for (const tagId of addedTagIds) {
       const sections = await ctx.db
         .query("landingPageProductSections")
@@ -469,6 +749,88 @@ export const assignTags = mutation({
   },
 });
 
+/** Update product publishing status */
+export const updateStatus = mutation({
+  args: {
+    id: v.id("products"),
+    status: productStatusValidator,
+    scheduledPublishTime: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const old = await ctx.db.get(args.id);
+    if (!old) throw new ConvexError("Product not found");
+
+    const patch: Record<string, any> = { status: args.status };
+    if (args.scheduledPublishTime !== undefined) {
+      patch.scheduledPublishTime = args.scheduledPublishTime;
+    }
+    await ctx.db.patch(args.id, patch);
+
+    const updated = await ctx.db.get(args.id);
+    if (updated) await aggregateProducts.replaceOrInsert(ctx, old, updated);
+    return null;
+  },
+});
+
+/** Reorder products globally (for main catalog order) */
+export const reorderGlobal = mutation({
+  args: {
+    items: v.array(
+      v.object({ id: v.id("products"), sortOrder: v.number() })
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) =>
+        ctx.db.patch(item.id, { globalSortOrder: item.sortOrder })
+      )
+    );
+    return null;
+  },
+});
+
+/** Reorder products within a category */
+export const reorderCategory = mutation({
+  args: {
+    items: v.array(
+      v.object({ id: v.id("products"), sortOrder: v.number() })
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) =>
+        ctx.db.patch(item.id, { categorySortOrder: item.sortOrder })
+      )
+    );
+    return null;
+  },
+});
+
+/** Reorder products within a tag (patches productTags sortOrder) */
+export const reorderTag = mutation({
+  args: {
+    items: v.array(
+      v.object({ productTagId: v.id("productTags"), sortOrder: v.number() })
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) =>
+        ctx.db.patch(item.productTagId, { sortOrder: item.sortOrder })
+      )
+    );
+    return null;
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("products") },
   returns: v.null(),
@@ -477,14 +839,23 @@ export const remove = mutation({
     const product = await ctx.db.get(args.id);
     if (!product) return null;
 
-    // Delete variants in batches
+    // Collect variant IDs before deletion (needed for rec cleanup)
+    const allVariants = await ctx.db
+      .query("productVariants")
+      .withIndex("by_productId", (q) => q.eq("productId", args.id))
+      .take(500);
+    const variantIds = new Set(allVariants.map((v) => v._id));
+
+    // Delete variants
     let done = false;
     while (!done) {
       const variants = await ctx.db
         .query("productVariants")
         .withIndex("by_productId", (q) => q.eq("productId", args.id))
         .take(64);
-      if (variants.length === 0) { done = true; } else {
+      if (variants.length === 0) {
+        done = true;
+      } else {
         await Promise.all(variants.map((v) => ctx.db.delete(v._id)));
       }
     }
@@ -496,32 +867,55 @@ export const remove = mutation({
         .query("productTags")
         .withIndex("by_productId", (q) => q.eq("productId", args.id))
         .take(64);
-      if (tags.length === 0) { done = true; } else {
+      if (tags.length === 0) {
+        done = true;
+      } else {
         await Promise.all(tags.map((t) => ctx.db.delete(t._id)));
       }
     }
 
-    // Delete landing page section items for this product
+    // Delete discount group memberships
+    done = false;
+    while (!done) {
+      const dgRows = await ctx.db
+        .query("discountGroupProducts")
+        .withIndex("by_productId", (q) => q.eq("productId", args.id))
+        .take(64);
+      if (dgRows.length === 0) {
+        done = true;
+      } else {
+        await Promise.all(dgRows.map((r) => ctx.db.delete(r._id)));
+      }
+    }
+
+    // Delete landing page section items
     done = false;
     while (!done) {
       const sectionItems = await ctx.db
         .query("landingPageProductSectionItems")
         .withIndex("by_productId", (q) => q.eq("productId", args.id))
         .take(64);
-      if (sectionItems.length === 0) { done = true; } else {
+      if (sectionItems.length === 0) {
+        done = true;
+      } else {
         await Promise.all(sectionItems.map((si) => ctx.db.delete(si._id)));
       }
     }
 
-    // Remove from any recommendation sections
+    // Remove from recommendations (scan since no productId index there)
     done = false;
     while (!done) {
       const recs = await ctx.db
         .query("productRecommendations")
         .order("asc")
         .take(64);
-      const matching = recs.filter((r) => r.recommendedProductId === args.id);
-      if (matching.length === 0) { done = true; } else {
+      const matching = recs.filter(
+        (r) => r.recommendedProductId === args.id ||
+          (r.recommendedVariantId !== undefined && variantIds.has(r.recommendedVariantId))
+      );
+      if (matching.length === 0) {
+        done = true;
+      } else {
         await Promise.all(matching.map((r) => ctx.db.delete(r._id)));
       }
     }

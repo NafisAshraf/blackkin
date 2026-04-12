@@ -18,7 +18,6 @@ export default async function HomePage() {
 
   // Resolve each image URL, falling back to static public-folder images.
   const heroSrc       = content?.images.hero             ?? "/hero-banner.png";
-  const lifestyleSrc  = content?.images.lifestyleBanner  ?? "/lifestyle-banner.png";
   const splitImageSrc = content?.images.splitImage       ?? "/lifestyle-banner.png";
   const tech1Src      = content?.images.tech1            ?? "/3imagesection1.png";
   const tech2Src      = content?.images.tech2            ?? "/3imagesection2.png";
@@ -78,28 +77,6 @@ export default async function HomePage() {
           products={productSection1.products}
         />
       )}
-
-      {/* Lifestyle Banner */}
-      <section className="w-full h-screen relative overflow-hidden bg-black">
-        <img
-          src={lifestyleSrc}
-          alt="Blackkin Lifestyle"
-          className="w-full h-full object-cover absolute inset-0 opacity-60"
-        />
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center text-white px-6">
-          <p className="text-xs tracking-[0.4em] uppercase text-white/70 mb-4">Upgrade The Way You Feel</p>
-          <h2 className="text-3xl md:text-5xl font-bold tracking-tight leading-tight max-w-2xl">
-            Designed for<br />
-            <em className="not-italic text-white/80">Everyday</em> Heroes
-          </h2>
-          <Link
-            href="/products"
-            className="mt-8 inline-block border border-white text-white text-xs font-semibold tracking-[0.2em] uppercase px-8 py-3.5 hover:bg-white hover:text-black transition-colors"
-          >
-            Shop Collection
-          </Link>
-        </div>
-      </section>
 
       {/* Split: Text Left / Image Right */}
       <section className="w-full h-screen grid grid-cols-1 lg:grid-cols-2">

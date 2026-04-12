@@ -21,6 +21,7 @@ export function RegisterForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/";
   const { data: session, isPending } = authClient.useSession();
+  const [name, setName] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +45,13 @@ export function RegisterForm() {
       result = await authClient.signUp.email({
         email: phoneToSyntheticEmail(identifier),
         password,
-        name: phone,
+        name: name.trim() || phone,
       });
     } else {
       result = await authClient.signUp.email({
         email: identifier,
         password,
-        name: identifier.split("@")[0],
+        name: name.trim() || identifier.split("@")[0],
       });
     }
 
@@ -80,6 +81,16 @@ export function RegisterForm() {
       <CardContent>
         {error && <p className="text-destructive text-sm mb-4">{error}</p>}
         <form className="flex flex-col gap-4" onSubmit={handleSignUp}>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name">Full Name</Label>
+            <Input
+              id="name"
+              type="text"
+              placeholder="Your name (optional)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="identifier">Mobile Number or Email</Label>
             <Input

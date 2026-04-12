@@ -2,7 +2,7 @@ import { query, mutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { authComponent } from "./auth";
-import { requireAdmin, requireAuth } from "./lib/auth.helpers";
+import { requireAdmin, requireAuth, requirePermission } from "./lib/auth.helpers";
 import { mutation as triggerMutation } from "./triggers";
 
 const userObject = v.object({
@@ -12,8 +12,18 @@ const userObject = v.object({
   name: v.optional(v.string()),
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
-  role: v.union(v.literal("customer"), v.literal("admin")),
+  role: v.union(v.literal("customer"), v.literal("admin"), v.literal("superadmin")),
   isActive: v.optional(v.boolean()),
+  permissions: v.optional(
+    v.object({
+      orders: v.boolean(),
+      marketing: v.boolean(),
+      products: v.boolean(),
+      settings: v.boolean(),
+      pages: v.boolean(),
+      users: v.boolean(),
+    })
+  ),
 });
 
 export const getCurrentUserWithRole = query({
@@ -46,7 +56,7 @@ export const listCustomers = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requirePermission(ctx, "users");
     return await ctx.db
       .query("users")
       .withIndex("by_role", (q) => q.eq("role", "customer"))
@@ -66,11 +76,16 @@ export const getCustomerDetail = query({
           _id: v.id("orders"),
           _creationTime: v.number(),
           status: v.union(
-            v.literal("pending"),
-            v.literal("processed"),
-            v.literal("shipped"),
-            v.literal("delivered"),
-            v.literal("cancelled")
+            v.literal("new"),
+            v.literal("confirmed"),
+            v.literal("ready_for_delivery"),
+            v.literal("in_courier"),
+            v.literal("cancelled"),
+            v.literal("hold"),
+            v.literal("ship_later"),
+            v.literal("paid"),
+            v.literal("deleted"),
+            v.literal("completed")
           ),
           total: v.number(),
           paymentStatus: v.union(
@@ -85,7 +100,7 @@ export const getCustomerDetail = query({
     v.null()
   ),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    await requirePermission(ctx, "users");
 
     const user = await ctx.db.get(args.userId);
     if (!user) return null;
@@ -126,7 +141,7 @@ export const toggleActive = triggerMutation({
     await requireAdmin(ctx);
     const user = await ctx.db.get(args.userId);
     if (!user) return null;
-    if (user.role === "admin") return null; // cannot deactivate admins
+    if (user.role === "admin" || user.role === "superadmin") return null; // cannot deactivate admins
     await ctx.db.patch(args.userId, { isActive: args.isActive });
     return null;
   },

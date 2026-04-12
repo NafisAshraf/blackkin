@@ -1,6 +1,15 @@
 import { ConvexError } from "convex/values";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 
+type UserPermissions = {
+  orders: boolean;
+  marketing: boolean;
+  products: boolean;
+  settings: boolean;
+  pages: boolean;
+  users: boolean;
+};
+
 /**
  * Derives the current user's doc from the Convex JWT identity.
  * Throws ConvexError("Unauthenticated") if not logged in.
@@ -31,12 +40,48 @@ export async function requireAuth(ctx: QueryCtx | MutationCtx) {
 }
 
 /**
- * Derives the current user and checks for admin role.
- * Throws ConvexError("Unauthorized") if not admin.
+ * Derives the current user and checks for admin or superadmin role.
+ * Throws ConvexError("Unauthorized") if not admin or superadmin.
  */
 export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
   const user = await requireAuth(ctx);
-  if (user.role !== "admin") {
+  if (user.role !== "admin" && user.role !== "superadmin") {
+    throw new ConvexError("Unauthorized");
+  }
+  return user;
+}
+
+/**
+ * Derives the current user and checks for superadmin role.
+ * Throws ConvexError("Unauthorized") unless role is "superadmin".
+ */
+export async function requireSuperAdmin(ctx: QueryCtx | MutationCtx) {
+  const user = await requireAuth(ctx);
+  if (user.role !== "superadmin") {
+    throw new ConvexError("Unauthorized");
+  }
+  return user;
+}
+
+/**
+ * Checks a specific permission for the current user.
+ * Superadmins always pass. Admins are checked against their permissions object.
+ * Throws ConvexError("Unauthorized") if the user is a customer, or if the
+ * admin lacks the required permission.
+ */
+export async function requirePermission(
+  ctx: QueryCtx | MutationCtx,
+  permission: keyof UserPermissions
+) {
+  const user = await requireAuth(ctx);
+  if (user.role === "superadmin") {
+    return user;
+  }
+  if (user.role === "customer") {
+    throw new ConvexError("Unauthorized");
+  }
+  // role is "admin"
+  if (!user.permissions || user.permissions[permission] === false) {
     throw new ConvexError("Unauthorized");
   }
   return user;

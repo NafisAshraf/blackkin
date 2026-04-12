@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
-import { AdminSidebar } from "./AdminSidebar";
+import { AdminSidebar, SidebarUser } from "./AdminSidebar";
 
 export function AdminLayoutClient({
+  user,
   children,
 }: {
+  user: SidebarUser;
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -44,7 +46,7 @@ export function AdminLayoutClient({
               >
                 <X className="h-4 w-4" />
               </button>
-              <AdminSidebar onClose={() => setSidebarOpen(false)} />
+              <AdminSidebar user={user} onClose={() => setSidebarOpen(false)} />
             </div>
           </div>
         </>
@@ -55,7 +57,7 @@ export function AdminLayoutClient({
         {/* Desktop sidebar */}
         <div className="hidden md:flex md:flex-shrink-0">
           <div className="sticky top-0 h-screen overflow-y-auto">
-            <AdminSidebar />
+            <AdminSidebar user={user} />
           </div>
         </div>
 

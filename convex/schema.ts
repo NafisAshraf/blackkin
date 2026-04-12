@@ -8,8 +8,16 @@ export default defineSchema({
     name: v.optional(v.string()),
     email: v.optional(v.string()), // undefined for phone-only users
     phone: v.optional(v.string()), // set for users who signed up with mobile number
-    role: v.union(v.literal("customer"), v.literal("admin")),
+    role: v.union(v.literal("customer"), v.literal("admin"), v.literal("superadmin")),
     isActive: v.optional(v.boolean()), // undefined = active, false = deactivated
+    permissions: v.optional(v.object({
+      orders: v.boolean(),
+      marketing: v.boolean(),
+      products: v.boolean(),
+      settings: v.boolean(),
+      pages: v.boolean(),
+      users: v.boolean(),
+    })),
   })
     .index("by_authUserId", ["authUserId"])
     .index("by_role", ["role"])
@@ -55,12 +63,39 @@ export default defineSchema({
   products: defineTable({
     name: v.string(),
     slug: v.string(),
+    sku: v.string(), // unique product identifier, auto-generated
     description: v.string(),
-    categoryId: v.id("categories"),
-    basePrice: v.number(), // price in BDT (whole number)
-    isActive: v.boolean(),
+    categoryId: v.optional(v.id("categories")),
+    basePrice: v.number(), // "Regular Price" in BDT
+
+    // Publishing status (replaces isActive)
+    status: v.union(
+      v.literal("draft"),
+      v.literal("active"),
+      v.literal("scheduled"),
+      v.literal("archived")
+    ),
+    scheduledPublishTime: v.optional(v.number()), // unix ms, used when status === "scheduled"
+
+    // Individual sale pricing
+    saleEnabled: v.boolean(), // master toggle
+    salePrice: v.optional(v.number()), // sale price in BDT
+    saleStartMode: v.union(v.literal("immediately"), v.literal("custom")),
+    saleStartTime: v.optional(v.number()), // unix ms, when saleStartMode === "custom"
+    saleEndMode: v.union(v.literal("indefinite"), v.literal("custom")),
+    saleEndTime: v.optional(v.number()), // unix ms, when saleEndMode === "custom"
+    saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))), // controls how discount is shown to customers
+
+    // Display ordering
+    globalSortOrder: v.number(), // catalog/shop page order
+    categorySortOrder: v.number(), // within-category order
+
     totalRatings: v.number(), // denormalized count of approved reviews
     averageRating: v.number(), // denormalized average rating
+    // SEO metadata
+    metaTitle: v.optional(v.string()),
+    metaDescription: v.optional(v.string()),
+
     // Media stored inline - bounded list, well under 8192 limit
     media: v.array(
       v.object({
@@ -71,12 +106,14 @@ export default defineSchema({
     ),
   })
     .index("by_slug", ["slug"])
+    .index("by_sku", ["sku"])
     .index("by_categoryId", ["categoryId"])
-    .index("by_isActive", ["isActive"])
-    .index("by_categoryId_and_isActive", ["categoryId", "isActive"])
+    .index("by_status", ["status"])
+    .index("by_status_and_globalSortOrder", ["status", "globalSortOrder"])
+    .index("by_categoryId_and_categorySortOrder", ["categoryId", "categorySortOrder"])
     .searchIndex("search_name", {
       searchField: "name",
-      filterFields: ["categoryId", "isActive"],
+      filterFields: ["categoryId", "status"],
     }),
 
   // ─── PRODUCT VARIANTS ────────────────────────────────────
@@ -96,28 +133,31 @@ export default defineSchema({
   productTags: defineTable({
     productId: v.id("products"),
     tagId: v.id("tags"),
+    sortOrder: v.number(), // ordering within a tag
   })
     .index("by_productId", ["productId"])
     .index("by_tagId", ["tagId"])
-    .index("by_productId_and_tagId", ["productId", "tagId"]),
+    .index("by_productId_and_tagId", ["productId", "tagId"])
+    .index("by_tagId_and_sortOrder", ["tagId", "sortOrder"]),
 
-  // ─── SALES / DISCOUNT CAMPAIGNS ──────────────────────────
-  salesCampaigns: defineTable({
-    name: v.string(), // e.g. "Winter Flash Sale"
-    discountType: v.union(v.literal("percentage"), v.literal("fixed")),
-    discountValue: v.number(), // percentage (0-100) or fixed BDT amount
-    startTime: v.number(), // unix ms
-    endTime: v.number(), // unix ms
-    scope: v.union(
-      v.object({ type: v.literal("storewide") }),
-      v.object({ type: v.literal("category"), categoryId: v.id("categories") }),
-      v.object({ type: v.literal("tag"), tagId: v.id("tags") }),
-      v.object({ type: v.literal("product"), productId: v.id("products") })
-    ),
+  // ─── DISCOUNT GROUPS ──────────────────────────────────────
+  discountGroups: defineTable({
+    name: v.string(), // e.g. "Eid Dhamaka Offer"
     isActive: v.boolean(),
+    discountType: v.union(v.literal("percentage"), v.literal("fixed")),
+    discountValue: v.number(), // percentage (0-100) or fixed BDT amount off
+    startTime: v.number(), // unix ms
+    endTime: v.optional(v.number()), // unix ms, undefined = indefinite
+  }).index("by_isActive", ["isActive"]),
+
+  // ─── DISCOUNT GROUP PRODUCTS (junction) ──────────────────
+  discountGroupProducts: defineTable({
+    groupId: v.id("discountGroups"),
+    productId: v.id("products"),
   })
-    .index("by_isActive", ["isActive"])
-    .index("by_isActive_and_endTime", ["isActive", "endTime"]),
+    .index("by_groupId", ["groupId"])
+    .index("by_productId", ["productId"])
+    .index("by_groupId_and_productId", ["groupId", "productId"]),
 
   // ─── PRODUCT RECOMMENDATIONS (admin-selected, GLOBAL) ────
   // "also_like" shows on ALL product pages. "also_bought" shows at checkout filtered by size.
@@ -126,8 +166,9 @@ export default defineSchema({
       v.literal("also_like"),
       v.literal("also_bought")
     ),
-    recommendedProductId: v.id("products"),
-    forSize: v.optional(v.string()), // null = all sizes; "M" = only when M is in cart
+    recommendedProductId: v.optional(v.id("products")), // used for also_like
+    recommendedVariantId: v.optional(v.id("productVariants")), // used for also_bought (variant-based)
+    forSize: v.optional(v.string()), // size category for also_bought sections
     sortOrder: v.number(),
   })
     .index("by_type", ["type"])
@@ -169,12 +210,18 @@ export default defineSchema({
   orders: defineTable({
     userId: v.id("users"),
     status: v.union(
-      v.literal("pending"),
-      v.literal("processed"),
-      v.literal("shipped"),
-      v.literal("delivered"),
-      v.literal("cancelled")
+      v.literal("new"),
+      v.literal("confirmed"),
+      v.literal("ready_for_delivery"),
+      v.literal("in_courier"),
+      v.literal("cancelled"),
+      v.literal("hold"),
+      v.literal("ship_later"),
+      v.literal("paid"),
+      v.literal("deleted"),
+      v.literal("completed")
     ),
+    courierName: v.optional(v.string()),
     shippingAddress: v.object({
       name: v.string(),
       phone: v.string(),
@@ -193,10 +240,20 @@ export default defineSchema({
       v.literal("refunded")
     ),
     notes: v.optional(v.string()),
+    adminNote: v.optional(v.string()), // single admin note (replaces chat-style orderNotes)
   })
     .index("by_userId", ["userId"])
     .index("by_status", ["status"])
     .index("by_userId_and_status", ["userId", "status"]),
+
+  // ─── ORDER NOTES ──────────────────────────────────────────
+  orderNotes: defineTable({
+    orderId: v.id("orders"),
+    adminId: v.id("users"),
+    adminName: v.string(),
+    text: v.string(),
+  })
+    .index("by_orderId", ["orderId"]),
 
   // ─── PAYMENTS (SSLCommerz transaction tracking) ───────────
   payments: defineTable({
@@ -261,7 +318,6 @@ export default defineSchema({
   landingPageImages: defineTable({
     slot: v.union(
       v.literal("hero"),
-      v.literal("lifestyleBanner"),
       v.literal("splitImage"),
       v.literal("tech1"),
       v.literal("tech2"),
@@ -301,4 +357,23 @@ export default defineSchema({
     .index("by_sectionId_and_sortOrder", ["sectionId", "sortOrder"])
     .index("by_sectionId_and_productId", ["sectionId", "productId"])
     .index("by_productId", ["productId"]),
+
+  // ─── MARKETING SETTINGS ───────────────────────────────────
+  marketingSettings: defineTable({
+    type: v.union(
+      v.literal("facebook"),
+      v.literal("google"),
+      v.literal("seo"),
+      v.literal("customScripts")
+    ),
+    config: v.any(),
+  })
+    .index("by_type", ["type"]),
+
+  // ─── ORDER STATUS AMOUNTS ─────────────────────────────────
+  orderStatusAmounts: defineTable({
+    status: v.string(),
+    totalAmount: v.number(),
+  })
+    .index("by_status", ["status"]),
 });

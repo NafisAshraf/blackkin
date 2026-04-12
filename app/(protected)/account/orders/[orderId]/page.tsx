@@ -28,18 +28,37 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-type OrderStatus = "pending" | "processed" | "shipped" | "delivered" | "cancelled";
+const CUSTOMER_ORDER_STATUS_LABELS: Record<string, string> = {
+  new: "Order Placed",
+  confirmed: "Confirmed",
+  ready_for_delivery: "Ready for Delivery",
+  in_courier: "In Transit",
+  paid: "Paid",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  hold: "Processing",
+  ship_later: "Processing",
+  deleted: "Cancelled",
+};
 
 function getStatusVariant(
   status: string
 ): "outline" | "secondary" | "default" | "destructive" {
-  switch (status as OrderStatus) {
-    case "pending":   return "outline";
-    case "processed": return "secondary";
-    case "shipped":
-    case "delivered": return "default";
-    case "cancelled": return "destructive";
-    default:          return "outline";
+  switch (status) {
+    case "new":
+      return "outline";
+    case "confirmed":
+    case "ready_for_delivery":
+      return "secondary";
+    case "in_courier":
+    case "paid":
+    case "completed":
+      return "default";
+    case "cancelled":
+    case "deleted":
+      return "destructive";
+    default:
+      return "outline";
   }
 }
 
@@ -285,7 +304,9 @@ export default function OrderDetailPage() {
           <h1 className="text-xl font-semibold">Order Detail</h1>
           <p className="font-mono text-sm text-muted-foreground">{order._id}</p>
           <div className="flex gap-2 flex-wrap">
-            <Badge variant={getStatusVariant(order.status)}>{order.status}</Badge>
+            <Badge variant={getStatusVariant(order.status)}>
+              {CUSTOMER_ORDER_STATUS_LABELS[order.status] ?? order.status}
+            </Badge>
             <Badge variant={order.paymentStatus === "paid" ? "default" : "outline"}>
               {order.paymentStatus}
             </Badge>
@@ -330,7 +351,7 @@ export default function OrderDetailPage() {
                   ৳{item.totalPrice.toLocaleString()}
                 </p>
               </div>
-              {order.status === "delivered" && (
+              {order.status === "completed" && (
                 <ReviewForm
                   productId={item.productId as Id<"products">}
                   orderId={order._id}

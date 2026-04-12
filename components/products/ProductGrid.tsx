@@ -6,9 +6,9 @@ interface Product {
   name: string;
   slug: string;
   basePrice: number;
-  discountedPrice: number;
+  effectivePrice: number;
   discountAmount: number;
-  campaignName: string | null;
+  discountGroupName: string | null;
   averageRating: number;
   totalRatings: number;
   media: Array<{

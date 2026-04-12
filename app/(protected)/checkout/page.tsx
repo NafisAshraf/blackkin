@@ -33,6 +33,9 @@ export default function CheckoutPage() {
   const createOrder = useMutation(api.orders.create);
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
   const initiatePayment = useAction(api.paymentActions.initiate);
+  const addToCart = useMutation(api.cart.add);
+  const updateCartQty = useMutation(api.cart.updateQuantity);
+  const removeFromCart = useMutation(api.cart.remove);
 
   // Address mode: which pill is selected
   const [addressMode, setAddressMode] = useState<AddressMode>("custom");
@@ -50,6 +53,7 @@ export default function CheckoutPage() {
 
   // For the "save custom address" flow
   const [saveAs, setSaveAs] = useState<SaveAs>("none");
+  const saveAsInitialised = useRef(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,6 +119,14 @@ export default function CheckoutPage() {
   if (!homeAddress) availableSaveSlots.push("home");
   if (!workAddress) availableSaveSlots.push("work");
   const canSaveAddress = addressMode === "custom" && availableSaveSlots.length > 0;
+
+  // Pre-select saveAs to first available slot on load
+  useEffect(() => {
+    if (saveAsInitialised.current || savedAddresses === undefined) return;
+    saveAsInitialised.current = true;
+    if (!homeAddress) setSaveAs("home");
+    else if (!workAddress) setSaveAs("work");
+  }, [savedAddresses, homeAddress, workAddress]);
 
   const shippingAddress = {
     name,
@@ -488,41 +500,79 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            {/* People Also Bought */}
+            {/* People Also Bought — variant-based */}
             {recommendations && recommendations.length > 0 && (
               <div className="space-y-3 pt-4">
                 <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                   People Also Bought
                 </h3>
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {recommendations.map((product) => (
-                    <Link
-                      key={product._id}
-                      href={`/products/${product.slug}`}
-                      className="w-36 flex-shrink-0 block border rounded-md overflow-hidden hover:shadow-sm transition-shadow"
-                    >
-                      <div className="aspect-square relative bg-muted">
-                        {product.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={product.imageUrl}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                            No image
+                  {recommendations.map((rec: any) => {
+                    const cartItem = cart?.items.find((i) => i.variantId === rec.variantId);
+                    const inCart = !!cartItem;
+                    return (
+                      <div
+                        key={rec.variantId}
+                        className="w-36 flex-shrink-0 border rounded-md overflow-hidden"
+                      >
+                        <Link href={`/products/${rec.productSlug}`} className="block">
+                          <div className="aspect-square bg-muted">
+                            {rec.imageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={rec.imageUrl} alt={rec.productName} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No image</div>
+                            )}
                           </div>
-                        )}
+                        </Link>
+                        <div className="p-2 space-y-1.5">
+                          <p className="text-xs font-medium line-clamp-2">{rec.productName}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {rec.size}{rec.color ? ` / ${rec.color}` : ""}
+                          </p>
+                          <p className="text-xs font-semibold">৳{rec.effectivePrice.toLocaleString()}</p>
+                          {inCart ? (
+                            <div className="flex items-center justify-between gap-1">
+                              <button
+                                onClick={async () => {
+                                  if (cartItem.quantity <= 1) {
+                                    await removeFromCart({ cartItemId: cartItem._id });
+                                  } else {
+                                    await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity - 1 });
+                                  }
+                                }}
+                                className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                              >−</button>
+                              <span className="text-xs font-medium">{cartItem.quantity}</span>
+                              <button
+                                onClick={async () => {
+                                  await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity + 1 });
+                                }}
+                                disabled={cartItem.quantity >= rec.stock}
+                                className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                              >+</button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full h-7 text-xs"
+                              disabled={rec.stock === 0}
+                              onClick={async () => {
+                                try {
+                                  await addToCart({ productId: rec.productId, variantId: rec.variantId, quantity: 1 });
+                                } catch (e: unknown) {
+                                  toast.error(e instanceof Error ? e.message : "Failed to add");
+                                }
+                              }}
+                            >
+                              {rec.stock === 0 ? "Out of stock" : "Add"}
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="p-2 space-y-0.5">
-                        <p className="text-xs font-medium line-clamp-2">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          ৳{product.discountedPrice.toLocaleString()}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

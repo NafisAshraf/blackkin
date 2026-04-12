@@ -91,8 +91,8 @@ export const create = mutation({
     if (!order || order.userId !== user._id) {
       throw new ConvexError("Order not found");
     }
-    if (order.status !== "delivered") {
-      throw new ConvexError("You can only review products from delivered orders");
+    if (order.status !== "completed") {
+      throw new ConvexError("You can only review products from completed orders");
     }
 
     // Verify the order contains this product

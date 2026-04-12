@@ -127,3 +127,23 @@ export const toggleActive = mutation({
     return null;
   },
 });
+
+export const remove = mutation({
+  args: { id: v.id("categories") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    // Unlink any products in this category (set categoryId to undefined)
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_categoryId_and_categorySortOrder", (q) =>
+        q.eq("categoryId", args.id)
+      )
+      .take(500);
+    await Promise.all(
+      products.map((p) => ctx.db.patch(p._id, { categoryId: undefined }))
+    );
+    await ctx.db.delete(args.id);
+    return null;
+  },
+});

@@ -15,10 +15,11 @@ export default async function AdminDashboardPage() {
   ];
 
   const orderBreakdown = [
-    { label: "Pending", value: stats.orders.pending },
-    { label: "Processed", value: stats.orders.processed },
-    { label: "Shipped", value: stats.orders.shipped },
-    { label: "Delivered", value: stats.orders.delivered },
+    { label: "New", value: stats.orders.new },
+    { label: "Confirmed", value: stats.orders.confirmed },
+    { label: "Ready for Delivery", value: stats.orders.ready_for_delivery },
+    { label: "In Courier", value: stats.orders.in_courier },
+    { label: "Completed", value: stats.orders.completed },
     { label: "Cancelled", value: stats.orders.cancelled },
   ];
 

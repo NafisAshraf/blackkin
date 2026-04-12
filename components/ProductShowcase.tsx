@@ -9,9 +9,9 @@ export interface ShowcaseProduct {
   name: string;
   slug: string;
   basePrice: number;
-  discountedPrice: number;
+  effectivePrice: number;
   discountAmount: number;
-  campaignName: string | null;
+  discountGroupName: string | null;
   imageUrl: string | null;
   colors: string[];
   sortOrder: number;
@@ -154,7 +154,7 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
                   {/* Price */}
                   <div className="flex items-center gap-2.5">
                     <span className="text-sm font-semibold text-foreground">
-                      &#2547;{product.discountedPrice.toLocaleString()}
+                      &#2547;{product.effectivePrice.toLocaleString()}
                     </span>
                     {isDiscounted && (
                       <span className="text-xs text-muted-foreground line-through">

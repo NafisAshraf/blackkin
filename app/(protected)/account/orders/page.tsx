@@ -16,20 +16,34 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
-type OrderStatus = "pending" | "processed" | "shipped" | "delivered" | "cancelled";
+const CUSTOMER_ORDER_STATUS_LABELS: Record<string, string> = {
+  new: "Order Placed",
+  confirmed: "Confirmed",
+  ready_for_delivery: "Ready for Delivery",
+  in_courier: "In Transit",
+  paid: "Paid",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  hold: "Processing",
+  ship_later: "Processing",
+  deleted: "Cancelled",
+};
 
 function getStatusVariant(
   status: string
 ): "outline" | "secondary" | "default" | "destructive" {
-  switch (status as OrderStatus) {
-    case "pending":
+  switch (status) {
+    case "new":
       return "outline";
-    case "processed":
+    case "confirmed":
+    case "ready_for_delivery":
       return "secondary";
-    case "shipped":
-    case "delivered":
+    case "in_courier":
+    case "paid":
+    case "completed":
       return "default";
     case "cancelled":
+    case "deleted":
       return "destructive";
     default:
       return "outline";
@@ -87,7 +101,7 @@ export default function OrdersPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(order.status)}>
-                        {order.status}
+                        {CUSTOMER_ORDER_STATUS_LABELS[order.status] ?? order.status}
                       </Badge>
                     </TableCell>
                     <TableCell>

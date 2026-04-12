@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireAuth } from "./lib/auth.helpers";
-import { getProductDiscountedPrice } from "./lib/discounts";
+import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { Id } from "./_generated/dataModel";
 
 const cartItemFull = v.object({
@@ -42,8 +42,8 @@ export const get = query({
 
         if (!product || !variant) return null;
 
-        const { discountedPrice, discountAmount } =
-          await getProductDiscountedPrice(ctx, product);
+        const { effectivePrice: discountedPrice, discountAmount } =
+          await getEffectivePrice(ctx, product);
 
         const firstImage = product.media.find((m) => m.type === "image");
         const imageUrl = firstImage
@@ -82,7 +82,7 @@ export const add = mutation({
     if (args.quantity < 1) throw new ConvexError("Quantity must be at least 1");
 
     const product = await ctx.db.get(args.productId);
-    if (!product || !product.isActive) throw new ConvexError("Product not available");
+    if (!product || !isProductVisible(product)) throw new ConvexError("Product not available");
 
     const variant = await ctx.db.get(args.variantId);
     if (!variant || variant.productId !== args.productId) {
@@ -199,7 +199,7 @@ export const mergeGuestCart = mutation({
         continue; // Invalid ID format - skip
       }
 
-      if (!product || !product.isActive) continue;
+      if (!product || !isProductVisible(product)) continue;
       if (!variant || variant.productId !== product._id) continue;
 
       const qty = Math.max(1, Math.min(guestItem.quantity, variant.stock));
@@ -254,7 +254,7 @@ export const getCartWithPricing = query({
         const variant = await ctx.db.get(item.variantId);
         if (!product || !variant) return null;
 
-        const pricing = await getProductDiscountedPrice(ctx, product);
+        const pricing = await getEffectivePrice(ctx, product);
         const itemSubtotal = product.basePrice * item.quantity;
         const itemDiscount = pricing.discountAmount * item.quantity;
         subtotal += itemSubtotal;
@@ -270,7 +270,7 @@ export const getCartWithPricing = query({
           productName: product.name,
           productSlug: product.slug,
           basePrice: product.basePrice,
-          discountedPrice: pricing.discountedPrice,
+          discountedPrice: pricing.effectivePrice,
           discountAmount: pricing.discountAmount,
           size: variant.size,
           color: variant.color,

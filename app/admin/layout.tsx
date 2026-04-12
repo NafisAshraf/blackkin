@@ -14,9 +14,13 @@ export default async function AdminLayout({
   }
 
   const user = await fetchAuthQuery(api.users.getCurrentUserWithRole);
-  if (!user || user.role !== "admin") {
+  if (!user || !["admin", "superadmin"].includes(user.role)) {
     redirect("/");
   }
 
-  return <AdminLayoutClient>{children}</AdminLayoutClient>;
+  return (
+    <AdminLayoutClient user={{ role: user.role, permissions: user.permissions }}>
+      {children}
+    </AdminLayoutClient>
+  );
 }

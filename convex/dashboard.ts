@@ -10,11 +10,12 @@ export const getStats = query({
     totalProducts: v.number(),
     totalCategories: v.number(),
     orders: v.object({
-      pending: v.number(),
-      processed: v.number(),
-      shipped: v.number(),
-      delivered: v.number(),
+      new: v.number(),
+      confirmed: v.number(),
+      ready_for_delivery: v.number(),
+      in_courier: v.number(),
       cancelled: v.number(),
+      completed: v.number(),
       total: v.number(),
     }),
   }),
@@ -24,20 +25,22 @@ export const getStats = query({
     const [
       totalCustomers,
       totalProducts,
-      pendingOrders,
-      processedOrders,
-      shippedOrders,
-      deliveredOrders,
+      newOrders,
+      confirmedOrders,
+      readyForDeliveryOrders,
+      inCourierOrders,
       cancelledOrders,
+      completedOrders,
       categories,
     ] = await Promise.all([
       aggregateUsers.count(ctx),
       aggregateProducts.count(ctx),
-      aggregateOrders.count(ctx, { namespace: "pending" }),
-      aggregateOrders.count(ctx, { namespace: "processed" }),
-      aggregateOrders.count(ctx, { namespace: "shipped" }),
-      aggregateOrders.count(ctx, { namespace: "delivered" }),
+      aggregateOrders.count(ctx, { namespace: "new" }),
+      aggregateOrders.count(ctx, { namespace: "confirmed" }),
+      aggregateOrders.count(ctx, { namespace: "ready_for_delivery" }),
+      aggregateOrders.count(ctx, { namespace: "in_courier" }),
       aggregateOrders.count(ctx, { namespace: "cancelled" }),
+      aggregateOrders.count(ctx, { namespace: "completed" }),
       ctx.db.query("categories").take(200),
     ]);
 
@@ -46,17 +49,19 @@ export const getStats = query({
       totalProducts,
       totalCategories: categories.length,
       orders: {
-        pending: pendingOrders,
-        processed: processedOrders,
-        shipped: shippedOrders,
-        delivered: deliveredOrders,
+        new: newOrders,
+        confirmed: confirmedOrders,
+        ready_for_delivery: readyForDeliveryOrders,
+        in_courier: inCourierOrders,
         cancelled: cancelledOrders,
+        completed: completedOrders,
         total:
-          pendingOrders +
-          processedOrders +
-          shippedOrders +
-          deliveredOrders +
-          cancelledOrders,
+          newOrders +
+          confirmedOrders +
+          readyForDeliveryOrders +
+          inCourierOrders +
+          cancelledOrders +
+          completedOrders,
       },
     };
   },

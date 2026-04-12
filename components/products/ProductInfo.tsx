@@ -8,7 +8,9 @@ import WishlistButton from "@/components/wishlist/WishlistButton";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
-import { addToGuestCart } from "@/lib/guest-cart";
+import { addToGuestCart, getGuestCart, updateGuestCartQuantity, removeFromGuestCart } from "@/lib/guest-cart";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 interface Variant {
   _id: Id<"productVariants">;
@@ -34,9 +36,9 @@ interface ProductInfoProps {
     _id: Id<"products">;
     name: string;
     basePrice: number;
-    discountedPrice: number;
+    effectivePrice: number;
     discountAmount: number;
-    campaignName: string | null;
+    discountGroupName: string | null;
     averageRating: number;
     totalRatings: number;
     variants: Variant[];
@@ -96,9 +98,9 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
     _id,
     name,
     basePrice,
-    discountedPrice,
+    effectivePrice,
     discountAmount,
-    campaignName,
+    discountGroupName,
     averageRating,
     totalRatings,
     variants,
@@ -107,9 +109,22 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
 
   const { data: session } = authClient.useSession();
 
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  // Pre-select first available variant
+  const initialVariant = variants.find((v) => v.stock > 0) || variants[0];
+
+  const [selectedSize, setSelectedSize] = useState<string | null>(
+    initialVariant?.size || null
+  );
+  const [selectedColor, setSelectedColor] = useState<string | null>(
+    initialVariant?.color || null
+  );
+  // Cart data and mutations
+  const cartWithPricing = useQuery(api.cart.getCartWithPricing, session ? {} : "skip");
+  const updateCartQty = useMutation(api.cart.updateQuantity);
+  const removeFromCartMutation = useMutation(api.cart.remove);
+
   const [quantity, setQuantity] = useState(1);
+  const [isUpdatingCart, setIsUpdatingCart] = useState(false);
 
   const uniqueSizes = Array.from(new Set(variants.map((v) => v.size)));
 
@@ -149,6 +164,16 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
     ? Math.round((discountAmount / basePrice) * 100)
     : 0;
 
+  // Check if selected variant is in cart
+  const cartItem = selectedVariantId && cartWithPricing
+    ? cartWithPricing.items.find((i) => i.variantId === selectedVariantId)
+    : null;
+  
+  const isInCart = !!cartItem;
+
+  // If in cart, local quantity should match cart quantity (if not currently being edited)
+  const displayQuantity = isInCart ? cartItem.quantity : quantity;
+
   return (
     <div className="space-y-5">
       <div>
@@ -163,7 +188,7 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
       {/* Price */}
       <div className="flex items-baseline gap-3">
         <span className="text-2xl font-bold">
-          ৳{discountedPrice.toLocaleString()}
+          ৳{effectivePrice.toLocaleString()}
         </span>
         {isDiscounted && (
           <>
@@ -176,8 +201,8 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
           </>
         )}
       </div>
-      {campaignName && (
-        <p className="text-xs text-muted-foreground -mt-3">{campaignName}</p>
+      {discountGroupName && (
+        <p className="text-xs text-muted-foreground -mt-3">{discountGroupName}</p>
       )}
 
       {/* Color selector */}
@@ -239,6 +264,20 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
             selectedSize={selectedSize}
             onChange={(size) => {
               setSelectedSize(size);
+              // Color reconciliation for the new size
+              const variantsForNewSize = variants.filter((v) => v.size === size);
+              const isColorStillValid = variantsForNewSize.some(
+                (v) => v.color === selectedColor && v.stock > 0
+              );
+
+              if (!isColorStillValid) {
+                const firstInStock = variantsForNewSize.find((v) => v.stock > 0);
+                if (firstInStock) {
+                  setSelectedColor(firstInStock.color || null);
+                } else {
+                  setSelectedColor(variantsForNewSize[0]?.color || null);
+                }
+              }
             }}
           />
         </div>
@@ -250,19 +289,41 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
         <div className="flex items-center gap-0 border border-border w-fit">
           <button
             className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            disabled={quantity <= 1}
+            onClick={async () => {
+              if (isInCart) {
+                if (cartItem.quantity <= 1) {
+                  setIsUpdatingCart(true);
+                  await removeFromCartMutation({ cartItemId: cartItem._id });
+                  setIsUpdatingCart(false);
+                } else {
+                  setIsUpdatingCart(true);
+                  await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity - 1 });
+                  setIsUpdatingCart(false);
+                }
+              } else {
+                setQuantity((q) => Math.max(1, q - 1));
+              }
+            }}
+            disabled={(isInCart ? cartItem.quantity <= 1 : quantity <= 1) || isUpdatingCart}
           >
             −
           </button>
           <span className="h-10 w-12 flex items-center justify-center text-sm font-medium border-x border-border">
-            {quantity}
+            {isUpdatingCart ? <Loader2 className="h-3 w-3 animate-spin" /> : displayQuantity}
           </span>
           <button
             className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
-            onClick={() => setQuantity((q) => q + 1)}
+            onClick={async () => {
+              if (isInCart) {
+                setIsUpdatingCart(true);
+                await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity + 1 });
+                setIsUpdatingCart(false);
+              } else {
+                setQuantity((q) => q + 1);
+              }
+            }}
             disabled={
-              selectedVariant ? quantity >= selectedVariant.stock : false
+              (selectedVariant ? displayQuantity >= selectedVariant.stock : false) || isUpdatingCart
             }
           >
             +
@@ -272,14 +333,29 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
 
       {/* CTA Buttons */}
       <div className="space-y-2.5 pt-1">
-        {/* Add to Cart */}
-        <AddToCartButton
-          productId={_id}
-          variantId={selectedVariantId}
-          disabled={!selectedVariantId}
-          quantity={quantity}
-          onSuccess={() => setQuantity(1)}
-        />
+        {/* Add to Cart / Quantity Sync */}
+        {!isInCart ? (
+          <AddToCartButton
+            productId={_id}
+            variantId={selectedVariantId}
+            disabled={!selectedVariantId}
+            quantity={quantity}
+            onSuccess={() => setQuantity(1)}
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <button
+              className="w-full h-11 bg-muted text-muted-foreground text-xs font-semibold tracking-wider uppercase cursor-default flex items-center justify-center gap-2"
+              disabled
+            >
+              <ShoppingCart className="h-4 w-4" />
+              In Cart
+            </button>
+            <p className="text-[10px] text-center text-muted-foreground uppercase tracking-wider">
+              Item already in cart. Use quantity selector to adjust.
+            </p>
+          </div>
+        )}
 
         {/* Buy It Now */}
         <button

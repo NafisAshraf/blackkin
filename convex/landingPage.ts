@@ -1,12 +1,11 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./lib/auth.helpers";
-import { getProductDiscountedPrice } from "./lib/discounts";
+import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 
 // ─── Slot union (reused in args validators) ────────────────────────────────
 const slotValidator = v.union(
   v.literal("hero"),
-  v.literal("lifestyleBanner"),
   v.literal("splitImage"),
   v.literal("tech1"),
   v.literal("tech2"),
@@ -23,7 +22,6 @@ export const getContent = query({
   handler: async (ctx) => {
     const slots = [
       "hero",
-      "lifestyleBanner",
       "splitImage",
       "tech1",
       "tech2",
@@ -71,10 +69,10 @@ export const getContent = query({
           await Promise.all(
             items.map(async (item) => {
               const product = await ctx.db.get(item.productId);
-              if (!product || !product.isActive) return null;
+              if (!product || !isProductVisible(product)) return null;
 
-              const { discountedPrice, discountAmount, campaignName } =
-                await getProductDiscountedPrice(ctx, product);
+              const { effectivePrice, discountAmount, discountGroupName } =
+                await getEffectivePrice(ctx, product);
 
               // Resolve first image URL
               const firstMedia = [...product.media]
@@ -104,9 +102,9 @@ export const getContent = query({
                 name: product.name,
                 slug: product.slug,
                 basePrice: product.basePrice,
-                discountedPrice,
+                effectivePrice,
                 discountAmount,
-                campaignName,
+                discountGroupName,
                 imageUrl,
                 colors,
                 sortOrder: item.sortOrder,
