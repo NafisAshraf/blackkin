@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
+import { useUploadFile } from "@convex-dev/r2/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -50,8 +51,8 @@ import {
 type ProductStatus = "draft" | "active" | "scheduled" | "archived";
 type SaleDisplayMode = "percentage" | "amount";
 
-interface VideoMediaItem { storageId: Id<"_storage">; previewUrl: string | null }
-interface Model3DItem { storageId: Id<"_storage">; fileName: string }
+interface VideoMediaItem { storageId: string; previewUrl: string | null }
+interface Model3DItem { storageId: string; fileName: string }
 
 function slugify(str: string) {
   return str.toLowerCase().trim()
@@ -117,7 +118,8 @@ export default function EditProductPage() {
   const updateVariants = useMutation(api.products.updateVariants);
   const assignTags = useMutation(api.products.assignTags);
   const removeProduct = useMutation(api.products.remove);
-  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const r2Upload = useUploadFile(api.r2);
+  const r2Delete = useMutation(api.r2.deleteObject);
 
   // ── Form state ────────────────────────────────────────────────
   const [name, setName] = useState("");
@@ -260,39 +262,57 @@ export default function EditProductPage() {
     }
   }
 
-  async function uploadFile(file: File, contentType: string): Promise<Id<"_storage">> {
-    const uploadUrl = await generateUploadUrl({});
-    const result = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": contentType }, body: file });
-    if (!result.ok) throw new Error("Upload failed");
-    const { storageId } = await result.json();
-    return storageId;
-  }
-
   async function handleVideoUpload(file: File) {
     if (!file.type.startsWith("video/")) { toast.error("Only video files are allowed"); return; }
     setUploadingVideo(true);
-    try { const s = await uploadFile(file, file.type); setVideoItem({ storageId: s, previewUrl: URL.createObjectURL(file) }); }
+    try {
+      const oldKey = videoItem?.storageId;
+      const s = await r2Upload(file);
+      if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
+      setVideoItem({ storageId: s, previewUrl: URL.createObjectURL(file) });
+    }
     catch { toast.error("Upload failed"); } finally { setUploadingVideo(false); }
+  }
+
+  function handleRemoveVideo() {
+    if (videoItem) {
+      r2Delete({ key: videoItem.storageId }).catch(() => {});
+      setVideoItem(null);
+    }
   }
 
   async function handleModel3DUpload(file: File) {
     if (!file.name.toLowerCase().endsWith(".glb")) { toast.error("Only .glb files are supported"); return; }
     setUploadingModel3d(true);
-    try { const s = await uploadFile(file, "model/gltf-binary"); setModel3dItem({ storageId: s, fileName: file.name }); }
+    try {
+      const oldKey = model3dItem?.storageId;
+      const s = await r2Upload(file);
+      if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
+      setModel3dItem({ storageId: s, fileName: file.name });
+    }
     catch { toast.error("Upload failed"); } finally { setUploadingModel3d(false); }
+  }
+
+  function handleRemoveModel3D() {
+    if (model3dItem) {
+      r2Delete({ key: model3dItem.storageId }).catch(() => {});
+      setModel3dItem(null);
+    }
   }
 
   async function handleImageUpload(file: File) {
     if (!file.type.startsWith("image/")) { toast.error("Only image files are allowed"); return; }
     setUploadingImage(true);
-    try { const s = await uploadFile(file, file.type); setImages((prev) => [...prev, { storageId: s, previewUrl: URL.createObjectURL(file) }]); }
+    try { const s = await r2Upload(file); setImages((prev) => [...prev, { storageId: s, previewUrl: URL.createObjectURL(file) }]); }
     catch { toast.error("Upload failed"); } finally { setUploadingImage(false); }
   }
 
   const removeImage = useCallback(
-    (storageId: Id<"_storage">) =>
-      setImages((prev) => prev.filter((img) => img.storageId !== storageId)),
-    []
+    (storageId: string) => {
+      setImages((prev) => prev.filter((img) => img.storageId !== storageId));
+      r2Delete({ key: storageId }).catch(() => {});
+    },
+    [r2Delete]
   );
 
   // ── Save ──────────────────────────────────────────────────────
@@ -520,7 +540,7 @@ export default function EditProductPage() {
                   {videoItem.previewUrl ? <video src={videoItem.previewUrl} className="w-full h-full object-cover" muted />
                     : <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">video</div>}
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Button type="button" variant="destructive" size="icon" className="h-7 w-7" onClick={() => setVideoItem(null)}><X className="h-3 w-3" /></Button>
+                    <Button type="button" variant="destructive" size="icon" className="h-7 w-7" onClick={handleRemoveVideo}><X className="h-3 w-3" /></Button>
                   </div>
                 </div>
               ) : (
@@ -541,7 +561,7 @@ export default function EditProductPage() {
                 <div className="flex items-center gap-3 p-3 rounded-md border bg-muted">
                   <Box className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                   <span className="text-sm truncate flex-1">{model3dItem.fileName}</span>
-                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => setModel3dItem(null)}><X className="h-3 w-3" /></Button>
+                  <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={handleRemoveModel3D}><X className="h-3 w-3" /></Button>
                 </div>
               ) : (
                 <>

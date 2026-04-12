@@ -15,7 +15,7 @@ interface ProductCardProps {
     averageRating: number;
     totalRatings: number;
     media: Array<{
-      storageId: Id<"_storage">;
+      storageId: string;
       type: "image" | "video" | "model3d";
       sortOrder: number;
     }>;

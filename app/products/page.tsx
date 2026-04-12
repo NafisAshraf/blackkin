@@ -18,7 +18,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 
 interface ProductMedia {
-  storageId: Id<"_storage">;
+  storageId: string;
   type: "image" | "video" | "model3d";
   sortOrder: number;
 }

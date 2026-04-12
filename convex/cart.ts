@@ -3,6 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { requireAuth } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { Id } from "./_generated/dataModel";
+import { r2 } from "./r2";
 
 const cartItemFull = v.object({
   _id: v.id("cartItems"),
@@ -47,7 +48,7 @@ export const get = query({
 
         const firstImage = product.media.find((m) => m.type === "image");
         const imageUrl = firstImage
-          ? await ctx.storage.getUrl(firstImage.storageId)
+          ? await r2.getUrl(firstImage.storageId)
           : null;
 
         return {
@@ -262,7 +263,7 @@ export const getCartWithPricing = query({
 
         const firstImage = product.media.find((m) => m.type === "image");
         const imageUrl = firstImage
-          ? await ctx.storage.getUrl(firstImage.storageId)
+          ? await r2.getUrl(firstImage.storageId)
           : null;
 
         return {

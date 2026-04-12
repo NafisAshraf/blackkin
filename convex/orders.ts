@@ -5,6 +5,7 @@ import { requireAuth, requirePermission } from "./lib/auth.helpers";
 import { aggregateOrders } from "./lib/aggregates";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { orderStatusValidator, ORDER_STATUS_LIST, type OrderStatus } from "./lib/validators";
+import { r2 } from "./r2";
 
 const shippingAddressValidator = v.object({
   name: v.string(),
@@ -629,7 +630,7 @@ export const listAllEnriched = query({
         let imageUrl: string | null = null;
         if (product) {
           const firstImage = product.media.find((m) => m.type === "image");
-          if (firstImage) imageUrl = await ctx.storage.getUrl(firstImage.storageId);
+          if (firstImage) imageUrl = await r2.getUrl(firstImage.storageId);
         }
         return {
           productId: item.productId,

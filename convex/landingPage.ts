@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
+import { r2 } from "./r2";
 
 // ─── Slot union (reused in args validators) ────────────────────────────────
 const slotValidator = v.union(
@@ -34,7 +35,7 @@ export const getContent = query({
           .query("landingPageImages")
           .withIndex("by_slot", (q) => q.eq("slot", slot))
           .first();
-        const url = row ? await ctx.storage.getUrl(row.storageId) : null;
+        const url = row ? await r2.getUrl(row.storageId) : null;
         return [slot, url] as const;
       })
     );
@@ -79,7 +80,7 @@ export const getContent = query({
                 .sort((a, b) => a.sortOrder - b.sortOrder)
                 .find((m) => m.type === "image");
               const imageUrl = firstMedia
-                ? await ctx.storage.getUrl(firstMedia.storageId)
+                ? await r2.getUrl(firstMedia.storageId)
                 : null;
 
               // Get unique variant colors
@@ -144,7 +145,7 @@ export const adminGetImages = query({
       rows.map(async (row) => ({
         slot: row.slot,
         storageId: row.storageId,
-        url: await ctx.storage.getUrl(row.storageId),
+        url: await r2.getUrl(row.storageId),
       }))
     );
   },
@@ -171,7 +172,7 @@ export const adminGetAllQuotes = query({
 export const updateImage = mutation({
   args: {
     slot: slotValidator,
-    storageId: v.id("_storage"),
+    storageId: v.string(),
   },
   handler: async (ctx, { slot, storageId }) => {
     await requireAdmin(ctx);
@@ -180,7 +181,12 @@ export const updateImage = mutation({
       .withIndex("by_slot", (q) => q.eq("slot", slot))
       .first();
     if (existing) {
+      const oldKey = existing.storageId;
       await ctx.db.patch(existing._id, { storageId });
+      // Delete the old R2 object now that it's been replaced
+      if (oldKey !== storageId) {
+        await r2.deleteObject(ctx, oldKey);
+      }
     } else {
       await ctx.db.insert("landingPageImages", { slot, storageId });
     }
@@ -274,7 +280,7 @@ export const adminGetProductSections = query({
                 .sort((a, b) => a.sortOrder - b.sortOrder)
                 .find((m) => m.type === "image");
               const imageUrl = firstMedia
-                ? await ctx.storage.getUrl(firstMedia.storageId)
+                ? await r2.getUrl(firstMedia.storageId)
                 : null;
 
               return {

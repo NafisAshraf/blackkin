@@ -42,7 +42,7 @@ export default defineSchema({
     name: v.string(),
     slug: v.string(),
     description: v.optional(v.string()),
-    imageId: v.optional(v.id("_storage")),
+    imageId: v.optional(v.string()),
     isActive: v.boolean(),
     sortOrder: v.number(),
   })
@@ -99,7 +99,7 @@ export default defineSchema({
     // Media stored inline - bounded list, well under 8192 limit
     media: v.array(
       v.object({
-        storageId: v.id("_storage"),
+        storageId: v.string(),
         type: v.union(v.literal("image"), v.literal("video"), v.literal("model3d")),
         sortOrder: v.number(),
       })
@@ -323,7 +323,7 @@ export default defineSchema({
       v.literal("tech2"),
       v.literal("tech3")
     ),
-    storageId: v.id("_storage"),
+    storageId: v.string(),
   }).index("by_slot", ["slot"]),
 
   // Testimonial quotes for the homepage carousel.

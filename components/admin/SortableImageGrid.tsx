@@ -19,19 +19,17 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Id } from "@/convex/_generated/dataModel";
-
 // ─── Types ────────────────────────────────────────────────────
 
 export interface ImageMediaItem {
-  storageId: Id<"_storage">;
+  storageId: string;
   previewUrl: string | null;
 }
 
 interface SortableImageGridProps {
   images: ImageMediaItem[];
   onReorder: (images: ImageMediaItem[]) => void;
-  onRemove: (storageId: Id<"_storage">) => void;
+  onRemove: (storageId: string) => void;
 }
 
 // ─── Sortable Card ────────────────────────────────────────────
@@ -43,7 +41,7 @@ function SortableImageCard({
 }: {
   item: ImageMediaItem;
   index: number;
-  onRemove: (storageId: Id<"_storage">) => void;
+  onRemove: (storageId: string) => void;
 }) {
   const {
     attributes,

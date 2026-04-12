@@ -5,6 +5,7 @@ import { requireAdmin } from "./lib/auth.helpers";
 import { aggregateProducts } from "./lib/aggregates";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { Doc, Id } from "./_generated/dataModel";
+import { r2 } from "./r2";
 
 // ─── SKU HELPERS ───────────────────────────────────────────
 
@@ -55,7 +56,7 @@ async function generateUniqueSku(
 // ─── SHARED VALIDATORS ─────────────────────────────────────
 
 const mediaItemValidator = v.object({
-  storageId: v.id("_storage"),
+  storageId: v.string(),
   type: v.union(v.literal("image"), v.literal("video"), v.literal("model3d")),
   sortOrder: v.number(),
 });
@@ -393,7 +394,7 @@ export const listAllAdminFlat = query({
 
         const firstImage = p.media.find((m) => m.type === "image");
         const imageUrl = firstImage
-          ? await ctx.storage.getUrl(firstImage.storageId)
+          ? await r2.getUrl(firstImage.storageId)
           : null;
 
         return {
@@ -584,6 +585,18 @@ export const update = mutation({
         .withIndex("by_slug", (q) => q.eq("slug", updates.slug!))
         .unique();
       if (existing && existing._id !== id) throw new ConvexError("Slug already in use");
+    }
+
+    // Delete R2 objects for any media items that were removed
+    if (updates.media !== undefined) {
+      const product = await ctx.db.get(id);
+      if (product) {
+        const newKeys = new Set(updates.media.map((m) => m.storageId));
+        const removedKeys = product.media
+          .map((m) => m.storageId)
+          .filter((key) => !newKeys.has(key));
+        await Promise.all(removedKeys.map((key) => r2.deleteObject(ctx, key)));
+      }
     }
 
     // Normalize and validate SKU uniqueness if provided
@@ -838,6 +851,11 @@ export const remove = mutation({
     await requireAdmin(ctx);
     const product = await ctx.db.get(args.id);
     if (!product) return null;
+
+    // Delete all R2 media objects for this product
+    if (product.media.length > 0) {
+      await Promise.all(product.media.map((m) => r2.deleteObject(ctx, m.storageId)));
+    }
 
     // Collect variant IDs before deletion (needed for rec cleanup)
     const allVariants = await ctx.db
