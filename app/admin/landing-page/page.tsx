@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useUploadFile } from "@convex-dev/r2/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
@@ -494,7 +495,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
 export default function LandingPageCmsPage() {
   // Image data
   const imageRows = useQuery(api.landingPage.adminGetImages);
-  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const r2Upload = useUploadFile(api.r2);
   const updateImage = useMutation(api.landingPage.updateImage);
 
   // Quote data
@@ -524,15 +525,8 @@ export default function LandingPageCmsPage() {
   async function handleFileChange(slot: ImageSlot, file: File) {
     setUploading((prev) => ({ ...prev, [slot]: true }));
     try {
-      const uploadUrl = await generateUploadUrl();
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!response.ok) throw new Error("Upload failed");
-      const { storageId } = await response.json();
-      await updateImage({ slot, storageId });
+      const key = await r2Upload(file);
+      await updateImage({ slot, storageId: key });
       toast.success(`${IMAGE_SLOTS.find((s) => s.slot === slot)?.label} updated`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Upload failed");

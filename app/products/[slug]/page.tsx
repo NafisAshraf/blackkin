@@ -41,7 +41,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   // Resolve media URLs
   const storageIds = product.media.map(
-    (m: { storageId: Id<"_storage">; type: "image" | "video" | "model3d"; sortOrder: number }) =>
+    (m: { storageId: string; type: "image" | "video" | "model3d"; sortOrder: number }) =>
       m.storageId
   );
 
@@ -52,7 +52,7 @@ export default async function ProductDetailPage({ params }: PageProps) {
 
   const resolvedMedia = product.media.map(
     (
-      m: { storageId: Id<"_storage">; type: "image" | "video" | "model3d"; sortOrder: number },
+      m: { storageId: string; type: "image" | "video" | "model3d"; sortOrder: number },
       index: number
     ) => ({
       ...m,

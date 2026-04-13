@@ -9,7 +9,7 @@ const categoryObject = v.object({
   name: v.string(),
   slug: v.string(),
   description: v.optional(v.string()),
-  imageId: v.optional(v.id("_storage")),
+  imageId: v.optional(v.string()),
   isActive: v.boolean(),
   sortOrder: v.number(),
 });
@@ -55,7 +55,7 @@ export const create = mutation({
     name: v.string(),
     slug: v.string(),
     description: v.optional(v.string()),
-    imageId: v.optional(v.id("_storage")),
+    imageId: v.optional(v.string()),
     // sortOrder is auto-assigned (max + 1)
   },
   returns: v.id("categories"),
@@ -82,7 +82,7 @@ export const update = mutation({
     name: v.optional(v.string()),
     slug: v.optional(v.string()),
     description: v.optional(v.string()),
-    imageId: v.optional(v.id("_storage")),
+    imageId: v.optional(v.string()),
     // sortOrder is now managed via reorder only
   },
   returns: v.null(),
