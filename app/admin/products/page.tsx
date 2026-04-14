@@ -414,11 +414,12 @@ function AdminProductsContent() {
 
   async function handleBatchMoveCategory(categoryId: string) {
     try {
-      const targetCategory = categoryId === "none" ? null : (categoryId as Id<"categories">);
       await Promise.all(
-        [...selectedIds].map((id) => updateProduct({ id: id as Id<"products">, categoryId: targetCategory as any }))
+        [...selectedIds].map((id) =>
+          updateProduct({ id: id as Id<"products">, categoryId: categoryId as Id<"categories"> })
+        )
       );
-      toast.success(categoryId === "none" ? `Removed category from ${selectedIds.size} product(s)` : `Moved ${selectedIds.size} product(s) to category`);
+      toast.success(`Moved ${selectedIds.size} product(s) to category`);
       clearSelection();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to move products");
@@ -744,7 +745,6 @@ function AdminProductsContent() {
               <SelectValue placeholder="Move to category…" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none" className="text-xs text-destructive font-medium focus:text-destructive">No category</SelectItem>
               {(categories ?? []).map((c) => (
                 <SelectItem key={c._id} value={c._id} className="text-xs">{c.name}</SelectItem>
               ))}
