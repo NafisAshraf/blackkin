@@ -9,10 +9,7 @@ const addressObject = v.object({
   type: v.union(v.literal("home"), v.literal("work")),
   name: v.string(),
   phone: v.string(),
-  addressLine1: v.string(),
-  addressLine2: v.optional(v.string()),
-  city: v.string(),
-  postalCode: v.optional(v.string()),
+  address: v.string(),
 });
 
 /** Get the current user's saved addresses (max 2 — one home, one work) */
@@ -34,10 +31,7 @@ export const saveAddress = mutation({
     type: v.union(v.literal("home"), v.literal("work")),
     name: v.string(),
     phone: v.string(),
-    addressLine1: v.string(),
-    addressLine2: v.optional(v.string()),
-    city: v.string(),
-    postalCode: v.optional(v.string()),
+    address: v.string(),
   },
   returns: v.id("userAddresses"),
   handler: async (ctx, args) => {
@@ -55,10 +49,7 @@ export const saveAddress = mutation({
       type: args.type,
       name: args.name,
       phone: args.phone,
-      addressLine1: args.addressLine1,
-      ...(args.addressLine2 ? { addressLine2: args.addressLine2 } : {}),
-      city: args.city,
-      ...(args.postalCode ? { postalCode: args.postalCode } : {}),
+      address: args.address,
     };
 
     if (existing) {

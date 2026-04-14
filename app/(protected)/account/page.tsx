@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Home, Briefcase, Plus, Pencil, Trash2, Loader2, Check, X } from "lucide-react";
 import { toast } from "sonner";
@@ -31,20 +32,14 @@ interface AddressFormState {
   type: AddressType;
   name: string;
   phone: string;
-  addressLine1: string;
-  addressLine2: string;
-  city: string;
-  postalCode: string;
+  address: string;
 }
 
 const emptyForm = (type: AddressType = "home"): AddressFormState => ({
   type,
   name: "",
   phone: "",
-  addressLine1: "",
-  addressLine2: "",
-  city: "",
-  postalCode: "",
+  address: "",
 });
 
 export default function AccountPage() {
@@ -124,10 +119,7 @@ export default function AccountPage() {
       type,
       name: existing?.name ?? "",
       phone: existing?.phone ?? "",
-      addressLine1: existing?.addressLine1 ?? "",
-      addressLine2: existing?.addressLine2 ?? "",
-      city: existing?.city ?? "",
-      postalCode: existing?.postalCode ?? "",
+      address: existing?.address ?? "",
     });
     setEditingType(type);
   }
@@ -145,7 +137,7 @@ export default function AccountPage() {
   }
 
   async function handleSave() {
-    if (!form.name.trim() || !form.phone.trim() || !form.addressLine1.trim() || !form.city.trim()) {
+    if (!form.name.trim() || !form.phone.trim() || !form.address.trim()) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -155,10 +147,7 @@ export default function AccountPage() {
         type: form.type,
         name: form.name.trim(),
         phone: form.phone.trim(),
-        addressLine1: form.addressLine1.trim(),
-        ...(form.addressLine2.trim() ? { addressLine2: form.addressLine2.trim() } : {}),
-        city: form.city.trim(),
-        ...(form.postalCode.trim() ? { postalCode: form.postalCode.trim() } : {}),
+        address: form.address.trim(),
       });
       toast.success(`${form.type === "home" ? "Home" : "Work"} address saved`);
       setEditingType(null);
@@ -337,13 +326,7 @@ export default function AccountPage() {
                       <div className="flex-1 min-w-0 text-sm">
                         <p className="font-medium text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
                         <p>{addr.name} · {addr.phone}</p>
-                        <p className="text-muted-foreground">
-                          {addr.addressLine1}
-                          {addr.addressLine2 ? `, ${addr.addressLine2}` : ""}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {addr.city}{addr.postalCode ? ` ${addr.postalCode}` : ""}
-                        </p>
+                        <p className="text-muted-foreground">{addr.address}</p>
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <Button
@@ -432,48 +415,15 @@ export default function AccountPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label htmlFor="addr-line1" className="text-xs">Address Line 1 *</Label>
-                      <Input
-                        id="addr-line1"
-                        value={form.addressLine1}
-                        onChange={(e) => setForm((f) => ({ ...f, addressLine1: e.target.value }))}
-                        placeholder="House/Flat, Road, Area"
-                        className="h-8 text-sm"
+                      <Label htmlFor="addr-address" className="text-xs">Delivery Address *</Label>
+                      <Textarea
+                        id="addr-address"
+                        value={form.address}
+                        onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                        placeholder="Full delivery address"
+                        rows={3}
+                        className="text-sm"
                       />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="addr-line2" className="text-xs">Address Line 2</Label>
-                      <Input
-                        id="addr-line2"
-                        value={form.addressLine2}
-                        onChange={(e) => setForm((f) => ({ ...f, addressLine2: e.target.value }))}
-                        placeholder="Optional"
-                        className="h-8 text-sm"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="addr-city" className="text-xs">City *</Label>
-                        <Input
-                          id="addr-city"
-                          value={form.city}
-                          onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                          placeholder="Dhaka"
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="addr-postal" className="text-xs">Postal Code</Label>
-                        <Input
-                          id="addr-postal"
-                          value={form.postalCode}
-                          onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))}
-                          placeholder="1207"
-                          className="h-8 text-sm"
-                        />
-                      </div>
                     </div>
 
                     <div className="flex gap-2 pt-1">

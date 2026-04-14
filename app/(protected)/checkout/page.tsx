@@ -56,10 +56,7 @@ export default function CheckoutPage() {
   // Shipping form fields
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [addressLine1, setAddressLine1] = useState("");
-  const [addressLine2, setAddressLine2] = useState("");
-  const [city, setCity] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
 
   // For the "save custom address" flow
@@ -97,24 +94,15 @@ export default function CheckoutPage() {
     if (addressMode === "home" && homeAddress) {
       setName(homeAddress.name);
       setPhone(homeAddress.phone);
-      setAddressLine1(homeAddress.addressLine1);
-      setAddressLine2(homeAddress.addressLine2 ?? "");
-      setCity(homeAddress.city);
-      setPostalCode(homeAddress.postalCode ?? "");
+      setAddress(homeAddress.address);
     } else if (addressMode === "work" && workAddress) {
       setName(workAddress.name);
       setPhone(workAddress.phone);
-      setAddressLine1(workAddress.addressLine1);
-      setAddressLine2(workAddress.addressLine2 ?? "");
-      setCity(workAddress.city);
-      setPostalCode(workAddress.postalCode ?? "");
+      setAddress(workAddress.address);
     } else if (addressMode === "custom") {
       setName("");
       setPhone("");
-      setAddressLine1("");
-      setAddressLine2("");
-      setCity("");
-      setPostalCode("");
+      setAddress("");
       setSaveAs("none");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,10 +135,7 @@ export default function CheckoutPage() {
   const shippingAddress = {
     name,
     phone,
-    addressLine1,
-    ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
-    city,
-    ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
+    address: address.trim(),
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -311,46 +296,15 @@ export default function CheckoutPage() {
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="addressLine1">Address Line 1 *</Label>
-              <Input
-                id="addressLine1"
-                value={addressLine1}
-                onChange={(e) => setAddressLine1(e.target.value)}
+              <Label htmlFor="address">Delivery Address *</Label>
+              <Textarea
+                id="address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Full delivery address"
+                rows={3}
                 required
-                placeholder="House/Flat, Road, Area"
               />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="addressLine2">Address Line 2</Label>
-              <Input
-                id="addressLine2"
-                value={addressLine2}
-                onChange={(e) => setAddressLine2(e.target.value)}
-                placeholder="Optional"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label htmlFor="city">City *</Label>
-                <Input
-                  id="city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  required
-                  placeholder="Dhaka"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="postalCode">Postal Code</Label>
-                <Input
-                  id="postalCode"
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  placeholder="1207"
-                />
-              </div>
             </div>
 
             {/* Save address option — only shown for custom addresses when a slot is available */}
