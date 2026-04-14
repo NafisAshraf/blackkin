@@ -24,6 +24,21 @@ const cartItemFull = v.object({
   stock: v.number(),
 });
 
+const guestCartItemFull = v.object({
+  variantId: v.string(),
+  productId: v.string(),
+  quantity: v.number(),
+  productName: v.string(),
+  productSlug: v.string(),
+  basePrice: v.number(),
+  discountedPrice: v.number(),
+  discountAmount: v.number(),
+  size: v.string(),
+  color: v.optional(v.string()),
+  imageUrl: v.union(v.string(), v.null()),
+  stock: v.number(),
+});
+
 /** Reactive cart query - returns enriched cart with current prices */
 export const get = query({
   args: {},
@@ -67,6 +82,68 @@ export const get = query({
     );
 
     return enriched.filter(Boolean) as typeof enriched extends (infer T | null)[] ? Exclude<T, null>[] : never;
+  },
+});
+
+/**
+ * Public query — no auth required.
+ * Enriches guest cart items (from localStorage) with live product data.
+ * Invalid, invisible, or out-of-stock items are silently filtered.
+ */
+export const getGuestCartItems = query({
+  args: {
+    items: v.array(
+      v.object({
+        productId: v.string(),
+        variantId: v.string(),
+        quantity: v.number(),
+      })
+    ),
+  },
+  returns: v.array(guestCartItemFull),
+  handler: async (ctx, args) => {
+    if (args.items.length === 0) return [];
+
+    const enriched = await Promise.all(
+      args.items.map(async (item) => {
+        let product, variant;
+        try {
+          product = await ctx.db.get(item.productId as Id<"products">);
+          variant = await ctx.db.get(item.variantId as Id<"productVariants">);
+        } catch {
+          return null; // invalid Convex ID format
+        }
+
+        if (!product || !isProductVisible(product)) return null;
+        if (!variant || variant.productId !== product._id) return null;
+        if (variant.stock === 0) return null;
+
+        const { effectivePrice: discountedPrice, discountAmount } =
+          await getEffectivePrice(ctx, product);
+
+        const firstImage = product.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await r2.getUrl(firstImage.storageId)
+          : null;
+
+        return {
+          variantId: variant._id as string,
+          productId: product._id as string,
+          quantity: Math.min(item.quantity, variant.stock),
+          productName: product.name,
+          productSlug: product.slug,
+          basePrice: product.basePrice,
+          discountedPrice,
+          discountAmount,
+          size: variant.size,
+          color: variant.color,
+          imageUrl,
+          stock: variant.stock,
+        };
+      })
+    );
+
+    return enriched.filter((x): x is NonNullable<typeof x> => x !== null);
   },
 });
 
