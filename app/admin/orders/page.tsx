@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, usePaginatedQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -16,7 +16,6 @@ import {
   Minus,
   X,
   Copy,
-  ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -581,6 +580,13 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   const liveOrder = orderData?.order;
   const liveItems = orderData?.items ?? [];
 
+  useEffect(() => {
+    if (!liveOrder) return;
+    setDeliveryCost(liveOrder.deliveryCost ?? 0);
+    setDiscount(liveOrder.discountAmount ?? 0);
+    setPaymentMethod(liveOrder.paymentMethod ?? "cod");
+  }, [liveOrder?._id]);
+
   const subtotal = liveOrder?.subtotal ?? order.subtotal;
   const advancePaidAmount = advancePaid ?? 0;
   const due = subtotal + deliveryCost - discount - advancePaidAmount;
@@ -684,9 +690,6 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
       setGeneratingLink(false);
     }
   }
-
-  // Selected product's variants
-  const selectedProduct = searchResults?.find((p) => p._id === selectedProductId);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -1095,7 +1098,7 @@ function OrderRow({
   const canDelete = isSuperAdmin || (orderPerms?.canDelete === true);
   const allowedStatuses: string[] = isSuperAdmin
     ? DROPDOWN_STATUSES
-    : (orderPerms?.allowedStatuses ?? DROPDOWN_STATUSES);
+    : (orderPerms?.allowedStatuses ?? []);
 
   const courierValue = order._id in courierEdits ? courierEdits[order._id] : (order.courierName ?? "");
   const collectable = order.total - (order.paymentStatus === "paid" ? order.total : 0);
@@ -1298,17 +1301,17 @@ function OrderRow({
           {/* Audit trail */}
           {order.confirmedBy && (
             <p className="text-xs text-muted-foreground mt-1">
-              Confirmed by {order.confirmedBy.name} · {formatDate(order.confirmedBy.at)}
+              Confirmed by {order.confirmedBy.name} · {new Date(order.confirmedBy.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
           {order.deletedBy && (
             <p className="text-xs text-muted-foreground mt-1">
-              Deleted by {order.deletedBy.name} · {formatDate(order.deletedBy.at)}
+              Deleted by {order.deletedBy.name} · {new Date(order.deletedBy.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
           {order.cancelledBy && (
             <p className="text-xs text-muted-foreground mt-1">
-              Cancelled by {order.cancelledBy.name} · {formatDate(order.cancelledBy.at)}
+              Cancelled by {order.cancelledBy.name} · {new Date(order.cancelledBy.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
         </TableCell>
