@@ -240,8 +240,13 @@ export const generateAdminPaymentLink = action({
     const callerUser: any = await ctx.runQuery(internal.users.getByAuthUserIdInternal, {
       authUserId: identity.subject,
     });
+    if (!callerUser || callerUser.isActive === false) throw new ConvexError("Account deactivated");
     if (!callerUser || (callerUser.role !== "admin" && callerUser.role !== "superadmin")) {
       throw new ConvexError("Unauthorized");
+    }
+    if (callerUser.role === "admin") {
+      const op = callerUser.permissions?.orders;
+      if (!op || !op.enabled || !op.canEdit) throw new ConvexError("Unauthorized");
     }
 
     // Fetch order info
