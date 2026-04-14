@@ -236,6 +236,14 @@ export const generateAdminPaymentLink = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new ConvexError("Unauthenticated");
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const callerUser: any = await ctx.runQuery(internal.users.getByAuthUserIdInternal, {
+      authUserId: identity.subject,
+    });
+    if (!callerUser || (callerUser.role !== "admin" && callerUser.role !== "superadmin")) {
+      throw new ConvexError("Unauthorized");
+    }
+
     // Fetch order info
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await ctx.runQuery(internal.orders.getOrderWithItemsInternal, { orderId });
