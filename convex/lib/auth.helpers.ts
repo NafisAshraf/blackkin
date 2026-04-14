@@ -112,9 +112,8 @@ export async function requireOrderAction(
   const user = await requirePermission(ctx, "orders");
   if (user.role === "superadmin") return user;
   const op = user.permissions!.orders!;
-  const allowed = action === "edit" ? op.canEdit
-    : action === "delete" ? op.canDelete
-    : op.canConfirm;
+  const flagMap = { edit: op.canEdit, delete: op.canDelete, confirm: op.canConfirm } as const;
+  const allowed = flagMap[action];
   if (!allowed) throw new ConvexError("Unauthorized");
   return user;
 }
