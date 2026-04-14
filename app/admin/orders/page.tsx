@@ -1,11 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, usePaginatedQuery, useMutation } from "convex/react";
+import { useQuery, usePaginatedQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { Loader2, CheckCircle, Trash2, MessageSquare, Package } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle,
+  Trash2,
+  MessageSquare,
+  Package,
+  Edit2,
+  Plus,
+  Minus,
+  X,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -84,6 +97,7 @@ interface EnrichedOrder {
   total: number;
   subtotal: number;
   discountAmount: number;
+  deliveryCost?: number;
   paymentMethod?: string;
   paymentStatus: "unpaid" | "paid" | "refunded";
   notes?: string;
@@ -92,15 +106,34 @@ interface EnrichedOrder {
   shippingAddress: {
     name: string;
     phone: string;
-    addressLine1: string;
-    addressLine2?: string;
-    city: string;
-    postalCode?: string;
+    email?: string;
+    address: string;
   };
+  confirmedBy?: { userId: string; name: string; at: number };
+  deletedBy?: { userId: string; name: string; at: number };
+  cancelledBy?: { userId: string; name: string; at: number };
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
   productThumbnails: ProductThumbnail[];
+}
+
+interface CurrentUser {
+  role: "customer" | "admin" | "superadmin";
+  permissions?: {
+    orders?: {
+      enabled: boolean;
+      allowedStatuses: string[];
+      canEdit: boolean;
+      canDelete: boolean;
+      canConfirm: boolean;
+    };
+    marketing: boolean;
+    products: boolean;
+    settings: boolean;
+    pages: boolean;
+    users: boolean;
+  };
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -331,9 +364,7 @@ function CustomerDetailsDialog({ open, onClose, userId, name, phone, email, addr
           {address && (
             <div className="text-sm text-muted-foreground space-y-0.5 border rounded p-3 bg-muted/30">
               <p className="font-medium text-foreground text-xs uppercase tracking-wide mb-1">Address</p>
-              <p>{address.addressLine1}</p>
-              {address.addressLine2 && <p>{address.addressLine2}</p>}
-              <p>{address.city}{address.postalCode ? `, ${address.postalCode}` : ""}</p>
+              <p>{address.address}</p>
             </div>
           )}
 
@@ -496,22 +527,575 @@ function ConfirmDialog({
   );
 }
 
+// ─── EditOrderDialog ──────────────────────────────────────────────────────────
+
+interface EditOrderDialogProps {
+  open: boolean;
+  onClose: () => void;
+  order: EnrichedOrder;
+}
+
+function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
+  // ── Section A: Customer Info ──
+  const [name, setName] = useState(order.shippingAddress.name);
+  const [phone, setPhone] = useState(order.shippingAddress.phone);
+  const [email, setEmail] = useState(order.shippingAddress.email ?? "");
+  const [address, setAddress] = useState(order.shippingAddress.address);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+
+  // ── Section B: Products ──
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedProductId, setSelectedProductId] = useState<Id<"products"> | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<Id<"productVariants"> | null>(null);
+  const [addQty, setAddQty] = useState(1);
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [removeItemId, setRemoveItemId] = useState<Id<"orderItems"> | null>(null);
+
+  // ── Section C: Pricing ──
+  const [deliveryCost, setDeliveryCost] = useState<number>(order.deliveryCost ?? 0);
+  const [discount, setDiscount] = useState<number>(order.discountAmount ?? 0);
+  const [paymentMethod, setPaymentMethod] = useState<string>(order.paymentMethod ?? "cod");
+  const [savingPricing, setSavingPricing] = useState(false);
+  const [paymentLink, setPaymentLink] = useState<string | null>(null);
+  const [generatingLink, setGeneratingLink] = useState(false);
+
+  const updateSnapshot = useMutation(api.orders.updateOrderSnapshot);
+  const updateItem = useMutation(api.orders.updateOrderItem);
+  const removeItem = useMutation(api.orders.removeOrderItem);
+  const addItem = useMutation(api.orders.addOrderItem);
+  const updatePricing = useMutation(api.orders.updateOrderPricing);
+  const generatePaymentLink = useAction(api.paymentActions.generateAdminPaymentLink);
+
+  // Fetch live order data
+  const orderData = useQuery(api.orders.getById, open ? { orderId: order._id } : "skip");
+  const advancePaid = useQuery(api.orders.getAdvancePaid, open ? { orderId: order._id } : "skip");
+
+  // Product search
+  const searchResults = useQuery(
+    api.products.searchForAdmin,
+    showAddProduct && searchTerm.trim() ? { query: searchTerm } : "skip"
+  );
+
+  // Sync delivery cost + discount when live data loads
+  const liveOrder = orderData?.order;
+  const liveItems = orderData?.items ?? [];
+
+  const subtotal = liveOrder?.subtotal ?? order.subtotal;
+  const advancePaidAmount = advancePaid ?? 0;
+  const due = subtotal + deliveryCost - discount - advancePaidAmount;
+
+  async function handleSaveCustomer() {
+    setSavingCustomer(true);
+    try {
+      await updateSnapshot({
+        orderId: order._id,
+        name,
+        phone,
+        email: email.trim() || undefined,
+        address,
+      });
+      toast.success("Customer info saved");
+    } catch {
+      toast.error("Failed to save customer info");
+    } finally {
+      setSavingCustomer(false);
+    }
+  }
+
+  async function handleUpdateItemQty(
+    itemId: Id<"orderItems">,
+    variantId: Id<"productVariants">,
+    newQty: number
+  ) {
+    if (newQty < 1) return;
+    try {
+      await updateItem({ orderId: order._id, itemId, variantId, quantity: newQty });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg.includes("Insufficient") ? "Insufficient stock" : "Failed to update quantity");
+    }
+  }
+
+  async function handleRemoveItem(itemId: Id<"orderItems">) {
+    try {
+      await removeItem({ orderId: order._id, itemId });
+      setRemoveItemId(null);
+      toast.success("Item removed");
+    } catch {
+      toast.error("Failed to remove item");
+    }
+  }
+
+  async function handleAddProduct() {
+    if (!selectedProductId || !selectedVariantId) {
+      toast.error("Select a product and variant first");
+      return;
+    }
+    setAddingProduct(true);
+    try {
+      await addItem({
+        orderId: order._id,
+        productId: selectedProductId,
+        variantId: selectedVariantId,
+        quantity: addQty,
+      });
+      toast.success("Product added");
+      setShowAddProduct(false);
+      setSearchTerm("");
+      setSelectedProductId(null);
+      setSelectedVariantId(null);
+      setAddQty(1);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg.includes("Insufficient") ? "Insufficient stock" : "Failed to add product");
+    } finally {
+      setAddingProduct(false);
+    }
+  }
+
+  async function handleSavePricing() {
+    setSavingPricing(true);
+    try {
+      await updatePricing({
+        orderId: order._id,
+        deliveryCost,
+        discountAmount: discount,
+        paymentMethod: paymentMethod || undefined,
+      });
+      toast.success("Pricing saved");
+      setPaymentLink(null);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Failed to save pricing");
+    } finally {
+      setSavingPricing(false);
+    }
+  }
+
+  async function handleGeneratePaymentLink() {
+    setGeneratingLink(true);
+    try {
+      const result = await generatePaymentLink({ orderId: order._id, dueAmount: due });
+      setPaymentLink(result.GatewayPageURL);
+    } catch {
+      toast.error("Failed to generate payment link");
+    } finally {
+      setGeneratingLink(false);
+    }
+  }
+
+  // Selected product's variants
+  const selectedProduct = searchResults?.find((p) => p._id === selectedProductId);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit Order — {formatOrderId(order._id)}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6 pb-2">
+
+          {/* ── Section A: Customer Info ── */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Customer Info</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-name" className="text-xs">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-phone" className="text-xs">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-email" className="text-xs">Email <span className="text-muted-foreground">(optional)</span></Label>
+              <Input
+                id="edit-email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-8 text-sm"
+                placeholder="customer@example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-address" className="text-xs">Address</Label>
+              <Textarea
+                id="edit-address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={2}
+                className="resize-none text-sm"
+                placeholder="Full delivery address"
+              />
+            </div>
+            <Button size="sm" onClick={handleSaveCustomer} disabled={savingCustomer}>
+              {savingCustomer ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              Save Customer Info
+            </Button>
+          </div>
+
+          <hr className="border-border" />
+
+          {/* ── Section B: Products ── */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Products</h3>
+
+            {/* Current items */}
+            {liveItems.length === 0 && orderData === undefined && (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            <div className="space-y-2">
+              {liveItems.map((item) => (
+                <div key={item._id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/20">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.productName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.color ? `${item.color} / ` : ""}{item.size} · {formatAmount(item.unitPrice)} each
+                    </p>
+                  </div>
+                  {/* Qty controls */}
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => handleUpdateItemQty(item._id, item.variantId, item.quantity - 1)}
+                      disabled={item.quantity <= 1}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => handleUpdateItemQty(item._id, item.variantId, item.quantity + 1)}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <p className="text-sm font-semibold w-20 text-right flex-shrink-0">
+                    {formatAmount(item.totalPrice)}
+                  </p>
+                  {/* Delete */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                    onClick={() => setRemoveItemId(item._id)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {/* Add product toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setShowAddProduct((v) => !v)}
+            >
+              {showAddProduct ? (
+                <><ChevronUp className="h-3.5 w-3.5 mr-1.5" />Hide Product Search</>
+              ) : (
+                <><Plus className="h-3.5 w-3.5 mr-1.5" />Choose Another Product</>
+              )}
+            </Button>
+
+            {/* Add product inline panel */}
+            {showAddProduct && (
+              <div className="border rounded-md p-3 space-y-3 bg-muted/10">
+                <Input
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setSelectedProductId(null);
+                    setSelectedVariantId(null);
+                  }}
+                  className="h-8 text-sm"
+                />
+                {searchTerm.trim() && searchResults === undefined && (
+                  <div className="flex justify-center py-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+                {searchResults && searchResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2">No products found</p>
+                )}
+                {searchResults && searchResults.length > 0 && (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {searchResults.map((product) => (
+                      <div
+                        key={product._id}
+                        className={`p-2 border rounded cursor-pointer transition-colors ${
+                          selectedProductId === product._id
+                            ? "border-primary bg-primary/5"
+                            : "hover:bg-muted/40"
+                        }`}
+                        onClick={() => {
+                          setSelectedProductId(product._id);
+                          setSelectedVariantId(null);
+                        }}
+                      >
+                        <p className="text-sm font-medium">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatAmount(product.basePrice)}</p>
+                        {/* Variant chips */}
+                        {selectedProductId === product._id && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {product.variants.map((variant) => (
+                              <button
+                                key={variant._id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedVariantId(variant._id);
+                                }}
+                                className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                                  selectedVariantId === variant._id
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : variant.stock <= 0
+                                    ? "border-gray-200 text-gray-400 cursor-not-allowed"
+                                    : "border-gray-300 hover:border-primary"
+                                }`}
+                                disabled={variant.stock <= 0}
+                                title={variant.stock <= 0 ? "Out of stock" : `Stock: ${variant.stock}`}
+                              >
+                                {variant.color ? `${variant.color} / ` : ""}{variant.size}
+                                {variant.stock <= 0 && " (OOS)"}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedProductId && selectedVariantId && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Qty:</Label>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => setAddQty((q) => Math.max(1, q - 1))}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-8 text-center text-sm">{addQty}</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => setAddQty((q) => q + 1)}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="ml-auto"
+                      onClick={handleAddProduct}
+                      disabled={addingProduct}
+                    >
+                      {addingProduct ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                      Add
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <hr className="border-border" />
+
+          {/* ── Section C: Pricing & Payment ── */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Pricing & Payment</h3>
+
+            <div className="space-y-2">
+              {/* Subtotal — read-only */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-medium">{formatAmount(subtotal)}</span>
+              </div>
+
+              {/* Delivery cost — editable */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground w-32 flex-shrink-0">Delivery Cost</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={deliveryCost}
+                  onChange={(e) => setDeliveryCost(Math.max(0, Number(e.target.value)))}
+                  className="h-7 text-sm w-32"
+                />
+              </div>
+
+              {/* Discount — editable */}
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground w-32 flex-shrink-0">Discount</span>
+                <Input
+                  type="number"
+                  min={0}
+                  value={discount}
+                  onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))}
+                  className="h-7 text-sm w-32"
+                />
+              </div>
+
+              <hr className="border-border my-1" />
+
+              {/* Advance Paid — read-only */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Advance Paid</span>
+                <span className="font-medium text-green-600">{formatAmount(advancePaidAmount)}</span>
+              </div>
+
+              {/* Due — read-only, calculated */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold">Due</span>
+                <span className="font-bold text-base">{formatAmount(Math.max(0, due))}</span>
+              </div>
+            </div>
+
+            {/* Payment method */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Payment Method</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cod" className="text-sm">Cash on Delivery</SelectItem>
+                  <SelectItem value="online" className="text-sm">Online Payment</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button size="sm" onClick={handleSavePricing} disabled={savingPricing}>
+              {savingPricing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              Save Pricing
+            </Button>
+
+            {/* Generate Payment Link — only if Online Payment AND due > 0 */}
+            {paymentMethod === "online" && due > 0 && (
+              <div className="space-y-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGeneratePaymentLink}
+                  disabled={generatingLink}
+                >
+                  {generatingLink ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  Generate Payment Link
+                </Button>
+                {paymentLink && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={paymentLink}
+                      className="h-7 text-xs font-mono"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 flex-shrink-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(paymentLink);
+                        toast.success("Copied!");
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Remove Item Confirmation */}
+        <AlertDialog open={removeItemId !== null} onOpenChange={(v) => { if (!v) setRemoveItemId(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Item?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the item from the order and restore stock.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (removeItemId) handleRemoveItem(removeItemId);
+                }}
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── OrderRow ─────────────────────────────────────────────────────────────────
 
 interface OrderRowProps {
   order: EnrichedOrder;
+  currentUser: CurrentUser | null;
   onUpdateStatus: (orderId: Id<"orders">, status: OrderStatus) => Promise<void>;
   onUpdateCourier: (orderId: Id<"orders">, courierName: string) => Promise<void>;
   courierEdits: Record<string, string>;
   setCourierEdit: (id: string, val: string) => void;
+  onEditOpen: (orderId: Id<"orders">) => void;
 }
 
-function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCourierEdit }: OrderRowProps) {
+function OrderRow({
+  order,
+  currentUser,
+  onUpdateStatus,
+  onUpdateCourier,
+  courierEdits,
+  setCourierEdit,
+  onEditOpen,
+}: OrderRowProps) {
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [completedDialogOpen, setCompletedDialogOpen] = useState(false);
   const [deletedDialogOpen, setDeletedDialogOpen] = useState(false);
   const [editingCourier, setEditingCourier] = useState(false);
+
+  const isSuperAdmin = currentUser?.role === "superadmin";
+  const orderPerms = currentUser?.permissions?.orders;
+
+  const canEdit = isSuperAdmin || (orderPerms?.canEdit === true);
+  const canConfirm = isSuperAdmin || (orderPerms?.canConfirm === true);
+  const canDelete = isSuperAdmin || (orderPerms?.canDelete === true);
+  const allowedStatuses: string[] = isSuperAdmin
+    ? DROPDOWN_STATUSES
+    : (orderPerms?.allowedStatuses ?? DROPDOWN_STATUSES);
 
   const courierValue = order._id in courierEdits ? courierEdits[order._id] : (order.courierName ?? "");
   const collectable = order.total - (order.paymentStatus === "paid" ? order.total : 0);
@@ -523,6 +1107,11 @@ function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCou
 
   const customerDisplayName = order.shippingAddress.name || order.customerName || "—";
   const customerPhone = order.shippingAddress.phone || order.customerPhone || "—";
+
+  // Filter dropdown statuses to allowed ones
+  const visibleDropdownStatuses = DROPDOWN_STATUSES.filter((s) =>
+    allowedStatuses.includes(s)
+  );
 
   return (
     <>
@@ -542,7 +1131,7 @@ function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCou
             {customerDisplayName}
           </button>
           <p className="text-xs text-muted-foreground">{customerPhone}</p>
-          <p className="text-xs text-muted-foreground">{order.shippingAddress.city}</p>
+          <p className="text-xs text-muted-foreground">{order.shippingAddress.address?.split(",")[0]}</p>
         </TableCell>
 
         {/* Products */}
@@ -595,7 +1184,7 @@ function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCou
           <p className="text-sm font-semibold">{formatAmount(collectable)}</p>
         </TableCell>
 
-        {/* Status — dropdown excludes completed/deleted; terminal orders still show current status */}
+        {/* Status — dropdown filtered by permissions */}
         <TableCell className="min-w-[160px]">
           <Select
             value={order.status}
@@ -619,7 +1208,7 @@ function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCou
                   </span>
                 </SelectItem>
               )}
-              {DROPDOWN_STATUSES.map((s) => (
+              {visibleDropdownStatuses.map((s) => (
                 <SelectItem key={s} value={s} className="text-xs">
                   <span className="flex items-center gap-1.5">
                     <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${TAB_COLORS[s].dot}`} />
@@ -669,27 +1258,59 @@ function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCou
         </TableCell>
 
         {/* Actions */}
-        <TableCell className="min-w-[80px]">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-              onClick={() => setCompletedDialogOpen(true)}
-              title="Mark as Completed"
-            >
-              <CheckCircle className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={() => setDeletedDialogOpen(true)}
-              title="Move to Deleted"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+        <TableCell className="min-w-[100px]">
+          <div className="flex items-center gap-1 flex-wrap">
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                onClick={() => onEditOpen(order._id)}
+                title="Edit Order"
+              >
+                <Edit2 className="h-4 w-4" />
+              </Button>
+            )}
+            {canConfirm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                onClick={() => setCompletedDialogOpen(true)}
+                title="Mark as Completed"
+              >
+                <CheckCircle className="h-4 w-4" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                onClick={() => setDeletedDialogOpen(true)}
+                title="Move to Deleted"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
+
+          {/* Audit trail */}
+          {order.confirmedBy && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Confirmed by {order.confirmedBy.name} · {formatDate(order.confirmedBy.at)}
+            </p>
+          )}
+          {order.deletedBy && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Deleted by {order.deletedBy.name} · {formatDate(order.deletedBy.at)}
+            </p>
+          )}
+          {order.cancelledBy && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Cancelled by {order.cancelledBy.name} · {formatDate(order.cancelledBy.at)}
+            </p>
+          )}
         </TableCell>
       </TableRow>
 
@@ -740,6 +1361,7 @@ function OrderRow({ order, onUpdateStatus, onUpdateCourier, courierEdits, setCou
 export default function AdminOrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState<SelectedStatus>("all");
   const [courierEdits, setCourierEditsState] = useState<Record<string, string>>({});
+  const [editOrderId, setEditOrderId] = useState<Id<"orders"> | null>(null);
 
   const { results, status, loadMore } = usePaginatedQuery(
     api.orders.listAllEnriched,
@@ -753,6 +1375,7 @@ export default function AdminOrdersPage() {
   const statusCounts = useQuery(api.orders.getStatusCounts);
   const updateStatus = useMutation(api.orders.updateStatus);
   const updateCourier = useMutation(api.orders.updateCourier);
+  const currentUser = useQuery(api.users.getCurrentUserWithRole);
 
   // "All" tab counts exclude completed/deleted
   const excludedSet = new Set(EXCLUDED_FROM_ALL);
@@ -789,6 +1412,7 @@ export default function AdminOrdersPage() {
   }
 
   const orders = results as EnrichedOrder[];
+  const editOrder = editOrderId ? orders.find((o) => o._id === editOrderId) ?? null : null;
 
   return (
     <div className="space-y-4">
@@ -873,10 +1497,12 @@ export default function AdminOrdersPage() {
                 <OrderRow
                   key={order._id}
                   order={order}
+                  currentUser={currentUser ?? null}
                   onUpdateStatus={handleUpdateStatus}
                   onUpdateCourier={handleUpdateCourier}
                   courierEdits={courierEdits}
                   setCourierEdit={setCourierEdit}
+                  onEditOpen={(id) => setEditOrderId(id)}
                 />
               ))
             )}
@@ -895,6 +1521,15 @@ export default function AdminOrdersPage() {
             Load More
           </Button>
         </div>
+      )}
+
+      {/* Edit Order Dialog — rendered at page level */}
+      {editOrder && (
+        <EditOrderDialog
+          open={editOrderId !== null}
+          onClose={() => setEditOrderId(null)}
+          order={editOrder}
+        />
       )}
     </div>
   );

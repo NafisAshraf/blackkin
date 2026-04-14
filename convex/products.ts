@@ -363,6 +363,51 @@ export const searchForPicker = query({
   },
 });
 
+/** Admin: product search with variants — for the order edit item picker */
+export const searchForAdmin = query({
+  args: { query: v.string() },
+  returns: v.array(
+    v.object({
+      _id: v.id("products"),
+      name: v.string(),
+      basePrice: v.number(),
+      variants: v.array(v.object({
+        _id: v.id("productVariants"),
+        size: v.string(),
+        color: v.optional(v.string()),
+        stock: v.number(),
+        priceOverride: v.optional(v.number()),
+      })),
+    })
+  ),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    if (!args.query.trim()) return [];
+    const results = await ctx.db
+      .query("products")
+      .withSearchIndex("search_name", (q) => q.search("name", args.query))
+      .take(10);
+    return await Promise.all(results.map(async (p) => {
+      const variants = await ctx.db
+        .query("productVariants")
+        .withIndex("by_productId", (q) => q.eq("productId", p._id))
+        .take(50);
+      return {
+        _id: p._id,
+        name: p.name,
+        basePrice: p.basePrice,
+        variants: variants.map((v) => ({
+          _id: v._id,
+          size: v.size,
+          color: v.color,
+          stock: v.stock,
+          priceOverride: v.priceOverride,
+        })),
+      };
+    }));
+  },
+});
+
 /**
  * Admin: fetch ALL products in one query (no pagination).
  * Used by the admin products page — all tab filtering/grouping happens client-side.
