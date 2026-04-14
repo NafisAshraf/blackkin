@@ -19,10 +19,7 @@ function genTranId(): string {
 const shippingAddressValidator = v.object({
   name: v.string(),
   phone: v.string(),
-  addressLine1: v.string(),
-  addressLine2: v.optional(v.string()),
-  city: v.string(),
-  postalCode: v.optional(v.string()),
+  address: v.string(),
 });
 
 /** Build the SSLCommerz payload */
@@ -30,10 +27,7 @@ function buildSslData(params: {
   tranId: string;
   total: number;
   items: Array<{ productName: string; quantity: number; unitPrice: number; variantId: string }>;
-  shippingAddress: {
-    name: string; phone: string; addressLine1: string;
-    addressLine2?: string | undefined; city: string; postalCode?: string | undefined;
-  };
+  shippingAddress: { name: string; phone: string; address: string };
   cusEmail: string;
   cusName: string;
   orderId: string;
@@ -53,22 +47,22 @@ function buildSslData(params: {
     product_profile: "physical-goods",
     cus_name: cusName || "Customer",
     cus_email: cusEmail,
-    cus_add1: shippingAddress.addressLine1,
-    cus_add2: shippingAddress.addressLine2 ?? "",
-    cus_city: shippingAddress.city,
-    cus_state: shippingAddress.city,
-    cus_postcode: shippingAddress.postalCode ?? "1000",
+    cus_add1: shippingAddress.address,
+    cus_add2: "",
+    cus_city: "Dhaka",
+    cus_state: "Dhaka",
+    cus_postcode: "1000",
     cus_country: "Bangladesh",
     cus_phone: shippingAddress.phone,
     ship_name: shippingAddress.name,
-    ship_add1: shippingAddress.addressLine1,
-    ship_add2: shippingAddress.addressLine2 ?? "",
-    ship_city: shippingAddress.city,
-    ship_state: shippingAddress.city,
-    ship_postcode: shippingAddress.postalCode ?? "1000",
+    ship_add1: shippingAddress.address,
+    ship_add2: "",
+    ship_city: "Dhaka",
+    ship_state: "Dhaka",
+    ship_postcode: "1000",
     ship_country: "Bangladesh",
     num_of_item: items.reduce((s, i) => s + i.quantity, 0),
-    // The SSLCommerz sandbox throws a 500 error if the cart JSON is populated. 
+    // The SSLCommerz sandbox throws a 500 error if the cart JSON is populated.
     // Sending an empty array circumvents the issue without affecting the total payment.
     cart: JSON.stringify([]),
     product_amount: total,
@@ -193,10 +187,7 @@ export const retryPayment = action({
       shippingAddress: {
         name: shippingAddress.name,
         phone: shippingAddress.phone,
-        addressLine1: shippingAddress.addressLine1,
-        addressLine2: shippingAddress.addressLine2,
-        city: shippingAddress.city,
-        postalCode: shippingAddress.postalCode,
+        address: shippingAddress.address,
       },
       cusEmail: user.email ?? user.phone ?? "customer@blackkin.local",
       cusName: user.name ?? shippingAddress.name,
@@ -227,6 +218,73 @@ export const retryPayment = action({
       GatewayPageURL: apiResponse.GatewayPageURL,
       orderId: args.orderId as unknown as string,
     };
+  },
+});
+
+// ─── Admin action: generate a payment link for a specific due amount ──────────
+
+export const generateAdminPaymentLink = action({
+  args: {
+    orderId: v.id("orders"),
+    dueAmount: v.number(),
+  },
+  returns: v.object({ GatewayPageURL: v.string() }),
+  handler: async (ctx, { orderId, dueAmount }) => {
+    if (dueAmount <= 0) throw new ConvexError("Due amount must be positive");
+
+    // Auth: must be admin or superadmin
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new ConvexError("Unauthenticated");
+
+    // Fetch order info
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await ctx.runQuery(internal.orders.getOrderWithItemsInternal, { orderId });
+    if (!data) throw new ConvexError("Order not found");
+    const { order, items, user } = data;
+
+    const tranId = genTranId();
+    const sslData = buildSslData({
+      tranId,
+      total: dueAmount,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      items: items.map((i: any) => ({
+        productName: i.productName,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        variantId: i.variantId as unknown as string,
+      })),
+      shippingAddress: {
+        name: order.shippingAddress.name,
+        phone: order.shippingAddress.phone,
+        address: order.shippingAddress.address,
+      },
+      cusEmail: order.shippingAddress.email ?? user?.email ?? "customer@blackkin.local",
+      cusName: order.shippingAddress.name,
+      orderId: orderId as unknown as string,
+    });
+
+    const sslcz = new SSLCommerzPayment(STORE_ID, STORE_PASS, IS_LIVE);
+    const apiResponse: any = await sslcz.init(sslData).catch((e: Error) => ({
+      status: "FAILED",
+      failedreason: e.message,
+    }));
+
+    if (apiResponse?.status !== "SUCCESS" || !apiResponse?.GatewayPageURL) {
+      throw new ConvexError(
+        apiResponse?.failedreason ?? "Payment gateway unavailable. Please try again."
+      );
+    }
+
+    await ctx.runMutation(internal.payments.create, {
+      orderId,
+      tranId,
+      sessionKey: apiResponse.sessionkey,
+      gatewayPageUrl: apiResponse.GatewayPageURL,
+      amount: dueAmount,
+      currency: "BDT",
+    });
+
+    return { GatewayPageURL: apiResponse.GatewayPageURL };
   },
 });
 
