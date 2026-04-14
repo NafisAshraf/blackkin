@@ -5,6 +5,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,9 +13,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Home, Briefcase, MapPin, CreditCard, Banknote } from "lucide-react";
+import { Loader2, Home, Briefcase, MapPin, CreditCard, Banknote, Trash2, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type AddressMode = "home" | "work" | "custom";
 type SaveAs = "home" | "work" | "none";
@@ -57,6 +68,11 @@ export default function CheckoutPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cartUpdateLoadingId, setCartUpdateLoadingId] = useState<string | null>(null);
+  const [checkoutDeleteConfirm, setCheckoutDeleteConfirm] = useState<{
+    cartItemId: Id<"cartItems">;
+    productName: string;
+  } | null>(null);
 
   const homeAddress = savedAddresses?.find((a) => a.type === "home");
   const workAddress = savedAddresses?.find((a) => a.type === "work");
@@ -455,29 +471,83 @@ export default function CheckoutPage() {
             <h2 className="text-lg font-medium">Order Summary</h2>
 
             <div className="space-y-4">
-              {cart.items.map((item) => (
-                <div key={item._id} className="flex gap-4 items-start">
-                  {item.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.imageUrl}
-                      alt={item.productName}
-                      className="w-16 h-16 object-cover rounded-md bg-muted flex-shrink-0"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium line-clamp-2">{item.productName}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Size: {item.size}
-                      {item.color ? ` · ${item.color}` : ""}
-                      {" · "}Qty: {item.quantity}
-                    </p>
+              {cart.items.map((item) => {
+                const isItemLoading = cartUpdateLoadingId === item._id;
+                return (
+                  <div key={item._id} className="flex gap-4 items-start">
+                    {item.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt={item.productName}
+                        className="w-16 h-16 object-cover rounded-md bg-muted flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium line-clamp-2">{item.productName}</p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Size: {item.size}
+                        {item.color ? ` · ${item.color}` : ""}
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center border border-border">
+                          {item.quantity === 1 ? (
+                            <button
+                              className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                              disabled={isItemLoading}
+                              onClick={() =>
+                                setCheckoutDeleteConfirm({ cartItemId: item._id, productName: item.productName })
+                              }
+                              aria-label="Remove item"
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </button>
+                          ) : (
+                            <button
+                              className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                              disabled={isItemLoading}
+                              onClick={async () => {
+                                setCartUpdateLoadingId(item._id);
+                                try {
+                                  await updateCartQty({ cartItemId: item._id, quantity: item.quantity - 1 });
+                                } catch (e: unknown) {
+                                  toast.error(e instanceof Error ? e.message : "Failed to update quantity");
+                                } finally {
+                                  setCartUpdateLoadingId(null);
+                                }
+                              }}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                          )}
+                          <span className="h-6 w-7 flex items-center justify-center text-xs font-medium border-x border-border">
+                            {isItemLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : item.quantity}
+                          </span>
+                          <button
+                            className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                            disabled={item.quantity >= item.stock || isItemLoading}
+                            onClick={async () => {
+                              setCartUpdateLoadingId(item._id);
+                              try {
+                                await updateCartQty({ cartItemId: item._id, quantity: item.quantity + 1 });
+                              } catch (e: unknown) {
+                                toast.error(e instanceof Error ? e.message : "Failed to update quantity");
+                              } finally {
+                                setCartUpdateLoadingId(null);
+                              }
+                            }}
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <p className="text-sm font-medium whitespace-nowrap">
+                          ৳{(item.discountedPrice * item.quantity).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm font-medium whitespace-nowrap">
-                    ৳{(item.discountedPrice * item.quantity).toLocaleString()}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <Separator />
@@ -579,6 +649,40 @@ export default function CheckoutPage() {
           </div>
         </div>
       </main>
+
+      <AlertDialog
+        open={!!checkoutDeleteConfirm}
+        onOpenChange={(open) => !open && setCheckoutDeleteConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from cart?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove &ldquo;{checkoutDeleteConfirm?.productName}&rdquo; from your cart?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!cartUpdateLoadingId}
+              onClick={async () => {
+                if (!checkoutDeleteConfirm) return;
+                setCartUpdateLoadingId(checkoutDeleteConfirm.cartItemId);
+                try {
+                  await removeFromCart({ cartItemId: checkoutDeleteConfirm.cartItemId });
+                  setCheckoutDeleteConfirm(null);
+                } catch (e: unknown) {
+                  toast.error(e instanceof Error ? e.message : "Failed to remove item");
+                } finally {
+                  setCartUpdateLoadingId(null);
+                }
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
