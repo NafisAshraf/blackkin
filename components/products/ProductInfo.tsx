@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, Loader2, ShoppingCart, Info } from "lucide-react";
+import { Heart, Loader2, ShoppingCart, Info, Trash2 } from "lucide-react";
 import SizeSelector from "./SizeSelector";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import WishlistButton from "@/components/wishlist/WishlistButton";
@@ -11,6 +11,16 @@ import { authClient } from "@/lib/auth-client";
 import { addToGuestCart, getGuestCart, updateGuestCartQuantity, removeFromGuestCart } from "@/lib/guest-cart";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Variant {
   _id: Id<"productVariants">;
@@ -125,6 +135,7 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
 
   const [quantity, setQuantity] = useState(1);
   const [isUpdatingCart, setIsUpdatingCart] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const uniqueSizes = Array.from(new Set(variants.map((v) => v.size)));
 
@@ -287,27 +298,32 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
       <div className="space-y-2">
         <p className="text-sm font-medium">Quantity</p>
         <div className="flex items-center gap-0 border border-border w-fit">
-          <button
-            className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
-            onClick={async () => {
-              if (isInCart) {
-                if (cartItem.quantity <= 1) {
+          {isInCart && cartItem!.quantity === 1 ? (
+            <button
+              className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isUpdatingCart}
+              aria-label="Remove from cart"
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </button>
+          ) : (
+            <button
+              className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
+              onClick={async () => {
+                if (isInCart) {
                   setIsUpdatingCart(true);
-                  await removeFromCartMutation({ cartItemId: cartItem._id });
+                  await updateCartQty({ cartItemId: cartItem!._id, quantity: cartItem!.quantity - 1 });
                   setIsUpdatingCart(false);
                 } else {
-                  setIsUpdatingCart(true);
-                  await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity - 1 });
-                  setIsUpdatingCart(false);
+                  setQuantity((q) => Math.max(1, q - 1));
                 }
-              } else {
-                setQuantity((q) => Math.max(1, q - 1));
-              }
-            }}
-            disabled={(isInCart ? cartItem.quantity <= 1 : quantity <= 1) || isUpdatingCart}
-          >
-            −
-          </button>
+              }}
+              disabled={(isInCart ? (cartItem?.quantity ?? 1) <= 1 : quantity <= 1) || isUpdatingCart}
+            >
+              −
+            </button>
+          )}
           <span className="h-10 w-12 flex items-center justify-center text-sm font-medium border-x border-border">
             {isUpdatingCart ? <Loader2 className="h-3 w-3 animate-spin" /> : displayQuantity}
           </span>
@@ -388,6 +404,33 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
           ))}
         </div>
       )}
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from cart?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove &ldquo;{name}&rdquo; from your cart?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isUpdatingCart}
+              onClick={async () => {
+                if (cartItem) {
+                  setIsUpdatingCart(true);
+                  await removeFromCartMutation({ cartItemId: cartItem._id });
+                  setIsUpdatingCart(false);
+                }
+                setShowDeleteConfirm(false);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
