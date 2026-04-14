@@ -11,7 +11,13 @@ export default defineSchema({
     role: v.union(v.literal("customer"), v.literal("admin"), v.literal("superadmin")),
     isActive: v.optional(v.boolean()), // undefined = active, false = deactivated
     permissions: v.optional(v.object({
-      orders: v.boolean(),
+      orders: v.optional(v.object({
+        enabled: v.boolean(),
+        allowedStatuses: v.array(v.string()),
+        canEdit: v.boolean(),
+        canDelete: v.boolean(),
+        canConfirm: v.boolean(),
+      })),
       marketing: v.boolean(),
       products: v.boolean(),
       settings: v.boolean(),
@@ -198,10 +204,7 @@ export default defineSchema({
     type: v.union(v.literal("home"), v.literal("work")),
     name: v.string(),
     phone: v.string(),
-    addressLine1: v.string(),
-    addressLine2: v.optional(v.string()),
-    city: v.string(),
-    postalCode: v.optional(v.string()),
+    address: v.string(),
   })
     .index("by_userId", ["userId"])
     .index("by_userId_and_type", ["userId", "type"]),
@@ -225,14 +228,13 @@ export default defineSchema({
     shippingAddress: v.object({
       name: v.string(),
       phone: v.string(),
-      addressLine1: v.string(),
-      addressLine2: v.optional(v.string()),
-      city: v.string(),
-      postalCode: v.optional(v.string()),
+      email: v.optional(v.string()),   // snapshot of customer email at order time
+      address: v.string(),             // single free-text field
     }),
     subtotal: v.number(),
     discountAmount: v.number(),
     total: v.number(),
+    deliveryCost: v.optional(v.number()),
     paymentMethod: v.optional(v.string()),
     paymentStatus: v.union(
       v.literal("unpaid"),
@@ -241,6 +243,9 @@ export default defineSchema({
     ),
     notes: v.optional(v.string()),
     adminNote: v.optional(v.string()), // single admin note (replaces chat-style orderNotes)
+    confirmedBy: v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
+    deletedBy:   v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
+    cancelledBy: v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
   })
     .index("by_userId", ["userId"])
     .index("by_status", ["status"])
