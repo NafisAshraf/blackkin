@@ -11,6 +11,7 @@ import { Id } from "./_generated/dataModel";
 const shippingAddressValidator = v.object({
   name: v.string(),
   phone: v.string(),
+  email: v.optional(v.string()),
   address: v.string(),
 });
 
