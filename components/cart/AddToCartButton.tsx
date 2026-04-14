@@ -7,7 +7,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { addToGuestCart } from "@/lib/guest-cart";
+import { useCart } from "./CartProvider";
 
 interface AddToCartButtonProps {
   productId: Id<"products">;
@@ -26,6 +26,7 @@ export default function AddToCartButton({
 }: AddToCartButtonProps) {
   const { data: session } = authClient.useSession();
   const addMutation = useMutation(api.cart.add);
+  const { addGuestItem } = useCart();
   const [loading, setLoading] = useState(false);
 
   const isDisabled = disabled || variantId === null;
@@ -45,7 +46,7 @@ export default function AddToCartButton({
         setLoading(false);
       }
     } else {
-      addToGuestCart(productId as string, variantId as string, quantity);
+      addGuestItem(productId as string, variantId as string, quantity);
       toast.success(quantity > 1 ? `${quantity} items added to cart` : "Added to cart");
       onSuccess?.();
     }
