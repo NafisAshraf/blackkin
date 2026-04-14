@@ -1,19 +1,17 @@
-import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
+import { query, mutation, internalMutation, internalQuery, MutationCtx } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { requireAuth, requirePermission } from "./lib/auth.helpers";
+import { requireAuth, requirePermission, requireOrderAction } from "./lib/auth.helpers";
 import { aggregateOrders } from "./lib/aggregates";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { orderStatusValidator, ORDER_STATUS_LIST, type OrderStatus } from "./lib/validators";
 import { r2 } from "./r2";
+import { Id } from "./_generated/dataModel";
 
 const shippingAddressValidator = v.object({
   name: v.string(),
   phone: v.string(),
-  addressLine1: v.string(),
-  addressLine2: v.optional(v.string()),
-  city: v.string(),
-  postalCode: v.optional(v.string()),
+  address: v.string(),
 });
 
 const orderItemObject = v.object({
@@ -122,7 +120,7 @@ export const create = mutation({
     const orderId = await ctx.db.insert("orders", {
       userId: user._id,
       status: "new",
-      shippingAddress: args.shippingAddress,
+      shippingAddress: { ...args.shippingAddress, email: user.email },
       subtotal,
       discountAmount,
       total,
@@ -279,13 +277,34 @@ export const updateStatus = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requirePermission(ctx, "orders");
+    const admin = await requirePermission(ctx, "orders");
+
+    // Server-side allowedStatuses enforcement
+    if (admin.role !== "superadmin") {
+      const allowed = admin.permissions?.orders?.allowedStatuses ?? [];
+      if (!allowed.includes(args.status)) throw new ConvexError("Unauthorized");
+    }
+
+    // Action-level permission for terminal statuses
+    if (admin.role !== "superadmin") {
+      if (args.status === "completed" && !admin.permissions?.orders?.canConfirm) throw new ConvexError("Unauthorized");
+      if (args.status === "deleted" && !admin.permissions?.orders?.canDelete) throw new ConvexError("Unauthorized");
+    }
+
     const oldOrder = await ctx.db.get(args.orderId);
     if (!oldOrder) throw new ConvexError("Order not found");
 
     await ctx.db.patch(args.orderId, { status: args.status });
     const newOrder = await ctx.db.get(args.orderId);
     if (newOrder) await aggregateOrders.replaceOrInsert(ctx, oldOrder, newOrder);
+
+    // Audit trail for terminal statuses
+    const now = Date.now();
+    const actorName = admin.name ?? admin.email ?? "Unknown";
+    const actor = { userId: admin._id, name: actorName, at: now };
+    if (args.status === "completed") await ctx.db.patch(args.orderId, { confirmedBy: actor });
+    if (args.status === "deleted")   await ctx.db.patch(args.orderId, { deletedBy: actor });
+    if (args.status === "cancelled") await ctx.db.patch(args.orderId, { cancelledBy: actor });
 
     // Decrement old status amount
     const oldAmountDoc = await ctx.db
@@ -370,6 +389,8 @@ export const createInternal = internalMutation({
   handler: async (ctx, args) => {
     const { userId, shippingAddress, notes } = args;
 
+    const user = await ctx.db.get(userId);
+
     const cartItems = await ctx.db
       .query("cartItems")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -421,7 +442,7 @@ export const createInternal = internalMutation({
     const orderId = await ctx.db.insert("orders", {
       userId,
       status: "new",
-      shippingAddress,
+      shippingAddress: { ...shippingAddress, email: user?.email },
       subtotal,
       discountAmount,
       total,
@@ -772,5 +793,201 @@ export const getOrdersByUserId = query({
       total: order.total,
       paymentStatus: order.paymentStatus,
     }));
+  },
+});
+
+// ─── PRIVATE HELPERS ─────────────────────────────────────────────────────────
+
+async function recalcOrderTotals(ctx: MutationCtx, orderId: Id<"orders">) {
+  const items = await ctx.db
+    .query("orderItems")
+    .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
+    .collect();
+  const order = await ctx.db.get(orderId);
+  if (!order) return;
+  const subtotal = items.reduce((s, i) => s + i.totalPrice, 0);
+  const total = subtotal + (order.deliveryCost ?? 0) - (order.discountAmount ?? 0);
+  await ctx.db.patch(orderId, { subtotal, total });
+}
+
+// ─── ADMIN: Edit order snapshot ───────────────────────────────────────────────
+
+export const updateOrderSnapshot = mutation({
+  args: {
+    orderId: v.id("orders"),
+    name: v.string(),
+    phone: v.string(),
+    email: v.optional(v.string()),
+    address: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    const { orderId, name, phone, email, address } = args;
+    await ctx.db.patch(orderId, {
+      shippingAddress: { name, phone, email, address },
+    });
+    return null;
+  },
+});
+
+// ─── ADMIN: Edit order items ──────────────────────────────────────────────────
+
+export const updateOrderItem = mutation({
+  args: {
+    orderId: v.id("orders"),
+    itemId: v.id("orderItems"),
+    variantId: v.id("productVariants"),
+    quantity: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireOrderAction(ctx, "edit");
+    const { orderId, itemId, variantId, quantity } = args;
+
+    const item = await ctx.db.get(itemId);
+    if (!item || item.orderId !== orderId) throw new ConvexError("Item not found");
+
+    // If variant changed, adjust stock
+    if (item.variantId !== variantId) {
+      const oldVariant = await ctx.db.get(item.variantId);
+      const newVariant = await ctx.db.get(variantId);
+      if (!newVariant) throw new ConvexError("Variant not found");
+      if (newVariant.stock < quantity) throw new ConvexError("Insufficient stock");
+
+      if (oldVariant) {
+        await ctx.db.patch(item.variantId, { stock: oldVariant.stock + item.quantity });
+      }
+      await ctx.db.patch(variantId, { stock: newVariant.stock - quantity });
+
+      // Update item with new variant info, keep original unit price
+      await ctx.db.patch(itemId, {
+        variantId,
+        color: newVariant.color ?? item.color,
+        size: newVariant.size ?? item.size,
+        quantity,
+        totalPrice: item.unitPrice * quantity,
+      });
+    } else {
+      // Same variant, just update quantity
+      const variant = await ctx.db.get(variantId);
+      if (!variant) throw new ConvexError("Variant not found");
+      const stockDiff = quantity - item.quantity;
+      if (stockDiff > 0 && variant.stock < stockDiff) throw new ConvexError("Insufficient stock");
+      await ctx.db.patch(variantId, { stock: variant.stock - stockDiff });
+      await ctx.db.patch(itemId, { quantity, totalPrice: item.unitPrice * quantity });
+    }
+
+    await recalcOrderTotals(ctx, orderId);
+    return null;
+  },
+});
+
+export const removeOrderItem = mutation({
+  args: {
+    orderId: v.id("orders"),
+    itemId: v.id("orderItems"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireOrderAction(ctx, "edit");
+    const { orderId, itemId } = args;
+
+    const item = await ctx.db.get(itemId);
+    if (!item || item.orderId !== orderId) throw new ConvexError("Item not found");
+
+    // Restore stock
+    const variant = await ctx.db.get(item.variantId);
+    if (variant) {
+      await ctx.db.patch(item.variantId, { stock: variant.stock + item.quantity });
+    }
+
+    await ctx.db.delete(itemId);
+    await recalcOrderTotals(ctx, orderId);
+    return null;
+  },
+});
+
+export const addOrderItem = mutation({
+  args: {
+    orderId: v.id("orders"),
+    productId: v.id("products"),
+    variantId: v.id("productVariants"),
+    quantity: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireOrderAction(ctx, "edit");
+    const { orderId, productId, variantId, quantity } = args;
+
+    const product = await ctx.db.get(productId);
+    if (!product) throw new ConvexError("Product not found");
+
+    const variant = await ctx.db.get(variantId);
+    if (!variant) throw new ConvexError("Variant not found");
+    if (variant.stock < quantity) throw new ConvexError("Insufficient stock");
+
+    const unitPrice = variant.priceOverride ?? product.basePrice;
+
+    await ctx.db.patch(variantId, { stock: variant.stock - quantity });
+
+    await ctx.db.insert("orderItems", {
+      orderId,
+      productId,
+      variantId,
+      productName: product.name,
+      size: variant.size,
+      color: variant.color,
+      unitPrice,
+      quantity,
+      totalPrice: unitPrice * quantity,
+    });
+
+    await recalcOrderTotals(ctx, orderId);
+    return null;
+  },
+});
+
+// ─── ADMIN: Edit order pricing ────────────────────────────────────────────────
+
+export const updateOrderPricing = mutation({
+  args: {
+    orderId: v.id("orders"),
+    deliveryCost: v.number(),
+    discountAmount: v.number(),
+    paymentMethod: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireOrderAction(ctx, "edit");
+    const { orderId, deliveryCost, discountAmount, paymentMethod } = args;
+
+    const order = await ctx.db.get(orderId);
+    if (!order) throw new ConvexError("Order not found");
+
+    const total = order.subtotal + deliveryCost - discountAmount;
+    await ctx.db.patch(orderId, {
+      deliveryCost,
+      discountAmount,
+      total,
+      ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+    });
+    return null;
+  },
+});
+
+// ─── ADMIN: Advance paid query ────────────────────────────────────────────────
+
+export const getAdvancePaid = query({
+  args: { orderId: v.id("orders") },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "orders");
+    const payments = await ctx.db
+      .query("payments")
+      .withIndex("by_orderId", (q) => q.eq("orderId", args.orderId))
+      .filter((q) => q.eq(q.field("status"), "valid"))
+      .collect();
+    return payments.reduce((sum, p) => sum + p.amount, 0);
   },
 });
