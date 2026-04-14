@@ -45,6 +45,11 @@ const orderObject = v.object({
   ),
   notes: v.optional(v.string()),
   courierName: v.optional(v.string()),
+  deliveryCost: v.optional(v.number()),
+  adminNote: v.optional(v.string()),
+  confirmedBy: v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
+  deletedBy:   v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
+  cancelledBy: v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
 });
 
 /**
@@ -279,6 +284,9 @@ export const updateStatus = mutation({
   handler: async (ctx, args) => {
     const admin = await requirePermission(ctx, "orders");
 
+    const oldOrder = await ctx.db.get(args.orderId);
+    if (!oldOrder) throw new ConvexError("Order not found");
+
     // Server-side allowedStatuses enforcement
     if (admin.role !== "superadmin") {
       const allowed = admin.permissions?.orders?.allowedStatuses ?? [];
@@ -291,20 +299,17 @@ export const updateStatus = mutation({
       if (args.status === "deleted" && !admin.permissions?.orders?.canDelete) throw new ConvexError("Unauthorized");
     }
 
-    const oldOrder = await ctx.db.get(args.orderId);
-    if (!oldOrder) throw new ConvexError("Order not found");
+    // Audit trail merged into the status patch
+    const actorName = admin.name ?? admin.email ?? "Unknown";
+    const actor = { userId: admin._id, name: actorName, at: Date.now() };
+    const auditPatch: Record<string, unknown> = {};
+    if (args.status === "completed") auditPatch.confirmedBy = actor;
+    if (args.status === "deleted")   auditPatch.deletedBy   = actor;
+    if (args.status === "cancelled") auditPatch.cancelledBy = actor;
 
-    await ctx.db.patch(args.orderId, { status: args.status });
+    await ctx.db.patch(args.orderId, { status: args.status, ...auditPatch });
     const newOrder = await ctx.db.get(args.orderId);
     if (newOrder) await aggregateOrders.replaceOrInsert(ctx, oldOrder, newOrder);
-
-    // Audit trail for terminal statuses
-    const now = Date.now();
-    const actorName = admin.name ?? admin.email ?? "Unknown";
-    const actor = { userId: admin._id, name: actorName, at: now };
-    if (args.status === "completed") await ctx.db.patch(args.orderId, { confirmedBy: actor });
-    if (args.status === "deleted")   await ctx.db.patch(args.orderId, { deletedBy: actor });
-    if (args.status === "cancelled") await ctx.db.patch(args.orderId, { cancelledBy: actor });
 
     // Decrement old status amount
     const oldAmountDoc = await ctx.db
@@ -824,6 +829,8 @@ export const updateOrderSnapshot = mutation({
   handler: async (ctx, args) => {
     await requirePermission(ctx, "orders");
     const { orderId, name, phone, email, address } = args;
+    const order = await ctx.db.get(orderId);
+    if (!order) throw new ConvexError("Order not found");
     await ctx.db.patch(orderId, {
       shippingAddress: { name, phone, email, address },
     });
@@ -844,6 +851,7 @@ export const updateOrderItem = mutation({
   handler: async (ctx, args) => {
     await requireOrderAction(ctx, "edit");
     const { orderId, itemId, variantId, quantity } = args;
+    if (quantity < 1 || !Number.isInteger(quantity)) throw new ConvexError("Quantity must be a positive integer");
 
     const item = await ctx.db.get(itemId);
     if (!item || item.orderId !== orderId) throw new ConvexError("Item not found");
@@ -919,12 +927,14 @@ export const addOrderItem = mutation({
   handler: async (ctx, args) => {
     await requireOrderAction(ctx, "edit");
     const { orderId, productId, variantId, quantity } = args;
+    if (quantity < 1 || !Number.isInteger(quantity)) throw new ConvexError("Quantity must be a positive integer");
 
     const product = await ctx.db.get(productId);
     if (!product) throw new ConvexError("Product not found");
 
     const variant = await ctx.db.get(variantId);
     if (!variant) throw new ConvexError("Variant not found");
+    if (variant.productId !== productId) throw new ConvexError("Variant does not belong to product");
     if (variant.stock < quantity) throw new ConvexError("Insufficient stock");
 
     const unitPrice = variant.priceOverride ?? product.basePrice;
@@ -966,6 +976,7 @@ export const updateOrderPricing = mutation({
     if (!order) throw new ConvexError("Order not found");
 
     const total = order.subtotal + deliveryCost - discountAmount;
+    if (total < 0) throw new ConvexError("Discount cannot exceed order total");
     await ctx.db.patch(orderId, {
       deliveryCost,
       discountAmount,
