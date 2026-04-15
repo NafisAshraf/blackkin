@@ -393,16 +393,7 @@ export default function OrderDetailPage() {
           <CardContent className="text-sm space-y-1 text-muted-foreground">
             <p className="font-medium text-foreground">{order.shippingAddress.name}</p>
             <p>{order.shippingAddress.phone}</p>
-            <p>{order.shippingAddress.addressLine1}</p>
-            {order.shippingAddress.addressLine2 && (
-              <p>{order.shippingAddress.addressLine2}</p>
-            )}
-            <p>
-              {order.shippingAddress.city}
-              {order.shippingAddress.postalCode
-                ? `, ${order.shippingAddress.postalCode}`
-                : ""}
-            </p>
+            <p>{order.shippingAddress.address}</p>
           </CardContent>
         </Card>
       </main>

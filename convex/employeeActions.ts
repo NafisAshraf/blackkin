@@ -3,7 +3,13 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 
 const permissionsValidator = v.object({
-  orders: v.boolean(),
+  orders: v.optional(v.object({
+    enabled: v.boolean(),
+    allowedStatuses: v.array(v.string()),
+    canEdit: v.boolean(),
+    canDelete: v.boolean(),
+    canConfirm: v.boolean(),
+  })),
   marketing: v.boolean(),
   products: v.boolean(),
   settings: v.boolean(),

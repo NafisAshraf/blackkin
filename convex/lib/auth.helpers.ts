@@ -1,8 +1,15 @@
 import { ConvexError } from "convex/values";
+import { Doc } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 
 type UserPermissions = {
-  orders: boolean;
+  orders: {
+    enabled: boolean;
+    allowedStatuses: string[];
+    canEdit: boolean;
+    canDelete: boolean;
+    canConfirm: boolean;
+  } | undefined;
   marketing: boolean;
   products: boolean;
   settings: boolean;
@@ -81,9 +88,33 @@ export async function requirePermission(
     throw new ConvexError("Unauthorized");
   }
   // role is "admin"
-  if (!user.permissions || user.permissions[permission] === false) {
-    throw new ConvexError("Unauthorized");
+  if (permission === "orders") {
+    const op = user.permissions?.orders;
+    if (!op || !op.enabled) throw new ConvexError("Unauthorized");
+  } else {
+    if (!user.permissions || user.permissions[permission as Exclude<keyof UserPermissions, "orders">] === false) {
+      throw new ConvexError("Unauthorized");
+    }
   }
+  return user;
+}
+
+/**
+ * Checks that the current user can perform a specific order action (edit/delete/confirm).
+ * Superadmins always pass. Admins must have the orders permission enabled AND
+ * the specific action flag set.
+ * Throws ConvexError("Unauthorized") if not permitted.
+ */
+export async function requireOrderAction(
+  ctx: QueryCtx | MutationCtx,
+  action: "edit" | "delete" | "confirm"
+): Promise<Doc<"users">> {
+  const user = await requirePermission(ctx, "orders");
+  if (user.role === "superadmin") return user;
+  const op = user.permissions!.orders!;
+  const flagMap = { edit: op.canEdit, delete: op.canDelete, confirm: op.canConfirm } as const;
+  const allowed = flagMap[action];
+  if (!allowed) throw new ConvexError("Unauthorized");
   return user;
 }
 
