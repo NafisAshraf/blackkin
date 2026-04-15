@@ -30,7 +30,13 @@ import { Loader2, Pencil, UserX, UserCheck } from "lucide-react";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Permissions = {
-  orders: boolean;
+  orders?: {
+    enabled: boolean;
+    allowedStatuses: string[];
+    canEdit: boolean;
+    canDelete: boolean;
+    canConfirm: boolean;
+  };
   marketing: boolean;
   products: boolean;
   settings: boolean;
@@ -49,7 +55,7 @@ type Employee = {
   permissions?: Permissions;
 };
 
-const PERMISSION_LABELS: Record<keyof Permissions, string> = {
+const PERMISSION_LABELS: Omit<Record<keyof Permissions, string>, "orders"> & { orders: string } = {
   orders: "Orders",
   marketing: "Marketing",
   products: "Products",
@@ -58,10 +64,11 @@ const PERMISSION_LABELS: Record<keyof Permissions, string> = {
   users: "Users",
 };
 
-const PERMISSION_KEYS = Object.keys(PERMISSION_LABELS) as (keyof Permissions)[];
+const NON_ORDER_PERMISSION_KEYS = ["marketing", "products", "settings", "pages", "users"] as const;
+type NonOrderPermissionKey = typeof NON_ORDER_PERMISSION_KEYS[number];
 
 const DEFAULT_PERMISSIONS: Permissions = {
-  orders: false,
+  orders: undefined,
   marketing: false,
   products: false,
   settings: false,
@@ -69,31 +76,136 @@ const DEFAULT_PERMISSIONS: Permissions = {
   users: false,
 };
 
+const DROPDOWN_STATUS_OPTIONS = [
+  { value: "new", label: "New" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "ready_for_delivery", label: "Ready for Delivery" },
+  { value: "in_courier", label: "In-Courier" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "hold", label: "Hold" },
+  { value: "ship_later", label: "Ship Later" },
+  { value: "paid", label: "Paid" },
+];
+
+// ─── Orders Permission Section ────────────────────────────────────────────────
+
+function OrdersPermissionSection({
+  permissions,
+  setPermissions,
+}: {
+  permissions: Permissions;
+  setPermissions: React.Dispatch<React.SetStateAction<Permissions>>;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="orders-enabled"
+          checked={permissions.orders?.enabled ?? false}
+          onCheckedChange={(checked) =>
+            setPermissions((p) => ({
+              ...p,
+              orders: checked
+                ? { enabled: true, allowedStatuses: [], canEdit: false, canDelete: false, canConfirm: false }
+                : undefined,
+            }))
+          }
+        />
+        <Label htmlFor="orders-enabled">Orders Access</Label>
+      </div>
+
+      {permissions.orders?.enabled && (
+        <div className="ml-6 space-y-3 border-l-2 border-muted pl-3">
+          {/* Status Actions */}
+          <div>
+            <p className="text-sm font-medium mb-2">Allowed Status Actions</p>
+            <div className="grid grid-cols-2 gap-y-1">
+              {DROPDOWN_STATUS_OPTIONS.map((s) => (
+                <div key={s.value} className="flex items-center gap-1.5">
+                  <Checkbox
+                    id={`status-${s.value}`}
+                    checked={permissions.orders?.allowedStatuses.includes(s.value) ?? false}
+                    onCheckedChange={(checked) =>
+                      setPermissions((p) => ({
+                        ...p,
+                        orders: {
+                          ...p.orders!,
+                          allowedStatuses: checked
+                            ? [...(p.orders?.allowedStatuses ?? []), s.value]
+                            : (p.orders?.allowedStatuses ?? []).filter((v) => v !== s.value),
+                        },
+                      }))
+                    }
+                  />
+                  <Label htmlFor={`status-${s.value}`} className="text-xs font-normal">
+                    {s.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Action Permissions */}
+          <div>
+            <p className="text-sm font-medium mb-2">Action Permissions</p>
+            <div className="space-y-1">
+              {[
+                { key: "canEdit" as const, label: "Edit orders" },
+                { key: "canDelete" as const, label: "Delete orders" },
+                { key: "canConfirm" as const, label: "Confirm (complete) orders" },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex items-center gap-1.5">
+                  <Checkbox
+                    id={`action-${key}`}
+                    checked={permissions.orders?.[key] ?? false}
+                    onCheckedChange={(checked) =>
+                      setPermissions((p) => ({
+                        ...p,
+                        orders: { ...p.orders!, [key]: !!checked },
+                      }))
+                    }
+                  />
+                  <Label htmlFor={`action-${key}`} className="text-xs font-normal">
+                    {label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Permission Checkboxes ────────────────────────────────────────────────────
 
 function PermissionCheckboxes({
   permissions,
-  onChange,
+  setPermissions,
 }: {
   permissions: Permissions;
-  onChange: (p: Permissions) => void;
+  setPermissions: React.Dispatch<React.SetStateAction<Permissions>>;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {PERMISSION_KEYS.map((key) => (
-        <div key={key} className="flex items-center gap-2">
-          <Checkbox
-            id={`perm-${key}`}
-            checked={permissions[key]}
-            onCheckedChange={(checked) =>
-              onChange({ ...permissions, [key]: checked === true })
-            }
-          />
-          <Label htmlFor={`perm-${key}`} className="font-normal cursor-pointer">
-            {PERMISSION_LABELS[key]}
-          </Label>
-        </div>
-      ))}
+    <div className="space-y-3">
+      <OrdersPermissionSection permissions={permissions} setPermissions={setPermissions} />
+      <div className="grid grid-cols-2 gap-2">
+        {NON_ORDER_PERMISSION_KEYS.map((key) => (
+          <div key={key} className="flex items-center gap-2">
+            <Checkbox
+              id={`perm-${key}`}
+              checked={permissions[key] as boolean}
+              onCheckedChange={(checked) =>
+                setPermissions((p) => ({ ...p, [key]: checked === true }))
+              }
+            />
+            <Label htmlFor={`perm-${key}`} className="font-normal cursor-pointer">
+              {PERMISSION_LABELS[key as NonOrderPermissionKey]}
+            </Label>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -128,7 +240,7 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <DialogContent className="max-w-md">
+    <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Add Employee</DialogTitle>
       </DialogHeader>
@@ -167,7 +279,7 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="space-y-2">
           <Label>Permissions</Label>
-          <PermissionCheckboxes permissions={permissions} onChange={setPermissions} />
+          <PermissionCheckboxes permissions={permissions} setPermissions={setPermissions} />
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
@@ -219,12 +331,12 @@ function EditPermissionsDialog({
   }
 
   return (
-    <DialogContent className="max-w-md">
+    <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Edit Permissions — {employee.name ?? employee.email ?? "Employee"}</DialogTitle>
       </DialogHeader>
       <div className="space-y-4 py-2">
-        <PermissionCheckboxes permissions={permissions} onChange={setPermissions} />
+        <PermissionCheckboxes permissions={permissions} setPermissions={setPermissions} />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose} disabled={loading}>
@@ -382,7 +494,14 @@ export default function EmployeesPage() {
                       <span className="text-xs text-muted-foreground italic">All access</span>
                     ) : emp.permissions ? (
                       <div className="flex flex-wrap gap-1">
-                        {PERMISSION_KEYS.filter((k) => emp.permissions![k]).map((k) => (
+                        {/* Orders pill — only shown when enabled */}
+                        {emp.permissions.orders?.enabled && (
+                          <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+                            Orders
+                          </span>
+                        )}
+                        {/* Other permission pills */}
+                        {NON_ORDER_PERMISSION_KEYS.filter((k) => emp.permissions![k]).map((k) => (
                           <span
                             key={k}
                             className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground"
@@ -390,9 +509,11 @@ export default function EmployeesPage() {
                             {PERMISSION_LABELS[k]}
                           </span>
                         ))}
-                        {PERMISSION_KEYS.filter((k) => emp.permissions![k]).length === 0 && (
-                          <span className="text-xs text-muted-foreground">None</span>
-                        )}
+                        {/* Show "None" if nothing is enabled */}
+                        {!emp.permissions.orders?.enabled &&
+                          NON_ORDER_PERMISSION_KEYS.every((k) => !emp.permissions![k]) && (
+                            <span className="text-xs text-muted-foreground">None</span>
+                          )}
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">None</span>

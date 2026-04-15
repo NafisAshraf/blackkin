@@ -17,7 +17,13 @@ import {
 export interface SidebarUser {
   role: "customer" | "admin" | "superadmin";
   permissions?: {
-    orders: boolean;
+    orders?: {
+      enabled: boolean;
+      allowedStatuses: string[];
+      canEdit: boolean;
+      canDelete: boolean;
+      canConfirm: boolean;
+    };
     marketing: boolean;
     products: boolean;
     settings: boolean;
@@ -26,12 +32,17 @@ export interface SidebarUser {
   };
 }
 
+type NonOrderPermission = Exclude<keyof NonNullable<SidebarUser["permissions"]>, "orders">;
+
 function hasPermission(
   user: SidebarUser,
-  permission: keyof NonNullable<SidebarUser["permissions"]>
+  permission: "orders" | NonOrderPermission
 ): boolean {
   if (user.role === "superadmin") return true;
-  return user.permissions?.[permission] === true;
+  if (permission === "orders") {
+    return user.permissions?.orders?.enabled === true;
+  }
+  return user.permissions?.[permission as NonOrderPermission] === true;
 }
 
 interface NavItem {
