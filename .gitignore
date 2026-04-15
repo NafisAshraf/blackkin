@@ -50,3 +50,6 @@ next-env.d.ts
 .cursor/
 AGENTS.md
 CLAUDE.md
+
+# superpowers workflow artifacts
+docs/superpowers/
