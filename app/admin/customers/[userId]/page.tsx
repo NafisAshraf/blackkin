@@ -94,7 +94,7 @@ export default function CustomerDetailPage() {
           ) : recentOrders.map((order) => (
             <div key={order._id} className="py-3 flex items-center justify-between text-sm">
               <div>
-                <p className="font-mono text-xs text-muted-foreground">{order._id.slice(-8)}</p>
+                <p className="font-mono text-xs text-muted-foreground">#{order.orderNumber}</p>
                 <p className="text-muted-foreground">{new Date(order._creationTime).toLocaleDateString()}</p>
               </div>
               <div className="text-right">

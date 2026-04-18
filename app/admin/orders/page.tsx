@@ -242,8 +242,8 @@ const TAB_COLORS: Record<
 
 // ─── Helper functions ─────────────────────────────────────────────────────────
 
-function formatOrderId(id: string): string {
-  return "ORDER" + id.slice(-6).toUpperCase();
+function formatOrderId(orderNumber: number): string {
+  return `#${orderNumber}`;
 }
 
 function formatDate(timestamp: number): string {
@@ -378,7 +378,7 @@ function CustomerDetailsDialog({ open, onClose, userId, name, phone, email, addr
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {recentOrders.map((o) => (
                   <div key={o._id} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
-                    <span className="font-mono text-xs text-muted-foreground">{formatOrderId(o._id)}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{formatOrderId(o.orderNumber)}</span>
                     <span className="text-xs">{formatAmount(o.total)}</span>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">{STATUS_LABELS[o.status as OrderStatus]}</Badge>
                   </div>
@@ -695,7 +695,7 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Order — {formatOrderId(order._id)}</DialogTitle>
+          <DialogTitle>Edit Order — {formatOrderId(order.orderNumber)}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 pb-2">
@@ -1121,7 +1121,7 @@ function OrderRow({
       <TableRow className="align-top">
         {/* Order ID + Date */}
         <TableCell className="min-w-[140px]">
-          <p className="font-mono text-xs font-semibold">{formatOrderId(order._id)}</p>
+          <p className="font-mono text-xs font-semibold">{formatOrderId(order.orderNumber)}</p>
           <p className="text-[11px] text-muted-foreground mt-0.5">{formatDate(order._creationTime)}</p>
         </TableCell>
 

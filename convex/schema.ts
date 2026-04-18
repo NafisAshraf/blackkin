@@ -95,6 +95,7 @@ export default defineSchema({
     // Display ordering
     globalSortOrder: v.number(), // catalog/shop page order
     categorySortOrder: v.number(), // within-category order
+    saleDiscountSortOrder: v.optional(v.number()), // order on the "On Sale" page (individual discounts)
 
     totalRatings: v.number(), // denormalized count of approved reviews
     averageRating: v.number(), // denormalized average rating
@@ -117,6 +118,7 @@ export default defineSchema({
     .index("by_status", ["status"])
     .index("by_status_and_globalSortOrder", ["status", "globalSortOrder"])
     .index("by_categoryId_and_categorySortOrder", ["categoryId", "categorySortOrder"])
+    .index("by_saleEnabled_and_saleDiscountSortOrder", ["saleEnabled", "saleDiscountSortOrder"])
     .searchIndex("search_name", {
       searchField: "name",
       filterFields: ["categoryId", "status"],
@@ -154,16 +156,21 @@ export default defineSchema({
     discountValue: v.number(), // percentage (0-100) or fixed BDT amount off
     startTime: v.number(), // unix ms
     endTime: v.optional(v.number()), // unix ms, undefined = indefinite
-  }).index("by_isActive", ["isActive"]),
+    sortOrder: v.number(), // display order on sale page (lower = first)
+  })
+    .index("by_isActive", ["isActive"])
+    .index("by_sortOrder", ["sortOrder"]),
 
   // ─── DISCOUNT GROUP PRODUCTS (junction) ──────────────────
   discountGroupProducts: defineTable({
     groupId: v.id("discountGroups"),
     productId: v.id("products"),
+    sortOrder: v.number(), // display order within this group
   })
     .index("by_groupId", ["groupId"])
     .index("by_productId", ["productId"])
-    .index("by_groupId_and_productId", ["groupId", "productId"]),
+    .index("by_groupId_and_productId", ["groupId", "productId"])
+    .index("by_groupId_and_sortOrder", ["groupId", "sortOrder"]),
 
   // ─── PRODUCT RECOMMENDATIONS (admin-selected, GLOBAL) ────
   // "also_like" shows on ALL product pages. "also_bought" shows at checkout filtered by size.
@@ -211,6 +218,7 @@ export default defineSchema({
 
   // ─── ORDERS ───────────────────────────────────────────────
   orders: defineTable({
+    orderNumber: v.number(),            // sequential human-readable number (e.g. 1001)
     userId: v.id("users"),
     status: v.union(
       v.literal("new"),
@@ -381,4 +389,11 @@ export default defineSchema({
     totalAmount: v.number(),
   })
     .index("by_status", ["status"]),
+
+  // ─── COUNTERS (generic auto-increment sequences) ──────────
+  counters: defineTable({
+    key: v.string(),   // e.g. "orderNumber"
+    value: v.number(), // current highest value
+  })
+    .index("by_key", ["key"]),
 });

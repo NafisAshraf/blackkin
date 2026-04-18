@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
 
@@ -12,6 +13,7 @@ interface ProductCardProps {
     effectivePrice: number;
     discountAmount: number;
     discountGroupName: string | null;
+    discountEndTime?: number | null;
     averageRating: number;
     totalRatings: number;
     media: Array<{
@@ -95,6 +97,44 @@ function StarRating({ rating }: { rating: number }) {
   return <span className="text-sm">{stars}</span>;
 }
 
+function SaleCountdownTimer({ endTime }: { endTime: number }) {
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    function compute() {
+      const remaining = endTime - Date.now();
+      if (remaining <= 0) {
+        setLabel(null);
+        return;
+      }
+      const totalSecs = Math.floor(remaining / 1000);
+      const days = Math.floor(totalSecs / 86400);
+      const hours = Math.floor((totalSecs % 86400) / 3600);
+      const mins = Math.floor((totalSecs % 3600) / 60);
+      const secs = totalSecs % 60;
+      if (days > 0) {
+        setLabel(`${days}d ${hours}h ${mins}m`);
+      } else {
+        const hh = String(hours).padStart(2, "0");
+        const mm = String(mins).padStart(2, "0");
+        const ss = String(secs).padStart(2, "0");
+        setLabel(`${hh}:${mm}:${ss}`);
+      }
+    }
+    compute();
+    const id = setInterval(compute, 1000);
+    return () => clearInterval(id);
+  }, [endTime]);
+
+  if (!label) return null;
+
+  return (
+    <span className="flex items-center gap-0.5 text-[9px] font-medium tracking-wide mt-0.5 text-white/90">
+      ⏱ {label}
+    </span>
+  );
+}
+
 export default function ProductCard({ product, imageUrl }: ProductCardProps) {
   const {
     name,
@@ -103,6 +143,7 @@ export default function ProductCard({ product, imageUrl }: ProductCardProps) {
     effectivePrice,
     discountAmount,
     discountGroupName: _discountGroupName,
+    discountEndTime,
     averageRating,
     totalRatings,
     tags,
@@ -143,9 +184,12 @@ export default function ProductCard({ product, imageUrl }: ProductCardProps) {
           {/* Discount badge */}
           {isDiscounted && !tagStyle && (
             <div className="absolute top-3 left-3">
-              <span className="bg-red-600 text-white text-[10px] font-semibold tracking-wider px-2.5 py-1 uppercase">
-                {Math.round((discountAmount / basePrice) * 100)}% OFF
-              </span>
+              <div className="bg-red-600 px-2.5 py-1 flex flex-col items-start">
+                <span className="text-white text-[10px] font-semibold tracking-wider uppercase">
+                  {Math.round((discountAmount / basePrice) * 100)}% OFF
+                </span>
+                {discountEndTime && <SaleCountdownTimer endTime={discountEndTime} />}
+              </div>
             </div>
           )}
 

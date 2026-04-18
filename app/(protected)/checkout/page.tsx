@@ -44,6 +44,7 @@ export default function CheckoutPage() {
   const createOrder = useMutation(api.orders.create);
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
   const initiatePayment = useAction(api.paymentActions.initiate);
+  const userProfile = useQuery(api.users.getCurrentUserWithRole, {});
   const addToCart = useMutation(api.cart.add);
   const updateCartQty = useMutation(api.cart.updateQuantity);
   const removeFromCart = useMutation(api.cart.remove);
@@ -101,12 +102,21 @@ export default function CheckoutPage() {
       setAddress(workAddress.address);
     } else if (addressMode === "custom") {
       setName("");
-      setPhone("");
+      setPhone(userProfile?.phone ?? "");
       setAddress("");
       setSaveAs("none");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressMode]);
+
+  // When userProfile first loads (async), prefill phone if still in custom mode and empty
+  useEffect(() => {
+    if (!userProfile?.phone) return;
+    if (addressMode !== "custom") return;
+    if (phone) return; // don't override manual input
+    setPhone(userProfile.phone);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile]);
 
   // If selected saved address gets deleted externally, fall back gracefully
   useEffect(() => {

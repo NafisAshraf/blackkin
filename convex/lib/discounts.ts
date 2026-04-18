@@ -68,6 +68,7 @@ export async function getEffectivePrice(
   discountAmount: number;
   discountSource: "group" | "individual" | null;
   discountGroupName: string | null;
+  discountEndTime: number | null;
 }> {
   const now = Date.now();
   const basePrice = product.basePrice;
@@ -80,6 +81,7 @@ export async function getEffectivePrice(
 
   let bestGroupPrice = basePrice;
   let bestGroupName: string | null = null;
+  let bestGroupEndTime: number | null = null;
 
   for (const row of groupProductRows) {
     const group = await ctx.db.get(row.groupId);
@@ -92,6 +94,7 @@ export async function getEffectivePrice(
     if (groupPrice < bestGroupPrice) {
       bestGroupPrice = groupPrice;
       bestGroupName = group.name;
+      bestGroupEndTime = group.endTime ?? null;
     }
   }
 
@@ -102,6 +105,7 @@ export async function getEffectivePrice(
       discountAmount,
       discountSource: "group",
       discountGroupName: bestGroupName,
+      discountEndTime: bestGroupEndTime,
     };
   }
 
@@ -115,6 +119,8 @@ export async function getEffectivePrice(
       discountAmount,
       discountSource: "individual",
       discountGroupName: null,
+      discountEndTime:
+        product.saleEndMode === "custom" ? (product.saleEndTime ?? null) : null,
     };
   }
 
@@ -124,6 +130,7 @@ export async function getEffectivePrice(
     discountAmount: 0,
     discountSource: null,
     discountGroupName: null,
+    discountEndTime: null,
   };
 }
 

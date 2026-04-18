@@ -101,10 +101,12 @@ const productWithPricingValidator = v.object({
   metaDescription: v.optional(v.string()),
   globalSortOrder: v.number(),
   categorySortOrder: v.number(),
+  saleDiscountSortOrder: v.optional(v.number()),
   effectivePrice: v.number(),
   discountAmount: v.number(),
   discountSource: v.union(v.literal("group"), v.literal("individual"), v.null()),
   discountGroupName: v.union(v.string(), v.null()),
+  discountEndTime: v.union(v.number(), v.null()),
   totalRatings: v.number(),
   averageRating: v.number(),
   media: v.array(mediaItemValidator),
@@ -115,7 +117,7 @@ const productWithPricingValidator = v.object({
 // ─── HELPERS ───────────────────────────────────────────────
 
 async function enrichProduct(ctx: any, product: Doc<"products">) {
-  const { effectivePrice, discountAmount, discountSource, discountGroupName } =
+  const { effectivePrice, discountAmount, discountSource, discountGroupName, discountEndTime } =
     await getEffectivePrice(ctx, product);
 
   const productTagRows = await ctx.db
@@ -140,6 +142,7 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
     discountAmount,
     discountSource,
     discountGroupName,
+    discountEndTime,
     tags,
     variants,
   };
@@ -886,6 +889,135 @@ export const reorderTag = mutation({
       )
     );
     return null;
+  },
+});
+
+/** Reorder individually-discounted products on the "On Sale" page */
+export const reorderSaleDiscount = mutation({
+  args: {
+    items: v.array(
+      v.object({ id: v.id("products"), saleDiscountSortOrder: v.number() })
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) =>
+        ctx.db.patch(item.id, { saleDiscountSortOrder: item.saleDiscountSortOrder })
+      )
+    );
+    return null;
+  },
+});
+
+/**
+ * Public: products currently on sale, structured for the "On Sale" filter view.
+ * Returns active discount groups (sorted by sortOrder) each with their products,
+ * followed by individually-discounted products not in any active group.
+ */
+export const listOnSale = query({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // ── 1. Fetch all discount groups ordered by sortOrder ────
+    const allGroups = await ctx.db
+      .query("discountGroups")
+      .withIndex("by_sortOrder")
+      .order("asc")
+      .take(200);
+
+    const activeGroups = allGroups.filter(
+      (g) => g.isActive && g.startTime <= now && (g.endTime === undefined || g.endTime > now)
+    );
+
+    // ── 2. Build groups with their products ─────────────────
+    const activeGroupProductIds = new Set<string>();
+
+    const groups = await Promise.all(
+      activeGroups.map(async (group) => {
+        const memberRows = await ctx.db
+          .query("discountGroupProducts")
+          .withIndex("by_groupId_and_sortOrder", (q) => q.eq("groupId", group._id))
+          .order("asc")
+          .take(200);
+
+        const products = (
+          await Promise.all(
+            memberRows.map(async (row) => {
+              const p = await ctx.db.get(row.productId);
+              if (!p || !isProductVisible(p, now)) return null;
+              activeGroupProductIds.add(row.productId);
+              return enrichProduct(ctx, p);
+            })
+          )
+        ).filter(Boolean) as Awaited<ReturnType<typeof enrichProduct>>[];
+
+        return {
+          _id: group._id,
+          name: group.name,
+          discountType: group.discountType,
+          discountValue: group.discountValue,
+          endTime: group.endTime ?? null,
+          products,
+        };
+      })
+    );
+
+    // ── 3. Fetch individually-discounted products ────────────
+    // Get products with saleEnabled=true, sorted by saleDiscountSortOrder
+    const saleProducts = await ctx.db
+      .query("products")
+      .withIndex("by_saleEnabled_and_saleDiscountSortOrder", (q: any) =>
+        q.eq("saleEnabled", true)
+      )
+      .order("asc")
+      .take(500);
+
+    // Also get products where saleEnabled=true but saleDiscountSortOrder is undefined
+    // (index requires the field to be defined for ordering — we get them separately)
+    // Actually Convex indexes with optional fields: documents with undefined field value
+    // are NOT included in the index range scan when the field is in the index.
+    // So we need to fetch all saleEnabled=true products differently.
+    // Use by_status index filtering instead.
+    const allSaleEnabledActive = await ctx.db
+      .query("products")
+      .withIndex("by_status_and_globalSortOrder", (q: any) => q.eq("status", "active"))
+      .take(500);
+    const allSaleEnabledScheduled = await ctx.db
+      .query("products")
+      .withIndex("by_status", (q) => q.eq("status", "scheduled"))
+      .take(200);
+
+    const allVisible = [...allSaleEnabledActive, ...allSaleEnabledScheduled].filter(
+      (p) => isProductVisible(p, now) && p.saleEnabled
+    );
+
+    // Filter: not in any active group, individual sale currently active
+    const individualSaleProducts = allVisible.filter((p) => {
+      if (activeGroupProductIds.has(p._id)) return false;
+      if (!p.saleEnabled || p.salePrice === undefined) return false;
+      // Check sale start
+      if (p.saleStartMode === "custom" && (p.saleStartTime === undefined || p.saleStartTime > now)) return false;
+      // Check sale end
+      if (p.saleEndMode === "custom" && p.saleEndTime !== undefined && p.saleEndTime <= now) return false;
+      return true;
+    });
+
+    // Sort: by saleDiscountSortOrder asc (undefined = large number = last), then by _creationTime
+    individualSaleProducts.sort((a, b) => {
+      const aOrder = a.saleDiscountSortOrder ?? Number.MAX_SAFE_INTEGER;
+      const bOrder = b.saleDiscountSortOrder ?? Number.MAX_SAFE_INTEGER;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a._creationTime - b._creationTime;
+    });
+
+    const individualProducts = await Promise.all(
+      individualSaleProducts.map((p) => enrichProduct(ctx, p))
+    );
+
+    return { groups, individualProducts };
   },
 });
 

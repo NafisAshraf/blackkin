@@ -13,6 +13,7 @@ const groupObject = v.object({
   discountValue: v.number(),
   startTime: v.number(),
   endTime: v.optional(v.number()),
+  sortOrder: v.number(),
 });
 
 // ─── QUERIES ───────────────────────────────────────────────
@@ -30,12 +31,13 @@ export const listAll = query({
       discountValue: v.number(),
       startTime: v.number(),
       endTime: v.optional(v.number()),
+      sortOrder: v.number(),
       productCount: v.number(),
     })
   ),
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    const groups = await ctx.db.query("discountGroups").order("desc").take(200);
+    const groups = await ctx.db.query("discountGroups").withIndex("by_sortOrder").order("asc").take(200);
 
     return await Promise.all(
       groups.map(async (group) => {
@@ -60,13 +62,15 @@ export const listProductsInGroup = query({
       productName: v.string(),
       productSlug: v.string(),
       basePrice: v.number(),
+      sortOrder: v.number(),
     })
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const rows = await ctx.db
       .query("discountGroupProducts")
-      .withIndex("by_groupId", (q) => q.eq("groupId", args.groupId))
+      .withIndex("by_groupId_and_sortOrder", (q) => q.eq("groupId", args.groupId))
+      .order("asc")
       .take(500);
 
     return (
@@ -81,6 +85,7 @@ export const listProductsInGroup = query({
             productName: product.name,
             productSlug: product.slug,
             basePrice: product.basePrice,
+            sortOrder: row.sortOrder,
           };
         })
       )
@@ -99,6 +104,7 @@ export const listAllGroupMemberships = query({
       _creationTime: v.number(),
       groupId: v.id("discountGroups"),
       productId: v.id("products"),
+      sortOrder: v.number(),
     })
   ),
   handler: async (ctx) => {
@@ -142,6 +148,11 @@ export const create = mutation({
     if (args.endTime !== undefined && args.endTime <= args.startTime) {
       throw new ConvexError("End time must be after start time");
     }
+
+    // Auto-assign sortOrder: place at end of list
+    const existing = await ctx.db.query("discountGroups").withIndex("by_sortOrder").order("desc").take(1);
+    const sortOrder = existing.length > 0 ? existing[0].sortOrder + 1 : 0;
+
     return await ctx.db.insert("discountGroups", {
       name: args.name,
       discountType: args.discountType,
@@ -149,6 +160,7 @@ export const create = mutation({
       startTime: args.startTime,
       endTime: args.endTime,
       isActive: args.isActive ?? true,
+      sortOrder,
     });
   },
 });
@@ -245,9 +257,17 @@ export const addProducts = mutation({
         )
         .unique();
       if (!existing) {
+        // Auto-assign sortOrder: place at end of this group
+        const last = await ctx.db
+          .query("discountGroupProducts")
+          .withIndex("by_groupId_and_sortOrder", (q) => q.eq("groupId", args.groupId))
+          .order("desc")
+          .take(1);
+        const sortOrder = last.length > 0 ? last[0].sortOrder + 1 : 0;
         await ctx.db.insert("discountGroupProducts", {
           groupId: args.groupId,
           productId,
+          sortOrder,
         });
       }
     }
@@ -292,6 +312,36 @@ export const removeProductsFromAllGroups = mutation({
         await ctx.db.delete(row._id);
       }
     }
+    return null;
+  },
+});
+
+/** Reorder discount groups (update sortOrder for each group) */
+export const reorderGroups = mutation({
+  args: {
+    items: v.array(v.object({ id: v.id("discountGroups"), sortOrder: v.number() })),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) => ctx.db.patch(item.id, { sortOrder: item.sortOrder }))
+    );
+    return null;
+  },
+});
+
+/** Reorder products within a discount group (update sortOrder on the junction doc) */
+export const reorderProductsInGroup = mutation({
+  args: {
+    items: v.array(v.object({ membershipId: v.id("discountGroupProducts"), sortOrder: v.number() })),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      args.items.map((item) => ctx.db.patch(item.membershipId, { sortOrder: item.sortOrder }))
+    );
     return null;
   },
 });

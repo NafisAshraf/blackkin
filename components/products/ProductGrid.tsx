@@ -9,6 +9,7 @@ interface Product {
   effectivePrice: number;
   discountAmount: number;
   discountGroupName: string | null;
+  discountEndTime: number | null;
   averageRating: number;
   totalRatings: number;
   media: Array<{

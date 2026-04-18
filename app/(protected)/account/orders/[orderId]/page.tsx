@@ -302,7 +302,7 @@ export default function OrderDetailPage() {
         {/* Order Header */}
         <div className="space-y-2">
           <h1 className="text-xl font-semibold">Order Detail</h1>
-          <p className="font-mono text-sm text-muted-foreground">{order._id}</p>
+          <p className="font-mono text-sm text-muted-foreground">#{order.orderNumber}</p>
           <div className="flex gap-2 flex-wrap">
             <Badge variant={getStatusVariant(order.status)}>
               {CUSTOMER_ORDER_STATUS_LABELS[order.status] ?? order.status}

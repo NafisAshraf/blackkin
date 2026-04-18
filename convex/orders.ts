@@ -32,6 +32,7 @@ const orderItemObject = v.object({
 const orderObject = v.object({
   _id: v.id("orders"),
   _creationTime: v.number(),
+  orderNumber: v.number(),
   userId: v.id("users"),
   status: orderStatusValidator,
   shippingAddress: shippingAddressValidator,
@@ -57,6 +58,22 @@ const orderObject = v.object({
  * Create an order from the current user's cart.
  * SERVER-SIDE: recalculates all prices, validates stock, decrements inventory.
  */
+
+/** Atomically increment and return the next order number (starts at 1001). */
+async function nextOrderNumber(ctx: MutationCtx): Promise<number> {
+  const counter = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", "orderNumber"))
+    .unique();
+  if (counter) {
+    const next = counter.value + 1;
+    await ctx.db.patch(counter._id, { value: next });
+    return next;
+  }
+  await ctx.db.insert("counters", { key: "orderNumber", value: 1001 });
+  return 1001;
+}
+
 export const create = mutation({
   args: {
     shippingAddress: shippingAddressValidator,
@@ -123,7 +140,9 @@ export const create = mutation({
     const total = subtotal - discountAmount;
 
     // Create the order
+    const orderNumber = await nextOrderNumber(ctx);
     const orderId = await ctx.db.insert("orders", {
+      orderNumber,
       userId: user._id,
       status: "new",
       shippingAddress: { ...args.shippingAddress, email: user.email },
@@ -445,7 +464,9 @@ export const createInternal = internalMutation({
 
     const total = subtotal - discountAmount;
 
+    const orderNumber = await nextOrderNumber(ctx);
     const orderId = await ctx.db.insert("orders", {
+      orderNumber,
       userId,
       status: "new",
       shippingAddress: { ...shippingAddress, email: user?.email },

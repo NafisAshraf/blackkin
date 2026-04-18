@@ -63,9 +63,36 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
   const currentTag = searchParams.get("tag") ?? "";
   const currentMinPrice = searchParams.get("minPrice") ?? "";
   const currentMaxPrice = searchParams.get("maxPrice") ?? "";
+  const isOnSale = searchParams.get("onSale") === "true";
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
+    if (value) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+    router.push(`?${params.toString()}`);
+  }
+
+  function selectOnSale() {
+    // Clear all other filters and set onSale=true
+    const params = new URLSearchParams();
+    const q = searchParams.get("q");
+    if (q) params.set("q", q);
+    params.set("onSale", "true");
+    router.push(`?${params.toString()}`);
+  }
+
+  function clearOnSale() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("onSale");
+    router.push(`?${params.toString()}`);
+  }
+
+  function updateParamClearSale(key: string, value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("onSale");
     if (value) {
       params.set(key, value);
     } else {
@@ -90,6 +117,19 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
         </Button>
       </div>
 
+      {/* On Sale filter */}
+      <div className="border-b pb-3">
+        <label className="flex items-center gap-2 text-sm cursor-pointer py-1">
+          <input
+            type="checkbox"
+            checked={isOnSale}
+            onChange={(e) => (e.target.checked ? selectOnSale() : clearOnSale())}
+            className="rounded"
+          />
+          <span className="font-medium">On Sale</span>
+        </label>
+      </div>
+
       {categories.length > 0 && (
         <FilterSection title="Category">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -98,7 +138,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
               name="category"
               value=""
               checked={currentCategory === ""}
-              onChange={() => updateParam("categoryId", "")}
+              onChange={() => updateParamClearSale("categoryId", "")}
             />
             All
           </label>
@@ -109,7 +149,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
                 name="category"
                 value={c._id}
                 checked={currentCategory === c._id}
-                onChange={() => updateParam("categoryId", c._id)}
+                onChange={() => updateParamClearSale("categoryId", c._id)}
               />
               {c.name}
             </label>
@@ -125,7 +165,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
               name="size"
               value=""
               checked={currentSize === ""}
-              onChange={() => updateParam("size", "")}
+              onChange={() => updateParamClearSale("size", "")}
             />
             All
           </label>
@@ -136,7 +176,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
                 name="size"
                 value={s.name}
                 checked={currentSize === s.name}
-                onChange={() => updateParam("size", s.name)}
+                onChange={() => updateParamClearSale("size", s.name)}
               />
               {s.name}
             </label>
@@ -152,7 +192,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
               name="color"
               value=""
               checked={currentColor === ""}
-              onChange={() => updateParam("color", "")}
+              onChange={() => updateParamClearSale("color", "")}
             />
             All
           </label>
@@ -163,7 +203,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
                 name="color"
                 value={c.name}
                 checked={currentColor === c.name}
-                onChange={() => updateParam("color", c.name)}
+                onChange={() => updateParamClearSale("color", c.name)}
               />
               {c.hexCode && (
                 <span
@@ -185,7 +225,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
               name="tag"
               value=""
               checked={currentTag === ""}
-              onChange={() => updateParam("tag", "")}
+              onChange={() => updateParamClearSale("tag", "")}
             />
             All
           </label>
@@ -196,7 +236,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
                 name="tag"
                 value={t.slug}
                 checked={currentTag === t.slug}
-                onChange={() => updateParam("tag", t.slug)}
+                onChange={() => updateParamClearSale("tag", t.slug)}
               />
               {t.name}
             </label>
@@ -212,7 +252,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
             type="number"
             placeholder="Min"
             value={currentMinPrice}
-            onChange={(e) => updateParam("minPrice", e.target.value)}
+            onChange={(e) => updateParamClearSale("minPrice", e.target.value)}
             className="w-full"
           />
           <span className="text-muted-foreground text-sm">-</span>
@@ -222,7 +262,7 @@ export default function ProductFilters({ categories, sizes, colors, tags }: Prod
             type="number"
             placeholder="Max"
             value={currentMaxPrice}
-            onChange={(e) => updateParam("maxPrice", e.target.value)}
+            onChange={(e) => updateParamClearSale("maxPrice", e.target.value)}
             className="w-full"
           />
         </div>

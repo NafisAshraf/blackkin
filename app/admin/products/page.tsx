@@ -32,6 +32,7 @@ import {
   ToggleRight,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Tags,
   FolderOpen,
   Percent,
@@ -511,6 +512,9 @@ function AdminProductsContent() {
   const removeProductsFromAllGroups = useMutation(api.discountGroups.removeProductsFromAllGroups);
   const removeGroup = useMutation(api.discountGroups.remove);
   const toggleGroupActive = useMutation(api.discountGroups.toggleActive);
+  const reorderGroups = useMutation(api.discountGroups.reorderGroups);
+  const reorderProductsInGroup = useMutation(api.discountGroups.reorderProductsInGroup);
+  const reorderSaleDiscount = useMutation(api.products.reorderSaleDiscount);
 
   function setTab(t: TabId) {
     const params = new URLSearchParams(searchParams.toString());
@@ -1119,18 +1123,61 @@ function AdminProductsContent() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {discountGroups.map((group) => {
-                    const groupProductIds = new Set(
-                      (groupMemberships ?? []).filter((m) => m.groupId === group._id).map((m) => m.productId)
-                    );
-                    const groupProducts = (products ?? []).filter((p) => groupProductIds.has(p._id));
+                  {discountGroups.map((group, groupIdx) => {
+                    // Get memberships for this group, sorted by sortOrder asc
+                    const groupMembersSorted = (groupMemberships ?? [])
+                      .filter((m) => m.groupId === group._id)
+                      .sort((a, b) => a.sortOrder - b.sortOrder);
+                    const groupProducts = groupMembersSorted
+                      .map((m) => (products ?? []).find((p) => p._id === m.productId))
+                      .filter(Boolean) as NonNullable<typeof products>[number][];
                     const isActive = group.isActive && group.startTime <= now && (!group.endTime || group.endTime > now);
                     const discountLabel = group.discountType === "percentage" ? `${group.discountValue}% off` : `৳${group.discountValue} off`;
+
+                    function moveGroup(dir: "up" | "down") {
+                      const otherIdx = dir === "up" ? groupIdx - 1 : groupIdx + 1;
+                      if (otherIdx < 0 || otherIdx >= discountGroups!.length) return;
+                      const other = discountGroups![otherIdx];
+                      reorderGroups({ items: [
+                        { id: group._id, sortOrder: other.sortOrder },
+                        { id: other._id, sortOrder: group.sortOrder },
+                      ]}).catch((e: Error) => toast.error(e.message));
+                    }
+
+                    function moveProductInGroup(memberIdx: number, dir: "up" | "down") {
+                      const otherIdx = dir === "up" ? memberIdx - 1 : memberIdx + 1;
+                      if (otherIdx < 0 || otherIdx >= groupMembersSorted.length) return;
+                      const a = groupMembersSorted[memberIdx];
+                      const b = groupMembersSorted[otherIdx];
+                      reorderProductsInGroup({ items: [
+                        { membershipId: a._id, sortOrder: b.sortOrder },
+                        { membershipId: b._id, sortOrder: a.sortOrder },
+                      ]}).catch((e: Error) => toast.error(e.message));
+                    }
 
                     return (
                       <div key={group._id} className="rounded-lg border overflow-hidden">
                         <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            {/* Group reorder buttons */}
+                            <div className="flex flex-col gap-0.5">
+                              <button
+                                onClick={() => moveGroup("up")}
+                                disabled={groupIdx === 0}
+                                className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="Move group up"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => moveGroup("down")}
+                                disabled={groupIdx === discountGroups!.length - 1}
+                                className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="Move group down"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                             <span className="font-medium text-sm">{group.name}</span>
                             <Badge variant="secondary" className="text-xs">{discountLabel}</Badge>
                             {isActive ? (
@@ -1181,8 +1228,27 @@ function AdminProductsContent() {
                           {/* Products grid/table */}
                           {viewMode === "grid" ? (
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                              {groupProducts.map((p) => (
+                              {groupProducts.map((p, memberIdx) => (
                                 <div key={p._id} className="relative group">
+                                  {/* In-group order buttons */}
+                                  <div className="absolute top-1 left-1 flex flex-col gap-0.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      onClick={() => moveProductInGroup(memberIdx, "up")}
+                                      disabled={memberIdx === 0}
+                                      className="p-0.5 bg-background/90 rounded border shadow-sm hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                      title="Move up"
+                                    >
+                                      <ChevronUp className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => moveProductInGroup(memberIdx, "down")}
+                                      disabled={memberIdx === groupProducts.length - 1}
+                                      className="p-0.5 bg-background/90 rounded border shadow-sm hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                      title="Move down"
+                                    >
+                                      <ChevronDown className="h-3 w-3" />
+                                    </button>
+                                  </div>
                                   <ProductGridCard
                                     id={p._id}
                                     name={p.name}
@@ -1217,8 +1283,26 @@ function AdminProductsContent() {
                                 <TableBody>
                                   {groupProducts.length === 0 ? (
                                     <TableRow><TableCell className="text-center py-4 text-muted-foreground text-sm">No products in this group</TableCell></TableRow>
-                                  ) : groupProducts.map((p) => (
+                                  ) : groupProducts.map((p, memberIdx) => (
                                     <TableRow key={p._id}>
+                                      <TableCell className="w-12">
+                                        <div className="flex flex-col gap-0.5">
+                                          <button
+                                            onClick={() => moveProductInGroup(memberIdx, "up")}
+                                            disabled={memberIdx === 0}
+                                            className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                          >
+                                            <ChevronUp className="h-3.5 w-3.5" />
+                                          </button>
+                                          <button
+                                            onClick={() => moveProductInGroup(memberIdx, "down")}
+                                            disabled={memberIdx === groupProducts.length - 1}
+                                            className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                          >
+                                            <ChevronDown className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                      </TableCell>
                                       <TableCell className="font-medium">{p.name}</TableCell>
                                       <TableCell>৳{p.basePrice.toLocaleString()}</TableCell>
                                       <TableCell className="text-destructive">৳{p.effectivePrice.toLocaleString()}</TableCell>
@@ -1245,9 +1329,31 @@ function AdminProductsContent() {
             {/* Individual Discounts */}
             {products !== undefined && groupMemberships !== undefined && (() => {
               const allGroupProductIds = new Set((groupMemberships ?? []).map((m) => m.productId));
-              const individualDiscountProducts = (products ?? []).filter(
+              const rawIndividual = (products ?? []).filter(
                 (p) => !allGroupProductIds.has(p._id) && p.saleEnabled && p.salePrice !== undefined && p.effectivePrice < p.basePrice && effectiveStatus(p as any) !== "archived"
               );
+              // Sort by saleDiscountSortOrder asc (undefined = last), fallback _creationTime
+              const individualDiscountProducts = [...rawIndividual].sort((a, b) => {
+                const aO = (a as any).saleDiscountSortOrder ?? Number.MAX_SAFE_INTEGER;
+                const bO = (b as any).saleDiscountSortOrder ?? Number.MAX_SAFE_INTEGER;
+                if (aO !== bO) return aO - bO;
+                return a._creationTime - b._creationTime;
+              });
+
+              function moveSaleProduct(idx: number, dir: "up" | "down") {
+                const otherIdx = dir === "up" ? idx - 1 : idx + 1;
+                if (otherIdx < 0 || otherIdx >= individualDiscountProducts.length) return;
+                const a = individualDiscountProducts[idx];
+                const b = individualDiscountProducts[otherIdx];
+                // Assign sortOrders if missing (normalize the list first)
+                const aOrder = (a as any).saleDiscountSortOrder ?? idx * 10;
+                const bOrder = (b as any).saleDiscountSortOrder ?? otherIdx * 10;
+                reorderSaleDiscount({ items: [
+                  { id: a._id, saleDiscountSortOrder: bOrder },
+                  { id: b._id, saleDiscountSortOrder: aOrder },
+                ]}).catch((e: Error) => toast.error(e.message));
+              }
+
               const noDiscountProducts = (products ?? []).filter(
                 (p) => !allGroupProductIds.has(p._id) && !(p.saleEnabled && p.salePrice !== undefined) && effectiveStatus(p as any) !== "archived"
               );
@@ -1255,13 +1361,37 @@ function AdminProductsContent() {
               return (
                 <>
                   <div className="space-y-3">
-                    <h2 className="text-base font-semibold">Individual Discounts</h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-semibold">Individual Discounts</h2>
+                      <span className="text-xs text-muted-foreground">(Use ▲/▼ to set display order on the sale page)</span>
+                    </div>
                     {individualDiscountProducts.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No products with individual discounts.</p>
                     ) : viewMode === "grid" ? (
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                        {individualDiscountProducts.map((p) => (
-                          <ProductGridCard key={p._id} id={p._id} name={p.name} basePrice={p.basePrice} effectivePrice={p.effectivePrice} discountAmount={p.discountAmount} discountSource={p.discountSource} discountGroupName={p.discountGroupName} saleDisplayMode={p.saleDisplayMode} saleStartMode={p.saleStartMode} saleStartTime={p.saleStartTime} saleEndMode={p.saleEndMode} saleEndTime={p.saleEndTime} status={p.status as ProductStatus} imageUrl={p.imageUrl} isSelected={selectedIds.has(p._id)} onToggleSelect={() => toggleSelect(p._id)} />
+                        {individualDiscountProducts.map((p, idx) => (
+                          <div key={p._id} className="relative group">
+                            {/* Sale order buttons */}
+                            <div className="absolute top-1 left-1 flex flex-col gap-0.5 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => moveSaleProduct(idx, "up")}
+                                disabled={idx === 0}
+                                className="p-0.5 bg-background/90 rounded border shadow-sm hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Move up"
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => moveSaleProduct(idx, "down")}
+                                disabled={idx === individualDiscountProducts.length - 1}
+                                className="p-0.5 bg-background/90 rounded border shadow-sm hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                title="Move down"
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <ProductGridCard key={p._id} id={p._id} name={p.name} basePrice={p.basePrice} effectivePrice={p.effectivePrice} discountAmount={p.discountAmount} discountSource={p.discountSource} discountGroupName={p.discountGroupName} saleDisplayMode={p.saleDisplayMode} saleStartMode={p.saleStartMode} saleStartTime={p.saleStartTime} saleEndMode={p.saleEndMode} saleEndTime={p.saleEndTime} status={p.status as ProductStatus} imageUrl={p.imageUrl} isSelected={selectedIds.has(p._id)} onToggleSelect={() => toggleSelect(p._id)} />
+                          </div>
                         ))}
                       </div>
                     ) : (
@@ -1269,6 +1399,7 @@ function AdminProductsContent() {
                         <Table>
                           <TableHeader>
                             <TableRow>
+                              <TableHead className="w-12">Order</TableHead>
                               <TableHead>Name</TableHead>
                               <TableHead>Regular Price</TableHead>
                               <TableHead>Sale Price</TableHead>
@@ -1277,8 +1408,26 @@ function AdminProductsContent() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {individualDiscountProducts.map((p) => (
+                            {individualDiscountProducts.map((p, idx) => (
                               <TableRow key={p._id}>
+                                <TableCell>
+                                  <div className="flex flex-col gap-0.5">
+                                    <button
+                                      onClick={() => moveSaleProduct(idx, "up")}
+                                      disabled={idx === 0}
+                                      className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                      <ChevronUp className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => moveSaleProduct(idx, "down")}
+                                      disabled={idx === individualDiscountProducts.length - 1}
+                                      className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed"
+                                    >
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </TableCell>
                                 <TableCell className="font-medium">{p.name}</TableCell>
                                 <TableCell className="line-through text-muted-foreground">৳{p.basePrice.toLocaleString()}</TableCell>
                                 <TableCell className="text-destructive font-medium">৳{p.effectivePrice.toLocaleString()}</TableCell>

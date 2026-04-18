@@ -91,7 +91,7 @@ export default function OrdersPage() {
                 {results.map((order) => (
                   <TableRow key={order._id}>
                     <TableCell className="font-mono text-sm">
-                      ...{order._id.slice(-8)}
+                      #{order.orderNumber}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {new Date(order._creationTime).toLocaleDateString()}
