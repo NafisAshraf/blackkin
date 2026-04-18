@@ -694,6 +694,7 @@ export const listAllEnriched = query({
       return {
         _id: order._id,
         _creationTime: order._creationTime,
+        orderNumber: order.orderNumber,
         userId: order.userId,
         status: order.status,
         total: order.total,
@@ -805,6 +806,7 @@ export const getOrdersByUserId = query({
   returns: v.array(v.object({
     _id: v.id("orders"),
     _creationTime: v.number(),
+    orderNumber: v.number(),
     status: orderStatusValidator,
     total: v.number(),
     paymentStatus: v.union(v.literal("unpaid"), v.literal("paid"), v.literal("refunded")),
@@ -820,6 +822,7 @@ export const getOrdersByUserId = query({
     return orders.map((order) => ({
       _id: order._id,
       _creationTime: order._creationTime,
+      orderNumber: order.orderNumber,
       status: order.status,
       total: order.total,
       paymentStatus: order.paymentStatus,

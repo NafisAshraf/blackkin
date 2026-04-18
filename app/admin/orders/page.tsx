@@ -91,6 +91,7 @@ interface ProductThumbnail {
 interface EnrichedOrder {
   _id: Id<"orders">;
   _creationTime: number;
+  orderNumber: number;
   userId?: Id<"users">;
   status: OrderStatus;
   total: number;

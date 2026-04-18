@@ -81,6 +81,7 @@ export const getCustomerDetail = query({
         v.object({
           _id: v.id("orders"),
           _creationTime: v.number(),
+          orderNumber: v.number(),
           status: v.union(
             v.literal("new"),
             v.literal("confirmed"),
@@ -127,6 +128,7 @@ export const getCustomerDetail = query({
       recentOrders: recentOrders.map((o) => ({
         _id: o._id,
         _creationTime: o._creationTime,
+        orderNumber: o.orderNumber,
         status: o.status,
         total: o.total,
         paymentStatus: o.paymentStatus,
