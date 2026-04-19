@@ -38,7 +38,7 @@ function buildSku(name: string): string {
 async function generateUniqueSku(
   ctx: { db: any },
   name: string,
-  excludeId?: Id<"products">
+  excludeId?: Id<"products">,
 ): Promise<string> {
   for (let attempt = 0; attempt < 10; attempt++) {
     const sku = buildSku(name);
@@ -49,7 +49,7 @@ async function generateUniqueSku(
     if (!existing || (excludeId && existing._id === excludeId)) return sku;
   }
   throw new ConvexError(
-    "Could not generate a unique SKU after 10 attempts. Please try again."
+    "Could not generate a unique SKU after 10 attempts. Please try again.",
   );
 }
 
@@ -76,7 +76,7 @@ const productStatusValidator = v.union(
   v.literal("draft"),
   v.literal("active"),
   v.literal("scheduled"),
-  v.literal("archived")
+  v.literal("archived"),
 );
 
 const productWithPricingValidator = v.object({
@@ -96,29 +96,43 @@ const productWithPricingValidator = v.object({
   saleStartTime: v.optional(v.number()),
   saleEndMode: v.union(v.literal("indefinite"), v.literal("custom")),
   saleEndTime: v.optional(v.number()),
-  saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))),
+  saleDisplayMode: v.optional(
+    v.union(v.literal("percentage"), v.literal("amount")),
+  ),
   metaTitle: v.optional(v.string()),
   metaDescription: v.optional(v.string()),
+  searchText: v.optional(v.string()),
   globalSortOrder: v.number(),
   categorySortOrder: v.number(),
   saleDiscountSortOrder: v.optional(v.number()),
   effectivePrice: v.number(),
   discountAmount: v.number(),
-  discountSource: v.union(v.literal("group"), v.literal("individual"), v.null()),
+  discountSource: v.union(
+    v.literal("group"),
+    v.literal("individual"),
+    v.null(),
+  ),
   discountGroupName: v.union(v.string(), v.null()),
   discountEndTime: v.union(v.number(), v.null()),
   totalRatings: v.number(),
   averageRating: v.number(),
   media: v.array(mediaItemValidator),
-  tags: v.array(v.object({ _id: v.id("tags"), name: v.string(), slug: v.string() })),
+  tags: v.array(
+    v.object({ _id: v.id("tags"), name: v.string(), slug: v.string() }),
+  ),
   variants: v.array(variantValidator),
 });
 
 // ─── HELPERS ───────────────────────────────────────────────
 
 async function enrichProduct(ctx: any, product: Doc<"products">) {
-  const { effectivePrice, discountAmount, discountSource, discountGroupName, discountEndTime } =
-    await getEffectivePrice(ctx, product);
+  const {
+    effectivePrice,
+    discountAmount,
+    discountSource,
+    discountGroupName,
+    discountEndTime,
+  } = await getEffectivePrice(ctx, product);
 
   const productTagRows = await ctx.db
     .query("productTags")
@@ -163,7 +177,7 @@ export const search = query({
     const activeResult = await ctx.db
       .query("products")
       .withSearchIndex("search_name", (q: any) => {
-        let sq = q.search("name", args.query).eq("status", "active");
+        let sq = q.search("searchText", args.query).eq("status", "active");
         if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
         return sq;
       })
@@ -173,7 +187,7 @@ export const search = query({
     const scheduledProducts = await ctx.db
       .query("products")
       .withSearchIndex("search_name", (q: any) => {
-        let sq = q.search("name", args.query).eq("status", "scheduled");
+        let sq = q.search("searchText", args.query).eq("status", "scheduled");
         if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
         return sq;
       })
@@ -181,11 +195,13 @@ export const search = query({
 
     const scheduledVisible = scheduledProducts.filter(
       (p: Doc<"products">) =>
-        p.scheduledPublishTime !== undefined && p.scheduledPublishTime <= now
+        p.scheduledPublishTime !== undefined && p.scheduledPublishTime <= now,
     );
 
     const combined = [...activeResult.page, ...scheduledVisible];
-    const enriched = await Promise.all(combined.map((p) => enrichProduct(ctx, p)));
+    const enriched = await Promise.all(
+      combined.map((p) => enrichProduct(ctx, p)),
+    );
     return { ...activeResult, page: enriched };
   },
 });
@@ -223,9 +239,9 @@ export const listFiltered = query({
           .filter(
             (v) =>
               (!args.size || v.size === args.size) &&
-              (!args.color || v.color === args.color)
+              (!args.color || v.color === args.color),
           )
-          .map((v) => v.productId)
+          .map((v) => v.productId),
       );
     }
 
@@ -235,21 +251,21 @@ export const listFiltered = query({
       activeResult = await ctx.db
         .query("products")
         .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
-          q.eq("categoryId", args.categoryId)
+          q.eq("categoryId", args.categoryId),
         )
         .paginate(args.paginationOpts);
       // Filter to only active/visible
       activeResult = {
         ...activeResult,
         page: activeResult.page.filter((p: Doc<"products">) =>
-          isProductVisible(p, now)
+          isProductVisible(p, now),
         ),
       };
     } else {
       activeResult = await ctx.db
         .query("products")
         .withIndex("by_status_and_globalSortOrder", (q: any) =>
-          q.eq("status", "active")
+          q.eq("status", "active"),
         )
         .paginate(args.paginationOpts);
 
@@ -258,7 +274,9 @@ export const listFiltered = query({
         .query("products")
         .withIndex("by_status", (q) => q.eq("status", "scheduled"))
         .take(200);
-      const scheduledVisible = scheduled.filter((p) => isProductVisible(p, now));
+      const scheduledVisible = scheduled.filter((p) =>
+        isProductVisible(p, now),
+      );
 
       activeResult = {
         ...activeResult,
@@ -269,13 +287,15 @@ export const listFiltered = query({
     const filtered = activeResult.page.filter((p: Doc<"products">) => {
       if (tagProductIds && !tagProductIds.has(p._id)) return false;
       if (variantProductIds && !variantProductIds.has(p._id)) return false;
-      if (args.minPrice !== undefined && p.basePrice < args.minPrice) return false;
-      if (args.maxPrice !== undefined && p.basePrice > args.maxPrice) return false;
+      if (args.minPrice !== undefined && p.basePrice < args.minPrice)
+        return false;
+      if (args.maxPrice !== undefined && p.basePrice > args.maxPrice)
+        return false;
       return true;
     });
 
     const enriched = await Promise.all(
-      filtered.map((p: Doc<"products">) => enrichProduct(ctx, p))
+      filtered.map((p: Doc<"products">) => enrichProduct(ctx, p)),
     );
     return { ...activeResult, page: enriched };
   },
@@ -353,14 +373,14 @@ export const searchForPicker = query({
       _id: v.id("products"),
       name: v.string(),
       slug: v.string(),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     if (!args.query.trim()) return [];
     const results = await ctx.db
       .query("products")
-      .withSearchIndex("search_name", (q) => q.search("name", args.query))
+      .withSearchIndex("search_name", (q) => q.search("searchText", args.query))
       .take(10);
     return results.map((p) => ({ _id: p._id, name: p.name, slug: p.slug }));
   },
@@ -374,40 +394,44 @@ export const searchForAdmin = query({
       _id: v.id("products"),
       name: v.string(),
       basePrice: v.number(),
-      variants: v.array(v.object({
-        _id: v.id("productVariants"),
-        size: v.string(),
-        color: v.optional(v.string()),
-        stock: v.number(),
-        priceOverride: v.optional(v.number()),
-      })),
-    })
+      variants: v.array(
+        v.object({
+          _id: v.id("productVariants"),
+          size: v.string(),
+          color: v.optional(v.string()),
+          stock: v.number(),
+          priceOverride: v.optional(v.number()),
+        }),
+      ),
+    }),
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     if (!args.query.trim()) return [];
     const results = await ctx.db
       .query("products")
-      .withSearchIndex("search_name", (q) => q.search("name", args.query))
+      .withSearchIndex("search_name", (q) => q.search("searchText", args.query))
       .take(10);
-    return await Promise.all(results.map(async (p) => {
-      const variants = await ctx.db
-        .query("productVariants")
-        .withIndex("by_productId", (q) => q.eq("productId", p._id))
-        .take(50);
-      return {
-        _id: p._id,
-        name: p.name,
-        basePrice: p.basePrice,
-        variants: variants.map((v) => ({
-          _id: v._id,
-          size: v.size,
-          color: v.color,
-          stock: v.stock,
-          priceOverride: v.priceOverride,
-        })),
-      };
-    }));
+    return await Promise.all(
+      results.map(async (p) => {
+        const variants = await ctx.db
+          .query("productVariants")
+          .withIndex("by_productId", (q) => q.eq("productId", p._id))
+          .take(50);
+        return {
+          _id: p._id,
+          name: p.name,
+          basePrice: p.basePrice,
+          variants: variants.map((v) => ({
+            _id: v._id,
+            size: v.size,
+            color: v.color,
+            stock: v.stock,
+            priceOverride: v.priceOverride,
+          })),
+        };
+      }),
+    );
   },
 });
 
@@ -433,7 +457,11 @@ export const listAllAdminFlat = query({
 
         const tagIds = productTagRows.map((pt) => pt.tagId);
         // Include productTagId for drag-and-drop reordering within tags
-        const productTagEntries = productTagRows.map((pt) => ({ productTagId: pt._id, tagId: pt.tagId, sortOrder: pt.sortOrder }));
+        const productTagEntries = productTagRows.map((pt) => ({
+          productTagId: pt._id,
+          tagId: pt.tagId,
+          sortOrder: pt.sortOrder,
+        }));
 
         const variants = await ctx.db
           .query("productVariants")
@@ -453,7 +481,7 @@ export const listAllAdminFlat = query({
           variants,
           imageUrl,
         };
-      })
+      }),
     );
 
     return enriched;
@@ -472,11 +500,14 @@ export const listAllAdmin = query({
       return await ctx.db
         .query("products")
         .withSearchIndex("search_name", (q) =>
-          q.search("name", args.searchQuery!)
+          q.search("searchText", args.searchQuery!),
         )
         .paginate(args.paginationOpts);
     }
-    return await ctx.db.query("products").order("desc").paginate(args.paginationOpts);
+    return await ctx.db
+      .query("products")
+      .order("desc")
+      .paginate(args.paginationOpts);
   },
 });
 
@@ -496,11 +527,17 @@ export const create = mutation({
     // Sale pricing
     saleEnabled: v.optional(v.boolean()),
     salePrice: v.optional(v.number()),
-    saleStartMode: v.optional(v.union(v.literal("immediately"), v.literal("custom"))),
+    saleStartMode: v.optional(
+      v.union(v.literal("immediately"), v.literal("custom")),
+    ),
     saleStartTime: v.optional(v.number()),
-    saleEndMode: v.optional(v.union(v.literal("indefinite"), v.literal("custom"))),
+    saleEndMode: v.optional(
+      v.union(v.literal("indefinite"), v.literal("custom")),
+    ),
     saleEndTime: v.optional(v.number()),
-    saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))),
+    saleDisplayMode: v.optional(
+      v.union(v.literal("percentage"), v.literal("amount")),
+    ),
     // SEO
     metaTitle: v.optional(v.string()),
     metaDescription: v.optional(v.string()),
@@ -513,7 +550,7 @@ export const create = mutation({
         sku: v.optional(v.string()),
         stock: v.number(),
         priceOverride: v.optional(v.number()),
-      })
+      }),
     ),
   },
   returns: v.id("products"),
@@ -521,7 +558,8 @@ export const create = mutation({
     await requireAdmin(ctx);
 
     if (args.basePrice <= 0) throw new ConvexError("Price must be positive");
-    if (args.variants.length === 0) throw new ConvexError("At least one variant required");
+    if (args.variants.length === 0)
+      throw new ConvexError("At least one variant required");
 
     const existing = await ctx.db
       .query("products")
@@ -546,7 +584,7 @@ export const create = mutation({
     const topGlobal = await ctx.db
       .query("products")
       .withIndex("by_status_and_globalSortOrder", (q: any) =>
-        q.eq("status", args.status ?? "draft")
+        q.eq("status", args.status ?? "draft"),
       )
       .order("asc")
       .take(1);
@@ -559,11 +597,12 @@ export const create = mutation({
       const topCategory = await ctx.db
         .query("products")
         .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
-          q.eq("categoryId", args.categoryId!)
+          q.eq("categoryId", args.categoryId!),
         )
         .order("asc")
         .take(1);
-      categorySortOrder = topCategory.length > 0 ? topCategory[0].categorySortOrder - 1 : 0;
+      categorySortOrder =
+        topCategory.length > 0 ? topCategory[0].categorySortOrder - 1 : 0;
     }
 
     const { variants, sku: _skuArg, ...productData } = args;
@@ -579,13 +618,16 @@ export const create = mutation({
       categorySortOrder,
       totalRatings: 0,
       averageRating: 0,
+      searchText: `${args.name} ${args.description}`,
     });
 
     const product = await ctx.db.get(productId);
     if (product) await aggregateProducts.insertIfDoesNotExist(ctx, product);
 
     await Promise.all(
-      variants.map((v) => ctx.db.insert("productVariants", { ...v, productId }))
+      variants.map((v) =>
+        ctx.db.insert("productVariants", { ...v, productId }),
+      ),
     );
 
     return productId;
@@ -607,11 +649,17 @@ export const update = mutation({
     // Sale pricing
     saleEnabled: v.optional(v.boolean()),
     salePrice: v.optional(v.number()),
-    saleStartMode: v.optional(v.union(v.literal("immediately"), v.literal("custom"))),
+    saleStartMode: v.optional(
+      v.union(v.literal("immediately"), v.literal("custom")),
+    ),
     saleStartTime: v.optional(v.number()),
-    saleEndMode: v.optional(v.union(v.literal("indefinite"), v.literal("custom"))),
+    saleEndMode: v.optional(
+      v.union(v.literal("indefinite"), v.literal("custom")),
+    ),
     saleEndTime: v.optional(v.number()),
-    saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))),
+    saleDisplayMode: v.optional(
+      v.union(v.literal("percentage"), v.literal("amount")),
+    ),
     // SEO
     metaTitle: v.optional(v.string()),
     metaDescription: v.optional(v.string()),
@@ -632,7 +680,8 @@ export const update = mutation({
         .query("products")
         .withIndex("by_slug", (q) => q.eq("slug", updates.slug!))
         .unique();
-      if (existing && existing._id !== id) throw new ConvexError("Slug already in use");
+      if (existing && existing._id !== id)
+        throw new ConvexError("Slug already in use");
     }
 
     // Delete R2 objects for any media items that were removed
@@ -655,7 +704,8 @@ export const update = mutation({
           .query("products")
           .withIndex("by_sku", (q: any) => q.eq("sku", updates.sku!))
           .unique();
-        if (existing && existing._id !== id) throw new ConvexError("SKU already in use");
+        if (existing && existing._id !== id)
+          throw new ConvexError("SKU already in use");
       }
     }
 
@@ -669,7 +719,7 @@ export const update = mutation({
       const topCategory = await ctx.db
         .query("products")
         .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
-          q.eq("categoryId", updates.categoryId!)
+          q.eq("categoryId", updates.categoryId!),
         )
         .order("asc")
         .take(1);
@@ -678,8 +728,22 @@ export const update = mutation({
     }
 
     const clean = Object.fromEntries(
-      Object.entries(updates).filter(([k, v]) => v !== undefined || (k === "categoryId" && explicitRemoveCategory))
+      Object.entries(updates).filter(
+        ([k, v]) =>
+          v !== undefined || (k === "categoryId" && explicitRemoveCategory),
+      ),
     );
+
+    // Keep searchText in sync if name or description changed
+    if (updates.name !== undefined || updates.description !== undefined) {
+      const current = await ctx.db.get(id);
+      if (current) {
+        const newName = updates.name ?? current.name;
+        const newDesc = updates.description ?? current.description;
+        clean.searchText = `${newName} ${newDesc}`;
+      }
+    }
+
     if (Object.keys(clean).length > 0) await ctx.db.patch(id, clean);
     return null;
   },
@@ -696,7 +760,7 @@ export const updateVariants = mutation({
         sku: v.optional(v.string()),
         stock: v.number(),
         priceOverride: v.optional(v.number()),
-      })
+      }),
     ),
     deleteIds: v.optional(v.array(v.id("productVariants"))),
   },
@@ -713,9 +777,12 @@ export const updateVariants = mutation({
         if (id) {
           return ctx.db.patch(id, data);
         } else {
-          return ctx.db.insert("productVariants", { ...data, productId: args.productId });
+          return ctx.db.insert("productVariants", {
+            ...data,
+            productId: args.productId,
+          });
         }
-      })
+      }),
     );
 
     return null;
@@ -739,7 +806,9 @@ export const assignTags = mutation({
     const oldTagIds = new Set(oldRows.map((r) => r.tagId));
     const newTagSet = new Set(args.tagIds);
     // Preserve existing sortOrders for tags that remain
-    const oldSortOrderByTagId = new Map(oldRows.map((r) => [r.tagId as string, r.sortOrder]));
+    const oldSortOrderByTagId = new Map(
+      oldRows.map((r) => [r.tagId as string, r.sortOrder]),
+    );
 
     await Promise.all(oldRows.map((r) => ctx.db.delete(r._id)));
     await Promise.all(
@@ -754,14 +823,23 @@ export const assignTags = mutation({
             .query("productTags")
             .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
             .take(500);
-          sortOrder = tagRows.length > 0 ? Math.max(...tagRows.map((r) => r.sortOrder)) + 1 : 0;
+          sortOrder =
+            tagRows.length > 0
+              ? Math.max(...tagRows.map((r) => r.sortOrder)) + 1
+              : 0;
         }
-        return ctx.db.insert("productTags", { productId: args.productId, tagId, sortOrder });
-      })
+        return ctx.db.insert("productTags", {
+          productId: args.productId,
+          tagId,
+          sortOrder,
+        });
+      }),
     );
 
     const addedTagIds = args.tagIds.filter((tagId) => !oldTagIds.has(tagId));
-    const removedTagIds = [...oldTagIds].filter((tagId) => !newTagSet.has(tagId));
+    const removedTagIds = [...oldTagIds].filter(
+      (tagId) => !newTagSet.has(tagId),
+    );
 
     for (const tagId of removedTagIds) {
       const sections = await ctx.db
@@ -772,7 +850,7 @@ export const assignTags = mutation({
         const item = await ctx.db
           .query("landingPageProductSectionItems")
           .withIndex("by_sectionId_and_productId", (q) =>
-            q.eq("sectionId", section._id).eq("productId", args.productId)
+            q.eq("sectionId", section._id).eq("productId", args.productId),
           )
           .first();
         if (item) await ctx.db.delete(item._id);
@@ -788,7 +866,7 @@ export const assignTags = mutation({
         const existingItem = await ctx.db
           .query("landingPageProductSectionItems")
           .withIndex("by_sectionId_and_productId", (q) =>
-            q.eq("sectionId", section._id).eq("productId", args.productId)
+            q.eq("sectionId", section._id).eq("productId", args.productId),
           )
           .first();
         if (!existingItem) {
@@ -796,7 +874,10 @@ export const assignTags = mutation({
             .query("landingPageProductSectionItems")
             .withIndex("by_sectionId", (q) => q.eq("sectionId", section._id))
             .collect();
-          const maxSort = allItems.reduce((max, i) => Math.max(max, i.sortOrder), -1);
+          const maxSort = allItems.reduce(
+            (max, i) => Math.max(max, i.sortOrder),
+            -1,
+          );
           await ctx.db.insert("landingPageProductSectionItems", {
             sectionId: section._id,
             productId: args.productId,
@@ -838,17 +919,15 @@ export const updateStatus = mutation({
 /** Reorder products globally (for main catalog order) */
 export const reorderGlobal = mutation({
   args: {
-    items: v.array(
-      v.object({ id: v.id("products"), sortOrder: v.number() })
-    ),
+    items: v.array(v.object({ id: v.id("products"), sortOrder: v.number() })),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     await Promise.all(
       args.items.map((item) =>
-        ctx.db.patch(item.id, { globalSortOrder: item.sortOrder })
-      )
+        ctx.db.patch(item.id, { globalSortOrder: item.sortOrder }),
+      ),
     );
     return null;
   },
@@ -857,17 +936,15 @@ export const reorderGlobal = mutation({
 /** Reorder products within a category */
 export const reorderCategory = mutation({
   args: {
-    items: v.array(
-      v.object({ id: v.id("products"), sortOrder: v.number() })
-    ),
+    items: v.array(v.object({ id: v.id("products"), sortOrder: v.number() })),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     await Promise.all(
       args.items.map((item) =>
-        ctx.db.patch(item.id, { categorySortOrder: item.sortOrder })
-      )
+        ctx.db.patch(item.id, { categorySortOrder: item.sortOrder }),
+      ),
     );
     return null;
   },
@@ -877,7 +954,7 @@ export const reorderCategory = mutation({
 export const reorderTag = mutation({
   args: {
     items: v.array(
-      v.object({ productTagId: v.id("productTags"), sortOrder: v.number() })
+      v.object({ productTagId: v.id("productTags"), sortOrder: v.number() }),
     ),
   },
   returns: v.null(),
@@ -885,8 +962,8 @@ export const reorderTag = mutation({
     await requireAdmin(ctx);
     await Promise.all(
       args.items.map((item) =>
-        ctx.db.patch(item.productTagId, { sortOrder: item.sortOrder })
-      )
+        ctx.db.patch(item.productTagId, { sortOrder: item.sortOrder }),
+      ),
     );
     return null;
   },
@@ -896,7 +973,7 @@ export const reorderTag = mutation({
 export const reorderSaleDiscount = mutation({
   args: {
     items: v.array(
-      v.object({ id: v.id("products"), saleDiscountSortOrder: v.number() })
+      v.object({ id: v.id("products"), saleDiscountSortOrder: v.number() }),
     ),
   },
   returns: v.null(),
@@ -904,8 +981,10 @@ export const reorderSaleDiscount = mutation({
     await requireAdmin(ctx);
     await Promise.all(
       args.items.map((item) =>
-        ctx.db.patch(item.id, { saleDiscountSortOrder: item.saleDiscountSortOrder })
-      )
+        ctx.db.patch(item.id, {
+          saleDiscountSortOrder: item.saleDiscountSortOrder,
+        }),
+      ),
     );
     return null;
   },
@@ -929,7 +1008,10 @@ export const listOnSale = query({
       .take(200);
 
     const activeGroups = allGroups.filter(
-      (g) => g.isActive && g.startTime <= now && (g.endTime === undefined || g.endTime > now)
+      (g) =>
+        g.isActive &&
+        g.startTime <= now &&
+        (g.endTime === undefined || g.endTime > now),
     );
 
     // ── 2. Build groups with their products ─────────────────
@@ -939,7 +1021,9 @@ export const listOnSale = query({
       activeGroups.map(async (group) => {
         const memberRows = await ctx.db
           .query("discountGroupProducts")
-          .withIndex("by_groupId_and_sortOrder", (q) => q.eq("groupId", group._id))
+          .withIndex("by_groupId_and_sortOrder", (q) =>
+            q.eq("groupId", group._id),
+          )
           .order("asc")
           .take(200);
 
@@ -950,7 +1034,7 @@ export const listOnSale = query({
               if (!p || !isProductVisible(p, now)) return null;
               activeGroupProductIds.add(row.productId);
               return enrichProduct(ctx, p);
-            })
+            }),
           )
         ).filter(Boolean) as Awaited<ReturnType<typeof enrichProduct>>[];
 
@@ -962,7 +1046,7 @@ export const listOnSale = query({
           endTime: group.endTime ?? null,
           products,
         };
-      })
+      }),
     );
 
     // ── 3. Fetch individually-discounted products ────────────
@@ -970,7 +1054,7 @@ export const listOnSale = query({
     const saleProducts = await ctx.db
       .query("products")
       .withIndex("by_saleEnabled_and_saleDiscountSortOrder", (q: any) =>
-        q.eq("saleEnabled", true)
+        q.eq("saleEnabled", true),
       )
       .order("asc")
       .take(500);
@@ -983,25 +1067,37 @@ export const listOnSale = query({
     // Use by_status index filtering instead.
     const allSaleEnabledActive = await ctx.db
       .query("products")
-      .withIndex("by_status_and_globalSortOrder", (q: any) => q.eq("status", "active"))
+      .withIndex("by_status_and_globalSortOrder", (q: any) =>
+        q.eq("status", "active"),
+      )
       .take(500);
     const allSaleEnabledScheduled = await ctx.db
       .query("products")
       .withIndex("by_status", (q) => q.eq("status", "scheduled"))
       .take(200);
 
-    const allVisible = [...allSaleEnabledActive, ...allSaleEnabledScheduled].filter(
-      (p) => isProductVisible(p, now) && p.saleEnabled
-    );
+    const allVisible = [
+      ...allSaleEnabledActive,
+      ...allSaleEnabledScheduled,
+    ].filter((p) => isProductVisible(p, now) && p.saleEnabled);
 
     // Filter: not in any active group, individual sale currently active
     const individualSaleProducts = allVisible.filter((p) => {
       if (activeGroupProductIds.has(p._id)) return false;
       if (!p.saleEnabled || p.salePrice === undefined) return false;
       // Check sale start
-      if (p.saleStartMode === "custom" && (p.saleStartTime === undefined || p.saleStartTime > now)) return false;
+      if (
+        p.saleStartMode === "custom" &&
+        (p.saleStartTime === undefined || p.saleStartTime > now)
+      )
+        return false;
       // Check sale end
-      if (p.saleEndMode === "custom" && p.saleEndTime !== undefined && p.saleEndTime <= now) return false;
+      if (
+        p.saleEndMode === "custom" &&
+        p.saleEndTime !== undefined &&
+        p.saleEndTime <= now
+      )
+        return false;
       return true;
     });
 
@@ -1014,10 +1110,224 @@ export const listOnSale = query({
     });
 
     const individualProducts = await Promise.all(
-      individualSaleProducts.map((p) => enrichProduct(ctx, p))
+      individualSaleProducts.map((p) => enrichProduct(ctx, p)),
     );
 
     return { groups, individualProducts };
+  },
+});
+
+// ─── NEW SSR + SUGGESTION QUERIES ─────────────────────────
+
+/**
+ * Lightweight autocomplete suggestions for the search overlay.
+ * Returns top 6 products with resolved image URLs inline.
+ * Client uses 500ms debounce before calling this.
+ */
+export const searchSuggestions = query({
+  args: { query: v.string() },
+  handler: async (ctx, args) => {
+    if (args.query.trim().length < 2) return [];
+    const results = await ctx.db
+      .query("products")
+      .withSearchIndex("search_name", (q: any) =>
+        q.search("searchText", args.query).eq("status", "active"),
+      )
+      .take(6);
+
+    return await Promise.all(
+      results.map(async (product) => {
+        const { effectivePrice, discountAmount } = await getEffectivePrice(
+          ctx,
+          product,
+        );
+        const firstImage = product.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await r2.getUrl(firstImage.storageId)
+          : null;
+        return {
+          _id: product._id,
+          name: product.name,
+          slug: product.slug,
+          basePrice: product.basePrice,
+          effectivePrice,
+          discountAmount,
+          imageUrl,
+        };
+      }),
+    );
+  },
+});
+
+/**
+ * SSR: search products by query, first page, with resolved image URLs.
+ * Used by server component for /products?q=term initial load.
+ */
+export const searchSSR = query({
+  args: {
+    query: v.string(),
+    limit: v.optional(v.number()),
+    categoryId: v.optional(v.id("categories")),
+  },
+  handler: async (ctx, args) => {
+    if (!args.query.trim()) return { products: [], hasMore: false, total: 0 };
+    const limit = args.limit ?? 24;
+    const now = Date.now();
+
+    const activeResults = await ctx.db
+      .query("products")
+      .withSearchIndex("search_name", (q: any) => {
+        let sq = q.search("searchText", args.query).eq("status", "active");
+        if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
+        return sq;
+      })
+      .take(limit + 10);
+
+    const scheduledResults = await ctx.db
+      .query("products")
+      .withSearchIndex("search_name", (q: any) => {
+        let sq = q.search("searchText", args.query).eq("status", "scheduled");
+        if (args.categoryId) sq = sq.eq("categoryId", args.categoryId);
+        return sq;
+      })
+      .take(50);
+
+    const scheduledVisible = scheduledResults.filter(
+      (p: Doc<"products">) =>
+        p.scheduledPublishTime !== undefined && p.scheduledPublishTime <= now,
+    );
+
+    const combined = [...activeResults, ...scheduledVisible];
+    const deduped = combined.filter(
+      (p, i, arr) => arr.findIndex((x) => x._id === p._id) === i,
+    );
+
+    const total = deduped.length;
+    const page = deduped.slice(0, limit);
+    const hasMore = total > limit;
+
+    const enriched = await Promise.all(
+      page.map(async (p) => {
+        const ep = await enrichProduct(ctx, p);
+        const firstImage = p.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await r2.getUrl(firstImage.storageId)
+          : null;
+        return { ...ep, imageUrl };
+      }),
+    );
+
+    return { products: enriched, hasMore, total };
+  },
+});
+
+/**
+ * SSR: filtered product listing with sorting and resolved image URLs.
+ * Used by server component for the catalog page initial load.
+ */
+export const listFilteredSSR = query({
+  args: {
+    categoryId: v.optional(v.id("categories")),
+    size: v.optional(v.string()),
+    color: v.optional(v.string()),
+    minPrice: v.optional(v.number()),
+    maxPrice: v.optional(v.number()),
+    sortBy: v.optional(
+      v.union(
+        v.literal("recommended"),
+        v.literal("price_asc"),
+        v.literal("price_desc"),
+        v.literal("newest"),
+        v.literal("best_selling"),
+      ),
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 24;
+    const now = Date.now();
+
+    let variantProductIds: Set<Id<"products">> | null = null;
+    if (args.size || args.color) {
+      const allVariants = await ctx.db
+        .query("productVariants")
+        .order("asc")
+        .take(2000);
+      variantProductIds = new Set(
+        allVariants
+          .filter(
+            (v) =>
+              (!args.size || v.size === args.size) &&
+              (!args.color || v.color === args.color),
+          )
+          .map((v) => v.productId),
+      );
+    }
+
+    let products: Doc<"products">[];
+    if (args.categoryId) {
+      products = await ctx.db
+        .query("products")
+        .withIndex("by_categoryId_and_categorySortOrder", (q: any) =>
+          q.eq("categoryId", args.categoryId),
+        )
+        .take(300);
+      products = products.filter((p) => isProductVisible(p, now));
+    } else {
+      const active = await ctx.db
+        .query("products")
+        .withIndex("by_status_and_globalSortOrder", (q: any) =>
+          q.eq("status", "active"),
+        )
+        .take(300);
+      const scheduled = await ctx.db
+        .query("products")
+        .withIndex("by_status", (q) => q.eq("status", "scheduled"))
+        .take(100);
+      const scheduledVisible = scheduled.filter((p) =>
+        isProductVisible(p, now),
+      );
+      products = [...active, ...scheduledVisible];
+    }
+
+    if (variantProductIds) {
+      products = products.filter((p) => variantProductIds!.has(p._id));
+    }
+    if (args.minPrice !== undefined) {
+      products = products.filter((p) => p.basePrice >= args.minPrice!);
+    }
+    if (args.maxPrice !== undefined) {
+      products = products.filter((p) => p.basePrice <= args.maxPrice!);
+    }
+
+    const enriched = await Promise.all(
+      products.map(async (p) => {
+        const ep = await enrichProduct(ctx, p);
+        const firstImage = p.media.find((m) => m.type === "image");
+        const imageUrl = firstImage
+          ? await r2.getUrl(firstImage.storageId)
+          : null;
+        return { ...ep, imageUrl };
+      }),
+    );
+
+    const sortBy = args.sortBy ?? "recommended";
+    let sorted = [...enriched];
+    if (sortBy === "price_asc") {
+      sorted.sort((a, b) => a.effectivePrice - b.effectivePrice);
+    } else if (sortBy === "price_desc") {
+      sorted.sort((a, b) => b.effectivePrice - a.effectivePrice);
+    } else if (sortBy === "newest") {
+      sorted.sort((a, b) => b._creationTime - a._creationTime);
+    } else if (sortBy === "best_selling") {
+      sorted.sort((a, b) => b.totalRatings - a.totalRatings);
+    }
+
+    const total = sorted.length;
+    const page = sorted.slice(0, limit);
+    const hasMore = total > limit;
+
+    return { products: page, hasMore, total };
   },
 });
 
@@ -1031,7 +1341,9 @@ export const remove = mutation({
 
     // Delete all R2 media objects for this product
     if (product.media.length > 0) {
-      await Promise.all(product.media.map((m) => r2.deleteObject(ctx, m.storageId)));
+      await Promise.all(
+        product.media.map((m) => r2.deleteObject(ctx, m.storageId)),
+      );
     }
 
     // Collect variant IDs before deletion (needed for rec cleanup)
@@ -1105,8 +1417,10 @@ export const remove = mutation({
         .order("asc")
         .take(64);
       const matching = recs.filter(
-        (r) => r.recommendedProductId === args.id ||
-          (r.recommendedVariantId !== undefined && variantIds.has(r.recommendedVariantId))
+        (r) =>
+          r.recommendedProductId === args.id ||
+          (r.recommendedVariantId !== undefined &&
+            variantIds.has(r.recommendedVariantId)),
       );
       if (matching.length === 0) {
         done = true;

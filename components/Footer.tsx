@@ -37,9 +37,10 @@ export function Footer() {
           <div className="col-span-2 md:col-span-1 flex items-start">
             <Link href="/">
               <img
-                src="/logo-white.svg"
+                src="/assets/blackkin_logo_text_black_trimmed.svg"
                 alt="Blackkin"
-                className="h-12 w-auto opacity-80 hover:opacity-100 transition-opacity"
+                style={{ height: "auto", width: "200px", display: "block", filter: "invert(1)", opacity: 0.85 }}
+                className="hover:opacity-100 transition-opacity"
               />
             </Link>
           </div>
@@ -143,14 +144,12 @@ export function Footer() {
           <p className="text-xs text-white/40">Privacy Policy</p>
         </div>
 
-        {/* Large wordmark */}
-        <div className="mt-8 text-center">
-          <p
-            className="text-6xl md:text-8xl lg:text-9xl font-bold tracking-[0.1em] uppercase text-white/10 select-none"
-            style={{ fontFamily: "var(--font-sans)" }}
-          >
-            BLACKKIN
-          </p>
+        <div className="mt-8 flex justify-center">
+          <img
+            src="/assets/blackkin_footer.png"
+            alt="Blackkin"
+            style={{ width: "100%", maxWidth: "none", display: "block", opacity: 0.45, userSelect: "none", pointerEvents: "none" }}
+          />
         </div>
       </div>
     </footer>

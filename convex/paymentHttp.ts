@@ -1,4 +1,3 @@
-
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
@@ -12,20 +11,22 @@ async function parseForm(req: Request): Promise<Record<string, string>> {
   const text = await req.text();
   const params = new URLSearchParams(text);
   const out: Record<string, string> = {};
-  params.forEach((val, key) => { out[key] = val; });
+  params.forEach((val, key) => {
+    out[key] = val;
+  });
   return out;
 }
 
 /** Validate with SSLCommerz Order Validation API */
 async function validateWithSSL(
   val_id: string,
-  expectedAmount: number
+  expectedAmount: number,
 ): Promise<{ ok: boolean; data: Record<string, string> }> {
   try {
-    const baseUrl = IS_LIVE 
-      ? "https://securepay.sslcommerz.com" 
+    const baseUrl = IS_LIVE
+      ? "https://securepay.sslcommerz.com"
       : "https://sandbox.sslcommerz.com";
-      
+
     const url = new URL(`${baseUrl}/validator/api/validationserverAPI.php`);
     url.searchParams.append("val_id", val_id);
     url.searchParams.append("store_id", STORE_ID);
@@ -34,8 +35,8 @@ async function validateWithSSL(
     url.searchParams.append("format", "json");
 
     const res = await fetch(url.toString());
-    const data = await res.json() as Record<string, string>;
-    
+    const data = (await res.json()) as Record<string, string>;
+
     // Valid statuses are VALID or VALIDATED
     const validStatuses = ["VALID", "VALIDATED"];
     const amountOk = parseFloat(data.amount ?? "0") >= expectedAmount - 1; // 1 BDT tolerance
@@ -53,12 +54,20 @@ export const handleSuccess = httpAction(async (ctx, req) => {
     const { tran_id, val_id, status } = body;
 
     if (!tran_id) {
-      return Response.redirect(`${SITE_URL}/account/orders?payment=failed`, 303);
+      return Response.redirect(
+        `${SITE_URL}/account/orders?payment=failed`,
+        303,
+      );
     }
 
-    const payment = await ctx.runQuery(internal.payments.getByTranId, { tranId: tran_id });
+    const payment = await ctx.runQuery(internal.payments.getByTranId, {
+      tranId: tran_id,
+    });
     if (!payment) {
-      return Response.redirect(`${SITE_URL}/account/orders?payment=failed`, 303);
+      return Response.redirect(
+        `${SITE_URL}/account/orders?payment=failed`,
+        303,
+      );
     }
 
     const orderId = payment.orderId;
@@ -83,7 +92,14 @@ export const handleSuccess = httpAction(async (ctx, req) => {
           paymentStatus: "paid",
           paymentMethod: "sslcommerz",
         });
-        return Response.redirect(`${SITE_URL}/account/orders/${orderId}?payment=success`, 303);
+        // Confirm voucher usage (pending → confirmed)
+        await ctx.runMutation(internal.vouchers.confirmVoucherUsage, {
+          orderId,
+        });
+        return Response.redirect(
+          `${SITE_URL}/account/orders/${orderId}?payment=success`,
+          303,
+        );
       }
     }
 
@@ -92,7 +108,10 @@ export const handleSuccess = httpAction(async (ctx, req) => {
       tranId: tran_id,
       status: "failed",
     });
-    return Response.redirect(`${SITE_URL}/account/orders/${orderId}?payment=failed`, 303);
+    return Response.redirect(
+      `${SITE_URL}/account/orders/${orderId}?payment=failed`,
+      303,
+    );
   } catch (err) {
     console.error("[/payment/success] error:", err);
     return Response.redirect(`${SITE_URL}/account/orders?payment=failed`, 303);
@@ -105,14 +124,17 @@ export const handleFail = httpAction(async (ctx, req) => {
     const body = await parseForm(req);
     const { tran_id } = body;
     if (tran_id) {
-      const payment = await ctx.runQuery(internal.payments.getByTranId, { tranId: tran_id });
+      const payment = await ctx.runQuery(internal.payments.getByTranId, {
+        tranId: tran_id,
+      });
       if (payment) {
         await ctx.runMutation(internal.payments.updateStatus, {
           tranId: tran_id,
           status: "failed",
         });
         return Response.redirect(
-          `${SITE_URL}/account/orders/${payment.orderId}?payment=failed`, 303
+          `${SITE_URL}/account/orders/${payment.orderId}?payment=failed`,
+          303,
         );
       }
     }
@@ -129,21 +151,30 @@ export const handleCancel = httpAction(async (ctx, req) => {
     const body = await parseForm(req);
     const { tran_id } = body;
     if (tran_id) {
-      const payment = await ctx.runQuery(internal.payments.getByTranId, { tranId: tran_id });
+      const payment = await ctx.runQuery(internal.payments.getByTranId, {
+        tranId: tran_id,
+      });
       if (payment) {
         await ctx.runMutation(internal.payments.updateStatus, {
           tranId: tran_id,
           status: "cancelled",
         });
         return Response.redirect(
-          `${SITE_URL}/account/orders/${payment.orderId}?payment=cancelled`, 303
+          `${SITE_URL}/account/orders/${payment.orderId}?payment=cancelled`,
+          303,
         );
       }
     }
-    return Response.redirect(`${SITE_URL}/account/orders?payment=cancelled`, 303);
+    return Response.redirect(
+      `${SITE_URL}/account/orders?payment=cancelled`,
+      303,
+    );
   } catch (err) {
     console.error("[/payment/cancel] error:", err);
-    return Response.redirect(`${SITE_URL}/account/orders?payment=cancelled`, 303);
+    return Response.redirect(
+      `${SITE_URL}/account/orders?payment=cancelled`,
+      303,
+    );
   }
 });
 
@@ -158,7 +189,9 @@ export const handleIpn = httpAction(async (ctx, req) => {
 
     if (!tran_id) return new Response("OK", { status: 200 });
 
-    const payment = await ctx.runQuery(internal.payments.getByTranId, { tranId: tran_id });
+    const payment = await ctx.runQuery(internal.payments.getByTranId, {
+      tranId: tran_id,
+    });
     if (!payment) {
       console.warn("[IPN] payment not found for tran_id:", tran_id);
       return new Response("OK", { status: 200 });
@@ -189,13 +222,26 @@ export const handleIpn = httpAction(async (ctx, req) => {
           paymentStatus: "paid",
           paymentMethod: "sslcommerz",
         });
+        // Confirm voucher usage (pending → confirmed)
+        await ctx.runMutation(internal.vouchers.confirmVoucherUsage, {
+          orderId,
+        });
       }
     } else if (status === "FAILED") {
-      await ctx.runMutation(internal.payments.updateStatus, { tranId: tran_id, status: "failed" });
+      await ctx.runMutation(internal.payments.updateStatus, {
+        tranId: tran_id,
+        status: "failed",
+      });
     } else if (status === "CANCELLED") {
-      await ctx.runMutation(internal.payments.updateStatus, { tranId: tran_id, status: "cancelled" });
+      await ctx.runMutation(internal.payments.updateStatus, {
+        tranId: tran_id,
+        status: "cancelled",
+      });
     } else if (status === "UNATTEMPTED" || status === "EXPIRED") {
-      await ctx.runMutation(internal.payments.updateStatus, { tranId: tran_id, status: "expired" });
+      await ctx.runMutation(internal.payments.updateStatus, {
+        tranId: tran_id,
+        status: "expired",
+      });
     }
   } catch (err) {
     console.error("[IPN] error:", err);

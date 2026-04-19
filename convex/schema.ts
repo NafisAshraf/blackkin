@@ -8,22 +8,31 @@ export default defineSchema({
     name: v.optional(v.string()),
     email: v.optional(v.string()), // undefined for phone-only users
     phone: v.optional(v.string()), // set for users who signed up with mobile number
-    role: v.union(v.literal("customer"), v.literal("admin"), v.literal("superadmin")),
+    role: v.union(
+      v.literal("customer"),
+      v.literal("admin"),
+      v.literal("superadmin"),
+    ),
     isActive: v.optional(v.boolean()), // undefined = active, false = deactivated
-    permissions: v.optional(v.object({
-      orders: v.optional(v.object({
-        enabled: v.boolean(),
-        allowedStatuses: v.array(v.string()),
-        canEdit: v.boolean(),
-        canDelete: v.boolean(),
-        canConfirm: v.boolean(),
-      })),
-      marketing: v.boolean(),
-      products: v.boolean(),
-      settings: v.boolean(),
-      pages: v.boolean(),
-      users: v.boolean(),
-    })),
+    permissions: v.optional(
+      v.object({
+        orders: v.optional(
+          v.object({
+            enabled: v.boolean(),
+            allowedStatuses: v.array(v.string()),
+            canEdit: v.boolean(),
+            canDelete: v.boolean(),
+            canConfirm: v.boolean(),
+          }),
+        ),
+        marketing: v.boolean(),
+        products: v.boolean(),
+        settings: v.boolean(),
+        pages: v.boolean(),
+        users: v.boolean(),
+        vouchers: v.boolean(),
+      }),
+    ),
   })
     .index("by_authUserId", ["authUserId"])
     .index("by_role", ["role"])
@@ -39,7 +48,7 @@ export default defineSchema({
 
   platformColors: defineTable({
     name: v.string(), // e.g. "Black", "White", "Navy"
-    hexCode: v.optional(v.string()), // e.g. "#000000"
+    hexCode: v.string(), // e.g. "#000000" — required
     sortOrder: v.number(),
   }).index("by_name", ["name"]),
 
@@ -79,7 +88,7 @@ export default defineSchema({
       v.literal("draft"),
       v.literal("active"),
       v.literal("scheduled"),
-      v.literal("archived")
+      v.literal("archived"),
     ),
     scheduledPublishTime: v.optional(v.number()), // unix ms, used when status === "scheduled"
 
@@ -90,7 +99,9 @@ export default defineSchema({
     saleStartTime: v.optional(v.number()), // unix ms, when saleStartMode === "custom"
     saleEndMode: v.union(v.literal("indefinite"), v.literal("custom")),
     saleEndTime: v.optional(v.number()), // unix ms, when saleEndMode === "custom"
-    saleDisplayMode: v.optional(v.union(v.literal("percentage"), v.literal("amount"))), // controls how discount is shown to customers
+    saleDisplayMode: v.optional(
+      v.union(v.literal("percentage"), v.literal("amount")),
+    ), // controls how discount is shown to customers
 
     // Display ordering
     globalSortOrder: v.number(), // catalog/shop page order
@@ -103,13 +114,20 @@ export default defineSchema({
     metaTitle: v.optional(v.string()),
     metaDescription: v.optional(v.string()),
 
+    // Search field: concatenated name + description for full-text search
+    searchText: v.optional(v.string()),
+
     // Media stored inline - bounded list, well under 8192 limit
     media: v.array(
       v.object({
         storageId: v.string(),
-        type: v.union(v.literal("image"), v.literal("video"), v.literal("model3d")),
+        type: v.union(
+          v.literal("image"),
+          v.literal("video"),
+          v.literal("model3d"),
+        ),
         sortOrder: v.number(),
-      })
+      }),
     ),
   })
     .index("by_slug", ["slug"])
@@ -117,10 +135,16 @@ export default defineSchema({
     .index("by_categoryId", ["categoryId"])
     .index("by_status", ["status"])
     .index("by_status_and_globalSortOrder", ["status", "globalSortOrder"])
-    .index("by_categoryId_and_categorySortOrder", ["categoryId", "categorySortOrder"])
-    .index("by_saleEnabled_and_saleDiscountSortOrder", ["saleEnabled", "saleDiscountSortOrder"])
+    .index("by_categoryId_and_categorySortOrder", [
+      "categoryId",
+      "categorySortOrder",
+    ])
+    .index("by_saleEnabled_and_saleDiscountSortOrder", [
+      "saleEnabled",
+      "saleDiscountSortOrder",
+    ])
     .searchIndex("search_name", {
-      searchField: "name",
+      searchField: "searchText",
       filterFields: ["categoryId", "status"],
     }),
 
@@ -175,10 +199,7 @@ export default defineSchema({
   // ─── PRODUCT RECOMMENDATIONS (admin-selected, GLOBAL) ────
   // "also_like" shows on ALL product pages. "also_bought" shows at checkout filtered by size.
   productRecommendations: defineTable({
-    type: v.union(
-      v.literal("also_like"),
-      v.literal("also_bought")
-    ),
+    type: v.union(v.literal("also_like"), v.literal("also_bought")),
     recommendedProductId: v.optional(v.id("products")), // used for also_like
     recommendedVariantId: v.optional(v.id("productVariants")), // used for also_bought (variant-based)
     forSize: v.optional(v.string()), // size category for also_bought sections
@@ -218,7 +239,7 @@ export default defineSchema({
 
   // ─── ORDERS ───────────────────────────────────────────────
   orders: defineTable({
-    orderNumber: v.number(),            // sequential human-readable number (e.g. 1001)
+    orderNumber: v.number(), // sequential human-readable number (e.g. 1001)
     userId: v.id("users"),
     status: v.union(
       v.literal("new"),
@@ -230,14 +251,14 @@ export default defineSchema({
       v.literal("ship_later"),
       v.literal("paid"),
       v.literal("deleted"),
-      v.literal("completed")
+      v.literal("completed"),
     ),
     courierName: v.optional(v.string()),
     shippingAddress: v.object({
       name: v.string(),
       phone: v.string(),
-      email: v.optional(v.string()),   // snapshot of customer email at order time
-      address: v.string(),             // single free-text field
+      email: v.optional(v.string()), // snapshot of customer email at order time
+      address: v.string(), // single free-text field
     }),
     subtotal: v.number(),
     discountAmount: v.number(),
@@ -247,13 +268,21 @@ export default defineSchema({
     paymentStatus: v.union(
       v.literal("unpaid"),
       v.literal("paid"),
-      v.literal("refunded")
+      v.literal("refunded"),
     ),
     notes: v.optional(v.string()),
     adminNote: v.optional(v.string()), // single admin note (replaces chat-style orderNotes)
-    confirmedBy: v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
-    deletedBy:   v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
-    cancelledBy: v.optional(v.object({ userId: v.id("users"), name: v.string(), at: v.number() })),
+    voucherCode: v.optional(v.string()), // applied voucher code snapshot
+    voucherDiscountAmount: v.optional(v.number()), // flat BDT deducted by voucher
+    confirmedBy: v.optional(
+      v.object({ userId: v.id("users"), name: v.string(), at: v.number() }),
+    ),
+    deletedBy: v.optional(
+      v.object({ userId: v.id("users"), name: v.string(), at: v.number() }),
+    ),
+    cancelledBy: v.optional(
+      v.object({ userId: v.id("users"), name: v.string(), at: v.number() }),
+    ),
   })
     .index("by_userId", ["userId"])
     .index("by_status", ["status"])
@@ -265,24 +294,23 @@ export default defineSchema({
     adminId: v.id("users"),
     adminName: v.string(),
     text: v.string(),
-  })
-    .index("by_orderId", ["orderId"]),
+  }).index("by_orderId", ["orderId"]),
 
   // ─── PAYMENTS (SSLCommerz transaction tracking) ───────────
   payments: defineTable({
     orderId: v.id("orders"),
-    tranId: v.string(),                        // unique ID sent to SSLCommerz
-    sessionKey: v.optional(v.string()),        // SSLCommerz sessionkey
-    gatewayPageUrl: v.optional(v.string()),    // GatewayPageURL (for reference)
+    tranId: v.string(), // unique ID sent to SSLCommerz
+    sessionKey: v.optional(v.string()), // SSLCommerz sessionkey
+    gatewayPageUrl: v.optional(v.string()), // GatewayPageURL (for reference)
     status: v.union(
-      v.literal("initiated"),   // session created, user redirected
-      v.literal("valid"),       // IPN + validation confirmed
-      v.literal("failed"),      // payment declined
-      v.literal("cancelled"),   // customer cancelled
-      v.literal("expired")      // timeout / unattempted
+      v.literal("initiated"), // session created, user redirected
+      v.literal("valid"), // IPN + validation confirmed
+      v.literal("failed"), // payment declined
+      v.literal("cancelled"), // customer cancelled
+      v.literal("expired"), // timeout / unattempted
     ),
-    amount: v.number(),                        // amount in BDT
-    currency: v.string(),                      // "BDT"
+    amount: v.number(), // amount in BDT
+    currency: v.string(), // "BDT"
     // Populated after IPN / validation
     valId: v.optional(v.string()),
     bankTranId: v.optional(v.string()),
@@ -334,7 +362,7 @@ export default defineSchema({
       v.literal("splitImage"),
       v.literal("tech1"),
       v.literal("tech2"),
-      v.literal("tech3")
+      v.literal("tech3"),
     ),
     storageId: v.string(),
   }).index("by_slot", ["slot"]),
@@ -377,23 +405,72 @@ export default defineSchema({
       v.literal("facebook"),
       v.literal("google"),
       v.literal("seo"),
-      v.literal("customScripts")
+      v.literal("customScripts"),
     ),
     config: v.any(),
-  })
-    .index("by_type", ["type"]),
+  }).index("by_type", ["type"]),
 
   // ─── ORDER STATUS AMOUNTS ─────────────────────────────────
   orderStatusAmounts: defineTable({
     status: v.string(),
     totalAmount: v.number(),
-  })
-    .index("by_status", ["status"]),
+  }).index("by_status", ["status"]),
 
   // ─── COUNTERS (generic auto-increment sequences) ──────────
   counters: defineTable({
-    key: v.string(),   // e.g. "orderNumber"
+    key: v.string(), // e.g. "orderNumber"
     value: v.number(), // current highest value
+  }).index("by_key", ["key"]),
+
+  // ─── VOUCHERS ────────────────────────────────────────────
+  vouchers: defineTable({
+    code: v.string(), // uppercase, unique, e.g. "SAVE100"
+    description: v.optional(v.string()),
+    discountAmount: v.number(), // flat BDT off the cart
+    minSpend: v.number(), // minimum effective cart total required (0 = no min)
+    expiresAt: v.number(), // unix ms — hard expiry
+    maxUses: v.number(), // global cap (0 = unlimited)
+    usedCount: v.number(), // atomic counter — incremented at order creation
+    maxUsesPerCustomer: v.number(), // per-customer cap (0 = unlimited)
+    isActive: v.boolean(), // admin soft-disable
   })
-    .index("by_key", ["key"]),
+    .index("by_code", ["code"])
+    .index("by_isActive", ["isActive"]),
+
+  // ─── VOUCHER USAGES ───────────────────────────────────────
+  // One row per order that applied a voucher.
+  // status "pending"   = SSLCommerz order created, awaiting IPN
+  // status "confirmed" = COD placed OR SSLCommerz IPN confirmed
+  // status "cancelled" = order cancelled / gateway initiation failed
+  voucherUsages: defineTable({
+    voucherId: v.id("vouchers"),
+    orderId: v.id("orders"),
+    userId: v.optional(v.id("users")), // set for authenticated users
+    email: v.string(), // user email snapshot (guest-ready)
+    discountAmount: v.number(), // actual BDT deducted
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("cancelled"),
+    ),
+  })
+    .index("by_voucherId", ["voucherId"])
+    .index("by_voucherId_and_userId", ["voucherId", "userId"])
+    .index("by_voucherId_and_email", ["voucherId", "email"])
+    .index("by_orderId", ["orderId"]),
+
+  // ─── NAVBAR CATEGORIES (admin-controlled, ordered) ────────
+  navbarCategories: defineTable({
+    categoryId: v.id("categories"),
+    sortOrder: v.number(),
+  })
+    .index("by_categoryId", ["categoryId"])
+    .index("by_sortOrder", ["sortOrder"]),
+
+  // ─── PREDEFINED SEARCH QUERIES ────────────────────────────
+  predefinedSearchQueries: defineTable({
+    query: v.string(),
+    sortOrder: v.number(),
+    isActive: v.boolean(),
+  }).index("by_isActive", ["isActive"]),
 });

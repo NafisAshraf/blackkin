@@ -57,35 +57,6 @@ interface ProductInfoProps {
   platformSizes: PlatformSize[];
 }
 
-// Color name → hex map for swatches
-const COLOR_HEX: Record<string, string> = {
-  black: "#1a1a1a",
-  white: "#ffffff",
-  gray: "#9ca3af",
-  grey: "#9ca3af",
-  blue: "#3b82f6",
-  navy: "#1e3a5f",
-  red: "#ef4444",
-  green: "#22c55e",
-  yellow: "#eab308",
-  purple: "#a855f7",
-  pink: "#ec4899",
-  orange: "#f97316",
-  brown: "#92400e",
-  beige: "#d4c5a9",
-  "light blue": "#93c5fd",
-  "dark blue": "#1e40af",
-  "sky blue": "#7dd3fc",
-};
-
-function getColorHex(colorName?: string): string {
-  if (!colorName) return "#ccc";
-  const lower = colorName.toLowerCase();
-  for (const [key, hex] of Object.entries(COLOR_HEX)) {
-    if (lower.includes(key)) return hex;
-  }
-  return "#ccc";
-}
 
 function StarRating({ rating, count }: { rating: number; count: number }) {
   return (
@@ -104,6 +75,16 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
 }
 
 export default function ProductInfo({ product, platformSizes }: ProductInfoProps) {
+  const platformColors = useQuery(api.platformConfig.listColors);
+  const colorHexMap = platformColors
+    ? Object.fromEntries(platformColors.map((c) => [c.name.toLowerCase(), c.hexCode]))
+    : {};
+
+  function getColorHex(colorName?: string): string {
+    if (!colorName) return "#cccccc";
+    return colorHexMap[colorName.toLowerCase()] ?? "#cccccc";
+  }
+
   const {
     _id,
     name,
@@ -232,18 +213,17 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
               return (
                 <button
                   key={color}
+                  type="button"
                   onClick={() => {
                     setSelectedColor(color);
                   }}
-                  className={`h-7 w-7 rounded-full border-2 transition-all ${
+                  className={`h-7 w-7 rounded-full transition-all ${
                     isSelected
-                      ? "border-foreground scale-110 shadow-sm"
-                      : "border-transparent hover:border-gray-400"
+                      ? "border-2 border-foreground scale-110"
+                      : "border border-gray-300 hover:border-gray-400 hover:scale-105"
                   }`}
                   style={{
                     backgroundColor: hex,
-                    boxShadow:
-                      hex === "#ffffff" ? "inset 0 0 0 1px #e5e7eb" : undefined,
                   }}
                   title={color}
                   aria-label={color}
@@ -294,99 +274,90 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
         </div>
       )}
 
-      {/* Quantity */}
-      <div className="space-y-2">
+      {/* Quantity & Actions */}
+      <div className="space-y-4 pt-1">
         <p className="text-sm font-medium">Quantity</p>
-        <div className="flex items-center gap-0 border border-border w-fit">
-          {isInCart && cartItem!.quantity === 1 ? (
+        <div className="flex gap-4 items-stretch">
+          <div className="flex items-center gap-0 border border-border w-fit shrink-0">
+            {isInCart && cartItem!.quantity === 1 ? (
+              <button
+                type="button"
+                className="h-11 w-11 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isUpdatingCart}
+                aria-label="Remove from cart"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="h-11 w-11 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
+                onClick={async () => {
+                  if (isInCart) {
+                    setIsUpdatingCart(true);
+                    await updateCartQty({ cartItemId: cartItem!._id, quantity: cartItem!.quantity - 1 });
+                    setIsUpdatingCart(false);
+                  } else {
+                    setQuantity((q) => Math.max(1, q - 1));
+                  }
+                }}
+                disabled={(isInCart ? (cartItem?.quantity ?? 1) <= 1 : quantity <= 1) || isUpdatingCart}
+              >
+                −
+              </button>
+            )}
+            <span className="h-11 w-12 flex items-center justify-center text-sm font-medium border-x border-border">
+              {isUpdatingCart ? <Loader2 className="h-3 w-3 animate-spin" /> : displayQuantity}
+            </span>
             <button
-              className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={isUpdatingCart}
-              aria-label="Remove from cart"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
-            </button>
-          ) : (
-            <button
-              className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
+              type="button"
+              className="h-11 w-11 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
               onClick={async () => {
                 if (isInCart) {
                   setIsUpdatingCart(true);
-                  await updateCartQty({ cartItemId: cartItem!._id, quantity: cartItem!.quantity - 1 });
+                  await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity + 1 });
                   setIsUpdatingCart(false);
                 } else {
-                  setQuantity((q) => Math.max(1, q - 1));
+                  setQuantity((q) => q + 1);
                 }
               }}
-              disabled={(isInCart ? (cartItem?.quantity ?? 1) <= 1 : quantity <= 1) || isUpdatingCart}
-            >
-              −
-            </button>
-          )}
-          <span className="h-10 w-12 flex items-center justify-center text-sm font-medium border-x border-border">
-            {isUpdatingCart ? <Loader2 className="h-3 w-3 animate-spin" /> : displayQuantity}
-          </span>
-          <button
-            className="h-10 w-10 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
-            onClick={async () => {
-              if (isInCart) {
-                setIsUpdatingCart(true);
-                await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity + 1 });
-                setIsUpdatingCart(false);
-              } else {
-                setQuantity((q) => q + 1);
+              disabled={
+                (selectedVariant ? displayQuantity >= selectedVariant.stock : false) || isUpdatingCart
               }
-            }}
-            disabled={
-              (selectedVariant ? displayQuantity >= selectedVariant.stock : false) || isUpdatingCart
-            }
-          >
-            +
-          </button>
-        </div>
-      </div>
-
-      {/* CTA Buttons */}
-      <div className="space-y-2.5 pt-1">
-        {/* Add to Cart / Quantity Sync */}
-        {!isInCart ? (
-          <AddToCartButton
-            productId={_id}
-            variantId={selectedVariantId}
-            disabled={!selectedVariantId}
-            quantity={quantity}
-            onSuccess={() => setQuantity(1)}
-          />
-        ) : (
-          <div className="flex flex-col gap-2">
-            <button
-              className="w-full h-11 bg-muted text-muted-foreground text-xs font-semibold tracking-wider uppercase cursor-default flex items-center justify-center gap-2"
-              disabled
             >
-              <ShoppingCart className="h-4 w-4" />
-              In Cart
+              +
             </button>
-            <p className="text-[10px] text-center text-muted-foreground uppercase tracking-wider">
-              Item already in cart. Use quantity selector to adjust.
-            </p>
           </div>
-        )}
-
-        {/* Buy It Now */}
-        <button
-          className="w-full h-11 border border-foreground bg-background text-foreground text-xs font-semibold tracking-wider uppercase hover:bg-foreground hover:text-background transition-colors flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-          disabled={!selectedVariantId}
-          onClick={() => {
-            if (!selectedVariantId) return;
-            window.location.href = session ? "/checkout" : "/login?next=/checkout";
-          }}
-        >
-          Buy It Now
-        </button>
+          
+          <div className="flex-1 w-full min-w-0">
+            {!isInCart ? (
+              <AddToCartButton
+                productId={_id}
+                variantId={selectedVariantId}
+                disabled={!selectedVariantId}
+                quantity={quantity}
+                onSuccess={() => setQuantity(1)}
+              />
+            ) : (
+              <div className="flex flex-col gap-2 h-full">
+                <button
+                  className="w-full h-11 bg-muted text-muted-foreground text-xs font-semibold tracking-wider uppercase cursor-default flex items-center justify-center gap-2"
+                  disabled
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  In Cart
+                </button>
+                <p className="text-[10px] text-center text-muted-foreground uppercase tracking-wider line-clamp-1">
+                  Item already in cart. Use quantity selector to adjust.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Save to Wishlist */}
-        <div className="flex justify-center">
+        <div className="flex justify-center mt-2">
           <WishlistButton productId={_id} variant="full" />
         </div>
       </div>

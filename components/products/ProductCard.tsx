@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 interface ProductCardProps {
   product: {
@@ -26,75 +28,44 @@ interface ProductCardProps {
       name: string;
       slug: string;
     }>;
+    variants?: Array<{
+      color?: string;
+    }>;
   };
   imageUrl?: string | null;
 }
 
-function getTagStyle(tagName: string): {
-  bg: string;
-  text: string;
-  label: string;
-} {
-  const lower = tagName.toLowerCase();
-  if (lower.includes("new") || lower.includes("arrival")) {
-    return {
-      bg: "bg-emerald-600",
-      text: "text-white",
-      label: "NEW ARRIVALS",
-    };
+function useColorHexMap(): Record<string, string> {
+  const colors = useQuery(api.platformConfig.listColors);
+  if (!colors) return {};
+  const map: Record<string, string> = {};
+  for (const c of colors) {
+    map[c.name.toLowerCase()] = c.hexCode;
   }
-  if (lower.includes("best") || lower.includes("seller")) {
-    return {
-      bg: "bg-red-600",
-      text: "text-white",
-      label: "BEST SELLER",
-    };
-  }
-  if (lower.includes("popular")) {
-    return {
-      bg: "bg-blue-600",
-      text: "text-white",
-      label: "MOST POPULAR",
-    };
-  }
-  if (lower.includes("free") || lower.includes("delivery")) {
-    return {
-      bg: "bg-emerald-600",
-      text: "text-white",
-      label: "🚚 FREE DELIVERY",
-    };
-  }
-  if (lower.includes("sale") || lower.includes("off")) {
-    return {
-      bg: "bg-red-600",
-      text: "text-white",
-      label: tagName.toUpperCase(),
-    };
-  }
-  return {
-    bg: "bg-gray-700",
-    text: "text-white",
-    label: tagName.toUpperCase(),
-  };
+  return map;
+}
+
+function getColorHexFromMap(map: Record<string, string>, colorName: string): string {
+  return map[colorName.toLowerCase()] ?? "#cccccc";
 }
 
 function StarRating({ rating }: { rating: number }) {
-  const stars = [];
-  for (let i = 1; i <= 5; i++) {
-    stars.push(
-      <span
-        key={i}
-        className={
-          i <= Math.round(rating)
-            ? "text-yellow-400"
-            : "text-muted-foreground/30"
-        }
-      >
-        &#9733;
-      </span>
-    );
-  }
-  return <span className="text-sm">{stars}</span>;
+  return (
+    <span className="text-sm">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span
+          key={i}
+          className={
+            i <= Math.round(rating)
+              ? "text-yellow-400"
+              : "text-muted-foreground/25"
+          }
+        >
+          &#9733;
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function SaleCountdownTimer({ endTime }: { endTime: number }) {
@@ -135,91 +106,147 @@ function SaleCountdownTimer({ endTime }: { endTime: number }) {
   );
 }
 
+function TagBadge({ name }: { name: string }) {
+  const lower = name.toLowerCase();
+  let bg = "bg-gray-700";
+  if (lower.includes("new") || lower.includes("arrival")) bg = "bg-emerald-600";
+  else if (lower.includes("best") || lower.includes("seller"))
+    bg = "bg-red-600";
+  else if (lower.includes("popular")) bg = "bg-blue-600";
+  else if (lower.includes("free") || lower.includes("delivery"))
+    bg = "bg-emerald-600";
+  else if (lower.includes("sale") || lower.includes("off")) bg = "bg-red-600";
+  return (
+    <span
+      className={`${bg} text-white text-[10px] font-semibold tracking-wider px-2 py-0.5 uppercase`}
+    >
+      {name}
+    </span>
+  );
+}
+
 export default function ProductCard({ product, imageUrl }: ProductCardProps) {
+  const colorMap = useColorHexMap();
   const {
     name,
     slug,
     basePrice,
     effectivePrice,
     discountAmount,
-    discountGroupName: _discountGroupName,
     discountEndTime,
     averageRating,
     totalRatings,
     tags,
+    variants,
   } = product;
   const isDiscounted = discountAmount > 0;
+  const discountPct = isDiscounted
+    ? Math.round((discountAmount / basePrice) * 100)
+    : 0;
 
-  // Pick the first tag for badge display
-  const primaryTag = tags && tags.length > 0 ? tags[0] : null;
-  const tagStyle = primaryTag ? getTagStyle(primaryTag.name) : null;
+  // Show last 2 tags (end of array = most recently added)
+  const displayTags = tags && tags.length > 0 ? tags.slice(-2) : [];
+
+  // Unique colors from variants (up to 5)
+  const uniqueColors = variants
+    ? Array.from(
+        new Set(variants.map((v) => v.color).filter((c): c is string => !!c)),
+      ).slice(0, 5)
+    : [];
 
   return (
     <Link href={`/products/${slug}`} className="block group">
       <div className="product-card-wrapper">
-        <div className="aspect-square relative overflow-hidden bg-muted">
+        {/* Image container */}
+        <div className="aspect-[4/5] relative overflow-hidden bg-muted">
           {imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={imageUrl}
               alt={name}
               className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
-              No image
-            </div>
+            <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm bg-muted" />
           )}
 
-          {/* Tag badge */}
-          {tagStyle && (
-            <div className="absolute top-3 left-3">
-              <span
-                className={`${tagStyle.bg} ${tagStyle.text} text-[10px] font-semibold tracking-wider px-2.5 py-1 uppercase`}
-              >
-                {tagStyle.label}
-              </span>
-            </div>
-          )}
-
-          {/* Discount badge */}
-          {isDiscounted && !tagStyle && (
-            <div className="absolute top-3 left-3">
-              <div className="bg-red-600 px-2.5 py-1 flex flex-col items-start">
-                <span className="text-white text-[10px] font-semibold tracking-wider uppercase">
-                  {Math.round((discountAmount / basePrice) * 100)}% OFF
+          {/* Discount badge — top left */}
+          {isDiscounted && (
+            <div className="absolute top-3 left-3 z-10">
+              <div className="bg-red-600 px-2.5 py-1.5 flex flex-col items-start shadow-sm">
+                <span className="text-white text-[10px] font-bold tracking-wider uppercase">
+                  -{discountPct}% OFF
                 </span>
-                {discountEndTime && <SaleCountdownTimer endTime={discountEndTime} />}
+                {discountEndTime && (
+                  <SaleCountdownTimer endTime={discountEndTime} />
+                )}
               </div>
             </div>
           )}
 
-          {/* Hover overlay with quick add */}
-          <div className="product-card-overlay">
-            <span className="bg-white text-foreground text-xs font-semibold tracking-wider uppercase px-6 py-2.5 hover:bg-foreground hover:text-white transition-colors">
-              Add to Cart
-            </span>
-          </div>
+          {/* Tags — top right (max 2) */}
+          {!isDiscounted && displayTags.length > 0 && (
+            <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
+              {displayTags.map((tag) => (
+                <TagBadge key={tag._id} name={tag.name} />
+              ))}
+            </div>
+          )}
+          {isDiscounted && displayTags.length > 0 && (
+            <div className="absolute top-3 right-3 z-10 flex flex-col gap-1 items-end">
+              {displayTags.map((tag) => (
+                <TagBadge key={tag._id} name={tag.name} />
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Product Info */}
+        {/* Product info */}
         <div className="pt-3 space-y-1.5">
-          <p className="text-sm leading-tight line-clamp-2">{name}</p>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold">
-              ৳{effectivePrice.toLocaleString()}
-            </span>
-            {isDiscounted && (
-              <span className="text-xs text-muted-foreground line-through">
-                ৳{basePrice.toLocaleString()}
-              </span>
-            )}
-          </div>
+          <p className="text-sm leading-tight line-clamp-2 group-hover:text-foreground transition-colors">
+            {name}
+          </p>
+
+
+
+          {/* Rating */}
           {totalRatings > 0 && (
             <div className="flex items-center gap-1">
               <StarRating rating={averageRating} />
               <span className="text-xs text-muted-foreground">
                 ({totalRatings})
               </span>
+            </div>
+          )}
+
+          {/* Color swatches */}
+          {uniqueColors.length > 0 && (
+            <div className="flex items-center gap-1.5 pt-0.5">
+              {uniqueColors.map((color) => {
+                const hex = getColorHexFromMap(colorMap, color);
+                return (
+                  <span
+                    key={color}
+                    title={color}
+                    className="h-4 w-4 rounded-full border border-gray-300 flex-shrink-0"
+                    style={{ backgroundColor: hex }}
+                  />
+                );
+              })}
+              {(variants
+                ? Array.from(
+                    new Set(variants.map((v) => v.color).filter(Boolean)),
+                  ).length
+                : 0) > 5 && (
+                <span className="text-xs text-muted-foreground">
+                  +
+                  {(variants
+                    ? Array.from(
+                        new Set(variants.map((v) => v.color).filter(Boolean)),
+                      ).length
+                    : 0) - 5}
+                </span>
+              )}
             </div>
           )}
         </div>

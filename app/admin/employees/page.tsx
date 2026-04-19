@@ -42,6 +42,7 @@ type Permissions = {
   settings: boolean;
   pages: boolean;
   users: boolean;
+  vouchers: boolean;
 };
 
 type Employee = {
@@ -55,17 +56,27 @@ type Employee = {
   permissions?: Permissions;
 };
 
-const PERMISSION_LABELS: Omit<Record<keyof Permissions, string>, "orders"> & { orders: string } = {
+const PERMISSION_LABELS: Omit<Record<keyof Permissions, string>, "orders"> & {
+  orders: string;
+} = {
   orders: "Orders",
   marketing: "Marketing",
   products: "Products",
   settings: "Settings",
   pages: "Pages",
   users: "Users",
+  vouchers: "Vouchers",
 };
 
-const NON_ORDER_PERMISSION_KEYS = ["marketing", "products", "settings", "pages", "users"] as const;
-type NonOrderPermissionKey = typeof NON_ORDER_PERMISSION_KEYS[number];
+const NON_ORDER_PERMISSION_KEYS = [
+  "marketing",
+  "products",
+  "settings",
+  "pages",
+  "users",
+  "vouchers",
+] as const;
+type NonOrderPermissionKey = (typeof NON_ORDER_PERMISSION_KEYS)[number];
 
 const DEFAULT_PERMISSIONS: Permissions = {
   orders: undefined,
@@ -74,6 +85,7 @@ const DEFAULT_PERMISSIONS: Permissions = {
   settings: false,
   pages: false,
   users: false,
+  vouchers: false,
 };
 
 const DROPDOWN_STATUS_OPTIONS = [
@@ -106,7 +118,13 @@ function OrdersPermissionSection({
             setPermissions((p) => ({
               ...p,
               orders: checked
-                ? { enabled: true, allowedStatuses: [], canEdit: false, canDelete: false, canConfirm: false }
+                ? {
+                    enabled: true,
+                    allowedStatuses: [],
+                    canEdit: false,
+                    canDelete: false,
+                    canConfirm: false,
+                  }
                 : undefined,
             }))
           }
@@ -124,7 +142,10 @@ function OrdersPermissionSection({
                 <div key={s.value} className="flex items-center gap-1.5">
                   <Checkbox
                     id={`status-${s.value}`}
-                    checked={permissions.orders?.allowedStatuses.includes(s.value) ?? false}
+                    checked={
+                      permissions.orders?.allowedStatuses.includes(s.value) ??
+                      false
+                    }
                     onCheckedChange={(checked) =>
                       setPermissions((p) => ({
                         ...p,
@@ -132,12 +153,17 @@ function OrdersPermissionSection({
                           ...p.orders!,
                           allowedStatuses: checked
                             ? [...(p.orders?.allowedStatuses ?? []), s.value]
-                            : (p.orders?.allowedStatuses ?? []).filter((v) => v !== s.value),
+                            : (p.orders?.allowedStatuses ?? []).filter(
+                                (v) => v !== s.value,
+                              ),
                         },
                       }))
                     }
                   />
-                  <Label htmlFor={`status-${s.value}`} className="text-xs font-normal">
+                  <Label
+                    htmlFor={`status-${s.value}`}
+                    className="text-xs font-normal"
+                  >
                     {s.label}
                   </Label>
                 </div>
@@ -152,7 +178,10 @@ function OrdersPermissionSection({
               {[
                 { key: "canEdit" as const, label: "Edit orders" },
                 { key: "canDelete" as const, label: "Delete orders" },
-                { key: "canConfirm" as const, label: "Confirm (complete) orders" },
+                {
+                  key: "canConfirm" as const,
+                  label: "Confirm (complete) orders",
+                },
               ].map(({ key, label }) => (
                 <div key={key} className="flex items-center gap-1.5">
                   <Checkbox
@@ -165,7 +194,10 @@ function OrdersPermissionSection({
                       }))
                     }
                   />
-                  <Label htmlFor={`action-${key}`} className="text-xs font-normal">
+                  <Label
+                    htmlFor={`action-${key}`}
+                    className="text-xs font-normal"
+                  >
                     {label}
                   </Label>
                 </div>
@@ -189,7 +221,10 @@ function PermissionCheckboxes({
 }) {
   return (
     <div className="space-y-3">
-      <OrdersPermissionSection permissions={permissions} setPermissions={setPermissions} />
+      <OrdersPermissionSection
+        permissions={permissions}
+        setPermissions={setPermissions}
+      />
       <div className="grid grid-cols-2 gap-2">
         {NON_ORDER_PERMISSION_KEYS.map((key) => (
           <div key={key} className="flex items-center gap-2">
@@ -200,7 +235,10 @@ function PermissionCheckboxes({
                 setPermissions((p) => ({ ...p, [key]: checked === true }))
               }
             />
-            <Label htmlFor={`perm-${key}`} className="font-normal cursor-pointer">
+            <Label
+              htmlFor={`perm-${key}`}
+              className="font-normal cursor-pointer"
+            >
               {PERMISSION_LABELS[key as NonOrderPermissionKey]}
             </Label>
           </div>
@@ -218,14 +256,21 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [permissions, setPermissions] = useState<Permissions>({ ...DEFAULT_PERMISSIONS });
+  const [permissions, setPermissions] = useState<Permissions>({
+    ...DEFAULT_PERMISSIONS,
+  });
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await createEmployee({ name, email, password, permissions });
+      const result = await createEmployee({
+        name,
+        email,
+        password,
+        permissions,
+      });
       if (result.success) {
         toast.success("Employee created successfully");
         onClose();
@@ -279,10 +324,18 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="space-y-2">
           <Label>Permissions</Label>
-          <PermissionCheckboxes permissions={permissions} setPermissions={setPermissions} />
+          <PermissionCheckboxes
+            permissions={permissions}
+            setPermissions={setPermissions}
+          />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button type="submit" disabled={loading}>
@@ -313,7 +366,7 @@ function EditPermissionsDialog({
   const updatePermissions = useMutation(api.employees.updatePermissions);
 
   const [permissions, setPermissions] = useState<Permissions>(
-    employee.permissions ?? { ...DEFAULT_PERMISSIONS }
+    employee.permissions ?? { ...DEFAULT_PERMISSIONS },
   );
   const [loading, setLoading] = useState(false);
 
@@ -324,7 +377,9 @@ function EditPermissionsDialog({
       toast.success("Permissions updated");
       onClose();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to update permissions");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update permissions",
+      );
     } finally {
       setLoading(false);
     }
@@ -333,10 +388,15 @@ function EditPermissionsDialog({
   return (
     <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>Edit Permissions — {employee.name ?? employee.email ?? "Employee"}</DialogTitle>
+        <DialogTitle>
+          Edit Permissions — {employee.name ?? employee.email ?? "Employee"}
+        </DialogTitle>
       </DialogHeader>
       <div className="space-y-4 py-2">
-        <PermissionCheckboxes permissions={permissions} setPermissions={setPermissions} />
+        <PermissionCheckboxes
+          permissions={permissions}
+          setPermissions={setPermissions}
+        />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose} disabled={loading}>
@@ -369,7 +429,9 @@ export default function EmployeesPage() {
   const deactivate = useMutation(api.employees.deactivateEmployee);
   const reactivate = useMutation(api.employees.reactivateEmployee);
 
-  const [dialogState, setDialogState] = useState<DialogState>({ mode: "closed" });
+  const [dialogState, setDialogState] = useState<DialogState>({
+    mode: "closed",
+  });
   const [actioningId, setActioningId] = useState<Id<"users"> | null>(null);
 
   async function handleToggleActive(employee: Employee) {
@@ -401,13 +463,20 @@ export default function EmployeesPage() {
             Manage admin accounts and their permissions.
           </p>
         </div>
-        <Button onClick={() => setDialogState({ mode: "add" })}>Add Employee</Button>
+        <Button onClick={() => setDialogState({ mode: "add" })}>
+          Add Employee
+        </Button>
       </div>
 
       {/* Dialog */}
-      <Dialog open={isOpen} onOpenChange={(open) => !open && setDialogState({ mode: "closed" })}>
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => !open && setDialogState({ mode: "closed" })}
+      >
         {dialogState.mode === "add" && (
-          <AddEmployeeDialog onClose={() => setDialogState({ mode: "closed" })} />
+          <AddEmployeeDialog
+            onClose={() => setDialogState({ mode: "closed" })}
+          />
         )}
         {dialogState.mode === "edit" && (
           <EditPermissionsDialog
@@ -423,7 +492,9 @@ export default function EmployeesPage() {
           <Loader2 className="h-4 w-4 animate-spin" /> Loading…
         </div>
       ) : employees.length === 0 ? (
-        <p className="text-muted-foreground text-sm py-4">No employees found.</p>
+        <p className="text-muted-foreground text-sm py-4">
+          No employees found.
+        </p>
       ) : (
         <div className="rounded-md border">
           <Table>
@@ -445,18 +516,20 @@ export default function EmployeesPage() {
                     {emp.name ? (
                       <span className="font-medium">{emp.name}</span>
                     ) : (
-                      <span className="text-muted-foreground text-sm">No name</span>
+                      <span className="text-muted-foreground text-sm">
+                        No name
+                      </span>
                     )}
                   </TableCell>
 
                   {/* Contact */}
                   <TableCell>
                     <div className="space-y-0.5">
-                      {emp.email && (
-                        <p className="text-sm">{emp.email}</p>
-                      )}
+                      {emp.email && <p className="text-sm">{emp.email}</p>}
                       {emp.phone && (
-                        <p className="text-xs text-muted-foreground">{emp.phone}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {emp.phone}
+                        </p>
                       )}
                       {!emp.email && !emp.phone && (
                         <span className="text-muted-foreground text-sm">—</span>
@@ -491,7 +564,9 @@ export default function EmployeesPage() {
                   {/* Permissions pills */}
                   <TableCell>
                     {emp.role === "superadmin" ? (
-                      <span className="text-xs text-muted-foreground italic">All access</span>
+                      <span className="text-xs text-muted-foreground italic">
+                        All access
+                      </span>
                     ) : emp.permissions ? (
                       <div className="flex flex-wrap gap-1">
                         {/* Orders pill — only shown when enabled */}
@@ -501,7 +576,9 @@ export default function EmployeesPage() {
                           </span>
                         )}
                         {/* Other permission pills */}
-                        {NON_ORDER_PERMISSION_KEYS.filter((k) => emp.permissions![k]).map((k) => (
+                        {NON_ORDER_PERMISSION_KEYS.filter(
+                          (k) => emp.permissions![k],
+                        ).map((k) => (
                           <span
                             key={k}
                             className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground"
@@ -511,12 +588,18 @@ export default function EmployeesPage() {
                         ))}
                         {/* Show "None" if nothing is enabled */}
                         {!emp.permissions.orders?.enabled &&
-                          NON_ORDER_PERMISSION_KEYS.every((k) => !emp.permissions![k]) && (
-                            <span className="text-xs text-muted-foreground">None</span>
+                          NON_ORDER_PERMISSION_KEYS.every(
+                            (k) => !emp.permissions![k],
+                          ) && (
+                            <span className="text-xs text-muted-foreground">
+                              None
+                            </span>
                           )}
                       </div>
                     ) : (
-                      <span className="text-xs text-muted-foreground">None</span>
+                      <span className="text-xs text-muted-foreground">
+                        None
+                      </span>
                     )}
                   </TableCell>
 
@@ -527,7 +610,9 @@ export default function EmployeesPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setDialogState({ mode: "edit", employee: emp })}
+                          onClick={() =>
+                            setDialogState({ mode: "edit", employee: emp })
+                          }
                         >
                           <Pencil className="h-3.5 w-3.5 mr-1" />
                           Edit

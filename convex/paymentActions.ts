@@ -1,4 +1,3 @@
-
 "use node";
 
 import { action } from "./_generated/server";
@@ -26,23 +25,32 @@ const shippingAddressValidator = v.object({
 function buildSslData(params: {
   tranId: string;
   total: number;
-  items: Array<{ productName: string; quantity: number; unitPrice: number; variantId: string }>;
+  items: Array<{
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    variantId: string;
+  }>;
   shippingAddress: { name: string; phone: string; address: string };
   cusEmail: string;
   cusName: string;
   orderId: string;
 }) {
-  const { tranId, total, items, shippingAddress, cusEmail, cusName, orderId } = params;
+  const { tranId, total, items, shippingAddress, cusEmail, cusName, orderId } =
+    params;
   return {
     total_amount: total,
     currency: "BDT",
     tran_id: tranId,
     success_url: `${CONVEX_SITE_URL}/payment/success`,
-    fail_url:    `${CONVEX_SITE_URL}/payment/fail`,
-    cancel_url:  `${CONVEX_SITE_URL}/payment/cancel`,
-    ipn_url:     `${CONVEX_SITE_URL}/payment/ipn`,
+    fail_url: `${CONVEX_SITE_URL}/payment/fail`,
+    cancel_url: `${CONVEX_SITE_URL}/payment/cancel`,
+    ipn_url: `${CONVEX_SITE_URL}/payment/ipn`,
     shipping_method: "Courier",
-    product_name: items.map((i) => i.productName).join(", ").slice(0, 255),
+    product_name: items
+      .map((i) => i.productName)
+      .join(", ")
+      .slice(0, 255),
     product_category: "Clothing",
     product_profile: "physical-goods",
     cus_name: cusName || "Customer",
@@ -79,6 +87,7 @@ export const initiate = action({
   args: {
     shippingAddress: shippingAddressValidator,
     notes: v.optional(v.string()),
+    voucherCode: v.optional(v.string()),
   },
   returns: v.object({
     GatewayPageURL: v.string(),
@@ -90,9 +99,12 @@ export const initiate = action({
     if (!identity) throw new ConvexError("Unauthenticated");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const user: any = await ctx.runQuery(internal.users.getByAuthUserIdInternal, {
-      authUserId: identity.subject,
-    });
+    const user: any = await ctx.runQuery(
+      internal.users.getByAuthUserIdInternal,
+      {
+        authUserId: identity.subject,
+      },
+    );
     if (!user) throw new ConvexError("User not found");
 
     // 2. Create order (validates cart server-side, decrements stock, clears cart)
@@ -101,6 +113,7 @@ export const initiate = action({
       userId: user._id,
       shippingAddress: args.shippingAddress,
       notes: args.notes,
+      voucherCode: args.voucherCode,
     });
 
     // 3. Call SSLCommerz
@@ -126,7 +139,8 @@ export const initiate = action({
         orderId: created.orderId,
       });
       throw new ConvexError(
-        apiResponse?.failedreason ?? "Payment gateway unavailable. Please try again."
+        apiResponse?.failedreason ??
+          "Payment gateway unavailable. Please try again.",
       );
     }
 
@@ -140,7 +154,10 @@ export const initiate = action({
       currency: "BDT",
     });
 
-    return { GatewayPageURL: apiResponse.GatewayPageURL, orderId: created.orderId };
+    return {
+      GatewayPageURL: apiResponse.GatewayPageURL,
+      orderId: created.orderId,
+    };
   },
 });
 
@@ -163,12 +180,16 @@ export const retryPayment = action({
 
     // Fetch order + items
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await ctx.runQuery(internal.orders.getOrderWithItemsInternal, {
-      orderId: args.orderId,
-    });
+    const data: any = await ctx.runQuery(
+      internal.orders.getOrderWithItemsInternal,
+      {
+        orderId: args.orderId,
+      },
+    );
     if (!data) throw new ConvexError("Order not found");
     if (data.order.userId !== user._id) throw new ConvexError("Unauthorized");
-    if (data.order.paymentStatus === "paid") throw new ConvexError("Order is already paid");
+    if (data.order.paymentStatus === "paid")
+      throw new ConvexError("Order is already paid");
 
     const { order, items } = data;
     const shippingAddress = order.shippingAddress;
@@ -201,7 +222,8 @@ export const retryPayment = action({
 
     if (apiResponse?.status !== "SUCCESS" || !apiResponse?.GatewayPageURL) {
       throw new ConvexError(
-        apiResponse?.failedreason ?? "Payment gateway unavailable. Please try again."
+        apiResponse?.failedreason ??
+          "Payment gateway unavailable. Please try again.",
       );
     }
 
@@ -237,21 +259,32 @@ export const generateAdminPaymentLink = action({
     if (!identity) throw new ConvexError("Unauthenticated");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const callerUser: any = await ctx.runQuery(internal.users.getByAuthUserIdInternal, {
-      authUserId: identity.subject,
-    });
-    if (!callerUser || callerUser.isActive === false) throw new ConvexError("Account deactivated");
-    if (!callerUser || (callerUser.role !== "admin" && callerUser.role !== "superadmin")) {
+    const callerUser: any = await ctx.runQuery(
+      internal.users.getByAuthUserIdInternal,
+      {
+        authUserId: identity.subject,
+      },
+    );
+    if (!callerUser || callerUser.isActive === false)
+      throw new ConvexError("Account deactivated");
+    if (
+      !callerUser ||
+      (callerUser.role !== "admin" && callerUser.role !== "superadmin")
+    ) {
       throw new ConvexError("Unauthorized");
     }
     if (callerUser.role === "admin") {
       const op = callerUser.permissions?.orders;
-      if (!op || !op.enabled || !op.canEdit) throw new ConvexError("Unauthorized");
+      if (!op || !op.enabled || !op.canEdit)
+        throw new ConvexError("Unauthorized");
     }
 
     // Fetch order info
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data: any = await ctx.runQuery(internal.orders.getOrderWithItemsInternal, { orderId });
+    const data: any = await ctx.runQuery(
+      internal.orders.getOrderWithItemsInternal,
+      { orderId },
+    );
     if (!data) throw new ConvexError("Order not found");
     const { order, items, user } = data;
 
@@ -271,7 +304,8 @@ export const generateAdminPaymentLink = action({
         phone: order.shippingAddress.phone,
         address: order.shippingAddress.address,
       },
-      cusEmail: order.shippingAddress.email ?? user?.email ?? "customer@blackkin.local",
+      cusEmail:
+        order.shippingAddress.email ?? user?.email ?? "customer@blackkin.local",
       cusName: order.shippingAddress.name,
       orderId: orderId as unknown as string,
     });
@@ -284,7 +318,8 @@ export const generateAdminPaymentLink = action({
 
     if (apiResponse?.status !== "SUCCESS" || !apiResponse?.GatewayPageURL) {
       throw new ConvexError(
-        apiResponse?.failedreason ?? "Payment gateway unavailable. Please try again."
+        apiResponse?.failedreason ??
+          "Payment gateway unavailable. Please try again.",
       );
     }
 
@@ -300,4 +335,3 @@ export const generateAdminPaymentLink = action({
     return { GatewayPageURL: apiResponse.GatewayPageURL };
   },
 });
-

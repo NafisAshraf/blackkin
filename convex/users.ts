@@ -2,7 +2,11 @@ import { query, mutation, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { authComponent } from "./auth";
-import { requireAdmin, requireAuth, requirePermission } from "./lib/auth.helpers";
+import {
+  requireAdmin,
+  requireAuth,
+  requirePermission,
+} from "./lib/auth.helpers";
 import { mutation as triggerMutation } from "./triggers";
 
 const userObject = v.object({
@@ -12,23 +16,30 @@ const userObject = v.object({
   name: v.optional(v.string()),
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
-  role: v.union(v.literal("customer"), v.literal("admin"), v.literal("superadmin")),
+  role: v.union(
+    v.literal("customer"),
+    v.literal("admin"),
+    v.literal("superadmin"),
+  ),
   isActive: v.optional(v.boolean()),
   permissions: v.optional(
     v.object({
-      orders: v.optional(v.object({
-        enabled: v.boolean(),
-        allowedStatuses: v.array(v.string()),
-        canEdit: v.boolean(),
-        canDelete: v.boolean(),
-        canConfirm: v.boolean(),
-      })),
+      orders: v.optional(
+        v.object({
+          enabled: v.boolean(),
+          allowedStatuses: v.array(v.string()),
+          canEdit: v.boolean(),
+          canDelete: v.boolean(),
+          canConfirm: v.boolean(),
+        }),
+      ),
       marketing: v.boolean(),
       products: v.boolean(),
       settings: v.boolean(),
       pages: v.boolean(),
       users: v.boolean(),
-    })
+      vouchers: v.boolean(),
+    }),
   ),
 });
 
@@ -92,19 +103,19 @@ export const getCustomerDetail = query({
             v.literal("ship_later"),
             v.literal("paid"),
             v.literal("deleted"),
-            v.literal("completed")
+            v.literal("completed"),
           ),
           total: v.number(),
           paymentStatus: v.union(
             v.literal("unpaid"),
             v.literal("paid"),
-            v.literal("refunded")
+            v.literal("refunded"),
           ),
-        })
+        }),
       ),
       wishlistCount: v.number(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     await requirePermission(ctx, "users");

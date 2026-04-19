@@ -12,6 +12,7 @@ import {
   Settings,
   UserCog,
   Layout,
+  TicketPercent,
 } from "lucide-react";
 
 export interface SidebarUser {
@@ -29,14 +30,18 @@ export interface SidebarUser {
     settings: boolean;
     pages: boolean;
     users: boolean;
+    vouchers: boolean;
   };
 }
 
-type NonOrderPermission = Exclude<keyof NonNullable<SidebarUser["permissions"]>, "orders">;
+type NonOrderPermission = Exclude<
+  keyof NonNullable<SidebarUser["permissions"]>,
+  "orders"
+>;
 
 function hasPermission(
   user: SidebarUser,
-  permission: "orders" | NonOrderPermission
+  permission: "orders" | NonOrderPermission,
 ): boolean {
   if (user.role === "superadmin") return true;
   if (permission === "orders") {
@@ -56,14 +61,26 @@ function buildNavItems(user: SidebarUser): NavItem[] {
   const items: NavItem[] = [];
 
   // Dashboard — always visible
-  items.push({ href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true });
+  items.push({
+    href: "/admin",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    exact: true,
+  });
 
   // Products (includes categories, tags, discounts, recommendations as tabs)
   if (hasPermission(user, "products")) {
     items.push({ href: "/admin/products", label: "Products", icon: Package });
   }
 
-
+  // Vouchers — own permission
+  if (hasPermission(user, "vouchers")) {
+    items.push({
+      href: "/admin/vouchers",
+      label: "Vouchers",
+      icon: TicketPercent,
+    });
+  }
 
   // Orders
   if (hasPermission(user, "orders")) {
@@ -77,12 +94,20 @@ function buildNavItems(user: SidebarUser): NavItem[] {
 
   // Marketing hub
   if (hasPermission(user, "marketing")) {
-    items.push({ href: "/admin/marketing", label: "Marketing", icon: Megaphone });
+    items.push({
+      href: "/admin/marketing",
+      label: "Marketing",
+      icon: Megaphone,
+    });
   }
 
   // Landing Page
   if (hasPermission(user, "pages")) {
-    items.push({ href: "/admin/landing-page", label: "Landing Page", icon: Layout });
+    items.push({
+      href: "/admin/landing-page",
+      label: "Landing Page",
+      icon: Layout,
+    });
   }
 
   // Settings (sizes, colors, platform config)
@@ -138,7 +163,7 @@ export function AdminSidebar({ user, onClose }: AdminSidebarProps) {
                 "flex items-center gap-3 px-3 py-2 text-sm transition-colors rounded",
                 isActive
                   ? "bg-foreground text-background font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
               )}
             >
               <item.icon className="h-4 w-4 flex-shrink-0" />

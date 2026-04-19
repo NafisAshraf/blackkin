@@ -26,11 +26,15 @@ export const metadata: Metadata = {
     template: "%s | Blackkin",
     default: "Blackkin — Premium Essentials",
   },
-  description:
-    "Premium quality underwear and everyday essentials. Free shipping on orders above ৳999.",
+  description: "Premium quality underwear and everyday essentials.",
   openGraph: {
     siteName: "Blackkin",
     type: "website",
+  },
+  icons: {
+    icon: "/assets/blackkin_logo_white.svg",
+    shortcut: "/assets/blackkin_logo_white.svg",
+    apple: "/assets/blackkin_logo_white.svg",
   },
 };
 
@@ -41,7 +45,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={cn("font-sans", montserrat.variable)}>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         <ConvexClientProvider>
           <TooltipProvider>
             <CartProvider>

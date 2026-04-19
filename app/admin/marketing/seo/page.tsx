@@ -23,7 +23,10 @@ interface SeoConfig {
 }
 
 export default function SeoSettingsPage() {
-  const config = useQuery(api.marketing.getSettings, { type: "seo" }) as SeoConfig | null | undefined;
+  const config = useQuery(api.marketing.getSettings, { type: "seo" }) as
+    | SeoConfig
+    | null
+    | undefined;
   const upsertSettings = useMutation(api.marketing.upsertSettings);
 
   const [defaultTitle, setDefaultTitle] = useState("");
@@ -50,7 +53,9 @@ export default function SeoSettingsPage() {
       });
       toast.success("Settings saved");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to save settings");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save settings",
+      );
     } finally {
       setSaving(false);
     }
@@ -69,7 +74,8 @@ export default function SeoSettingsPage() {
       <div>
         <h1 className="text-2xl font-bold">SEO Settings</h1>
         <p className="text-muted-foreground mt-1">
-          Configure default meta tags that appear in search engine results when no page-specific SEO is set.
+          Configure default meta tags that appear in search engine results when
+          no page-specific SEO is set.
         </p>
       </div>
 
@@ -78,7 +84,8 @@ export default function SeoSettingsPage() {
           <CardHeader>
             <CardTitle>Default Meta Tags</CardTitle>
             <CardDescription>
-              These values are used as fallbacks across your storefront when a page does not define its own title or description.
+              These values are used as fallbacks across your storefront when a
+              page does not define its own title or description.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -96,12 +103,14 @@ export default function SeoSettingsPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="defaultDescription">Default Meta Description</Label>
+              <Label htmlFor="defaultDescription">
+                Default Meta Description
+              </Label>
               <Textarea
                 id="defaultDescription"
                 value={defaultDescription}
                 onChange={(e) => setDefaultDescription(e.target.value)}
-                placeholder="Premium quality underwear and everyday essentials. Free shipping on orders above ৳999."
+                placeholder="Premium quality underwear and everyday essentials."
                 rows={4}
               />
               <p className="text-xs text-muted-foreground">

@@ -3,18 +3,21 @@ import { v } from "convex/values";
 import { requireSuperAdmin } from "./lib/auth.helpers";
 
 const permissionsValidator = v.object({
-  orders: v.optional(v.object({
-    enabled: v.boolean(),
-    allowedStatuses: v.array(v.string()),
-    canEdit: v.boolean(),
-    canDelete: v.boolean(),
-    canConfirm: v.boolean(),
-  })),
+  orders: v.optional(
+    v.object({
+      enabled: v.boolean(),
+      allowedStatuses: v.array(v.string()),
+      canEdit: v.boolean(),
+      canDelete: v.boolean(),
+      canConfirm: v.boolean(),
+    }),
+  ),
   marketing: v.boolean(),
   products: v.boolean(),
   settings: v.boolean(),
   pages: v.boolean(),
   users: v.boolean(),
+  vouchers: v.boolean(),
 });
 
 /** List all admin and superadmin users */
@@ -30,7 +33,7 @@ export const listEmployees = query({
       role: v.union(v.literal("admin"), v.literal("superadmin")),
       isActive: v.optional(v.boolean()),
       permissions: v.optional(permissionsValidator),
-    })
+    }),
   ),
   handler: async (ctx) => {
     await requireSuperAdmin(ctx);
@@ -65,7 +68,8 @@ export const updatePermissions = mutation({
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx);
     const user = await ctx.db.get(args.userId);
-    if (!user || user.role === "customer") throw new Error("Employee not found");
+    if (!user || user.role === "customer")
+      throw new Error("Employee not found");
     await ctx.db.patch(args.userId, { permissions: args.permissions });
     return null;
   },
@@ -78,7 +82,8 @@ export const deactivateEmployee = mutation({
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx);
     const user = await ctx.db.get(args.userId);
-    if (!user || user.role === "customer") throw new Error("Employee not found");
+    if (!user || user.role === "customer")
+      throw new Error("Employee not found");
     await ctx.db.patch(args.userId, { isActive: false });
     return null;
   },
@@ -91,7 +96,8 @@ export const reactivateEmployee = mutation({
   handler: async (ctx, args) => {
     await requireSuperAdmin(ctx);
     const user = await ctx.db.get(args.userId);
-    if (!user || user.role === "customer") throw new Error("Employee not found");
+    if (!user || user.role === "customer")
+      throw new Error("Employee not found");
     await ctx.db.patch(args.userId, { isActive: undefined });
     return null;
   },
@@ -110,7 +116,10 @@ export const promoteUserByEmail = internalMutation({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .unique();
     if (!user) return null;
-    await ctx.db.patch(user._id, { role: "admin", permissions: args.permissions });
+    await ctx.db.patch(user._id, {
+      role: "admin",
+      permissions: args.permissions,
+    });
     return user._id;
   },
 });

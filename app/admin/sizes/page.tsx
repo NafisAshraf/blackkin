@@ -45,7 +45,7 @@ type PlatformColor = {
   _id: Id<"platformColors">;
   _creationTime: number;
   name: string;
-  hexCode?: string;
+  hexCode: string; // required
   sortOrder: number;
 };
 
@@ -251,13 +251,17 @@ function ColorDialog({ state, onClose }: { state: ColorDialogState; onClose: () 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!hexCode.trim()) {
+      toast.error("Hex code is required");
+      return;
+    }
     setLoading(true);
     try {
       if (isEdit) {
-        await updateMutation({ id: state.color._id, name, hexCode: hexCode || undefined });
+        await updateMutation({ id: state.color._id, name, hexCode });
         toast.success("Color updated");
       } else {
-        await createMutation({ name, hexCode: hexCode || undefined });
+        await createMutation({ name, hexCode });
         toast.success("Color created");
       }
       onClose();
@@ -285,18 +289,20 @@ function ColorDialog({ state, onClose }: { state: ColorDialogState; onClose: () 
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="color-hex">Hex Code (optional)</Label>
+          <Label htmlFor="color-hex">Hex Code <span className="text-destructive">*</span></Label>
           <div className="flex gap-2 items-center">
             <Input
               id="color-hex"
               value={hexCode}
               onChange={(e) => setHexCode(e.target.value)}
               placeholder="#000000"
+              required
             />
             {hexCode && (
               <div className="w-8 h-8 rounded border shrink-0" style={{ backgroundColor: hexCode }} />
             )}
           </div>
+          <p className="text-xs text-muted-foreground">Required. Enter a valid hex color code.</p>
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={loading}>

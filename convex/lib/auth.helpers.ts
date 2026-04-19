@@ -3,18 +3,21 @@ import { Doc } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 
 type UserPermissions = {
-  orders: {
-    enabled: boolean;
-    allowedStatuses: string[];
-    canEdit: boolean;
-    canDelete: boolean;
-    canConfirm: boolean;
-  } | undefined;
+  orders:
+    | {
+        enabled: boolean;
+        allowedStatuses: string[];
+        canEdit: boolean;
+        canDelete: boolean;
+        canConfirm: boolean;
+      }
+    | undefined;
   marketing: boolean;
   products: boolean;
   settings: boolean;
   pages: boolean;
   users: boolean;
+  vouchers: boolean;
 };
 
 /**
@@ -30,9 +33,7 @@ export async function requireAuth(ctx: QueryCtx | MutationCtx) {
 
   const user = await ctx.db
     .query("users")
-    .withIndex("by_authUserId", (q) =>
-      q.eq("authUserId", identity.subject)
-    )
+    .withIndex("by_authUserId", (q) => q.eq("authUserId", identity.subject))
     .unique();
 
   if (!user) {
@@ -78,7 +79,7 @@ export async function requireSuperAdmin(ctx: QueryCtx | MutationCtx) {
  */
 export async function requirePermission(
   ctx: QueryCtx | MutationCtx,
-  permission: keyof UserPermissions
+  permission: keyof UserPermissions,
 ) {
   const user = await requireAuth(ctx);
   if (user.role === "superadmin") {
@@ -92,7 +93,12 @@ export async function requirePermission(
     const op = user.permissions?.orders;
     if (!op || !op.enabled) throw new ConvexError("Unauthorized");
   } else {
-    if (!user.permissions || user.permissions[permission as Exclude<keyof UserPermissions, "orders">] === false) {
+    if (
+      !user.permissions ||
+      user.permissions[
+        permission as Exclude<keyof UserPermissions, "orders">
+      ] === false
+    ) {
       throw new ConvexError("Unauthorized");
     }
   }
@@ -107,12 +113,16 @@ export async function requirePermission(
  */
 export async function requireOrderAction(
   ctx: QueryCtx | MutationCtx,
-  action: "edit" | "delete" | "confirm"
+  action: "edit" | "delete" | "confirm",
 ): Promise<Doc<"users">> {
   const user = await requirePermission(ctx, "orders");
   if (user.role === "superadmin") return user;
   const op = user.permissions!.orders!;
-  const flagMap = { edit: op.canEdit, delete: op.canDelete, confirm: op.canConfirm } as const;
+  const flagMap = {
+    edit: op.canEdit,
+    delete: op.canDelete,
+    confirm: op.canConfirm,
+  } as const;
   const allowed = flagMap[action];
   if (!allowed) throw new ConvexError("Unauthorized");
   return user;
@@ -127,9 +137,7 @@ export async function optionalAuth(ctx: QueryCtx | MutationCtx) {
 
   const user = await ctx.db
     .query("users")
-    .withIndex("by_authUserId", (q) =>
-      q.eq("authUserId", identity.subject)
-    )
+    .withIndex("by_authUserId", (q) => q.eq("authUserId", identity.subject))
     .unique();
 
   if (!user || user.isActive === false) return null;

@@ -3,18 +3,21 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 
 const permissionsValidator = v.object({
-  orders: v.optional(v.object({
-    enabled: v.boolean(),
-    allowedStatuses: v.array(v.string()),
-    canEdit: v.boolean(),
-    canDelete: v.boolean(),
-    canConfirm: v.boolean(),
-  })),
+  orders: v.optional(
+    v.object({
+      enabled: v.boolean(),
+      allowedStatuses: v.array(v.string()),
+      canEdit: v.boolean(),
+      canDelete: v.boolean(),
+      canConfirm: v.boolean(),
+    }),
+  ),
   marketing: v.boolean(),
   products: v.boolean(),
   settings: v.boolean(),
   pages: v.boolean(),
   users: v.boolean(),
+  vouchers: v.boolean(),
 });
 
 const SITE_URL = process.env.SITE_URL!;
@@ -40,8 +43,8 @@ export const createEmployee = action({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Origin": SITE_URL,
-          "Accept": "application/json",
+          Origin: SITE_URL,
+          Accept: "application/json",
         },
         body: JSON.stringify({
           email: args.email,
@@ -66,10 +69,13 @@ export const createEmployee = action({
 
     // The Better Auth onCreate trigger created the Convex user as "customer".
     // Promote them to admin.
-    const userId = await ctx.runMutation(internal.employees.promoteUserByEmail, {
-      email: args.email,
-      permissions: args.permissions,
-    });
+    const userId = await ctx.runMutation(
+      internal.employees.promoteUserByEmail,
+      {
+        email: args.email,
+        permissions: args.permissions,
+      },
+    );
 
     if (!userId) {
       return {

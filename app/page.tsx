@@ -17,12 +17,12 @@ export default async function HomePage() {
   const content = await fetchAuthQuery(api.landingPage.getContent, {}).catch(() => null);
 
   // Resolve each image URL, falling back to static public-folder images.
-  const heroSrc       = content?.images.hero             ?? "/hero-banner.png";
-  const splitImageSrc = content?.images.splitImage       ?? "/lifestyle-banner.png";
-  const tech1Src      = content?.images.tech1            ?? "/3imagesection1.png";
-  const tech2Src      = content?.images.tech2            ?? "/3imagesection2.png";
-  const tech3Src      = content?.images.tech3            ?? "/3imagesection3.png";
-  const quotes        = content?.quotes                  ?? [];
+  const heroSrc = content?.images.hero ?? "/hero-banner.png";
+  const splitImageSrc = content?.images.splitImage ?? "/lifestyle-banner.png";
+  const tech1Src = content?.images.tech1 ?? "/3imagesection1.png";
+  const tech2Src = content?.images.tech2 ?? "/3imagesection2.png";
+  const tech3Src = content?.images.tech3 ?? "/3imagesection3.png";
+  const quotes = content?.quotes ?? [];
 
   // Dynamic product showcase sections (null-safe; only rendered when active & has products)
   const productSection1 = content?.productSections?.find((s) => s.position === 1) ?? null;
@@ -43,17 +43,23 @@ export default async function HomePage() {
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
         </div>
-        <div className="relative z-10 h-full flex flex-col justify-end pb-16 px-8 lg:px-16" style={{ minHeight: "90vh" }}>
-          <div className="max-w-xl">
-            <p className="text-white/70 text-xs tracking-[0.3em] uppercase mb-4">Premium Comfort</p>
-            <h1 className="text-white text-5xl md:text-7xl font-bold tracking-tight leading-none mb-6">
-              BE<br />BOLD
-            </h1>
+        <div className="relative z-10 h-full flex flex-col justify-end pb-16 px-6 md:px-12 lg:px-20" style={{ minHeight: "90vh" }}>
+          <div className="flex flex-col md:flex-row md:justify-between md:items-end w-full gap-8">
+            <div className="flex flex-col">
+              <img
+                src="/assets/blackkin_text.svg"
+                alt="Blackkin"
+                className="h-10 md:h-16 lg:h-20 w-auto object-contain object-left mb-2 md:mb-4 brightness-0 invert"
+              />
+              <h1 className="text-white text-6xl md:text-8xl lg:text-[110px] tracking-tight leading-none uppercase">
+                <span className="font-light">BE</span> <span className="font-semibold">BOLD</span>
+              </h1>
+            </div>
             <Link
               href="/products"
-              className="inline-block bg-white text-black text-xs font-semibold tracking-[0.2em] uppercase px-8 py-3.5 hover:bg-white/90 transition-colors"
+              className="inline-block bg-white text-black text-xs font-semibold tracking-[0.2em] uppercase px-10 py-4 hover:bg-white/90 transition-colors mb-2 lg:mb-6"
             >
-              Shop Now
+              Explore Store
             </Link>
           </div>
         </div>
@@ -61,12 +67,12 @@ export default async function HomePage() {
 
       {/* Crafted for the Modern Man */}
       <section className="w-full py-24 md:py-32 px-6 text-center border-b border-border">
-        <h2 className="text-4xl md:text-6xl font-thin tracking-[0.22em] uppercase leading-snug">
-          <span className="block text-foreground">Crafted for the</span>
-          <span className="block text-gray-300">Modern Man.</span>
+        <h2 className="text-3xl md:text-4xl lg:text-5xl font-light tracking-[0.15em] uppercase leading-tight">
+          <span className="block text-[#111111]">CRAFTED FOR THE</span>
+          <span className="block text-[#A3A3A3] mt-2">MODERN MAN.</span>
         </h2>
-        <p className="mt-10 text-sm italic text-muted-foreground max-w-xl mx-auto leading-relaxed">
-          &ldquo;We Believe That What You Wear Closest To Your Skin Should Be Your Most Considered Choice.&rdquo;
+        <p className="mt-12 text-lg md:text-xl lg:text-2xl font-serif italic text-black max-w-4xl mx-auto leading-relaxed tracking-wide">
+          "We Believe That What You Wear Closest To Your Skin Should Be Your Most Considered Choice."
         </p>
       </section>
 
@@ -80,19 +86,18 @@ export default async function HomePage() {
 
       {/* Split: Text Left / Image Right */}
       <section className="w-full h-screen grid grid-cols-1 lg:grid-cols-2">
-        <div className="bg-[#111111] flex flex-col justify-center px-12 lg:px-20 py-16 h-full">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold uppercase tracking-[0.06em] leading-tight text-white">
-            Upgrade the way<br />
-            you feel, starting<br />
-            with what&apos;s<br />
-            <span className="text-white/40">Underneath</span>
-            <span className="text-white">.</span>
+        <div className="bg-[#111111] flex flex-col justify-center items-center px-12 lg:px-20 py-16 h-full text-center">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-normal uppercase tracking-[0.1em] leading-[1.4] text-white">
+            UPGRADE THE WAY<br />
+            YOU FEEL, STARTING<br />
+            WITH WHAT&apos;S<br />
+            <span className="text-[#737373]">UNDERNEATH.</span>
           </h2>
           <Link
             href="/products"
-            className="mt-8 inline-block text-xs tracking-[0.25em] uppercase text-white underline underline-offset-4 hover:text-white/60 transition-colors w-fit"
+            className="mt-12 inline-block text-xs font-light tracking-[0.2em] uppercase text-white hover:text-white/60 transition-colors border-b border-white pb-1"
           >
-            Discover More
+            DISCOVER MORE
           </Link>
         </div>
         <div className="relative h-full min-h-[50vh] lg:min-h-0">

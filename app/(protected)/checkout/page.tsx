@@ -13,7 +13,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Home, Briefcase, MapPin, CreditCard, Banknote, Trash2, Minus, Plus } from "lucide-react";
+import {
+  Loader2,
+  Home,
+  Briefcase,
+  MapPin,
+  CreditCard,
+  Banknote,
+  Trash2,
+  Minus,
+  Plus,
+  Tag,
+  X,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -36,10 +49,12 @@ export default function CheckoutPage() {
   const router = useRouter();
   const cart = useQuery(api.cart.getCartWithPricing, {});
   const savedAddresses = useQuery(api.addresses.getSavedAddresses, {});
-  const cartSizes = cart ? Array.from(new Set(cart.items.map((i) => i.size))) : [];
+  const cartSizes = cart
+    ? Array.from(new Set(cart.items.map((i) => i.size)))
+    : [];
   const recommendations = useQuery(
     api.recommendations.getAlsoBought,
-    cart !== undefined ? { sizes: cartSizes } : "skip"
+    cart !== undefined ? { sizes: cartSizes } : "skip",
   );
   const createOrder = useMutation(api.orders.create);
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
@@ -48,6 +63,20 @@ export default function CheckoutPage() {
   const addToCart = useMutation(api.cart.add);
   const updateCartQty = useMutation(api.cart.updateQuantity);
   const removeFromCart = useMutation(api.cart.remove);
+
+  // Voucher state
+  const [voucherInput, setVoucherInput] = useState("");
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState<string | null>(
+    null,
+  );
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const voucherResult = useQuery(
+    api.vouchers.validateVoucher,
+    appliedVoucherCode ? { code: appliedVoucherCode } : "skip",
+  );
+  const voucherDiscount = voucherResult?.valid
+    ? (voucherResult.discountAmount ?? 0)
+    : 0;
 
   // Address mode: which pill is selected
   const [addressMode, setAddressMode] = useState<AddressMode>("custom");
@@ -66,7 +95,9 @@ export default function CheckoutPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [cartUpdateLoadingId, setCartUpdateLoadingId] = useState<string | null>(null);
+  const [cartUpdateLoadingId, setCartUpdateLoadingId] = useState<string | null>(
+    null,
+  );
   const [checkoutDeleteConfirm, setCheckoutDeleteConfirm] = useState<{
     cartItemId: Id<"cartItems">;
     productName: string;
@@ -74,7 +105,8 @@ export default function CheckoutPage() {
 
   const homeAddress = savedAddresses?.find((a) => a.type === "home");
   const workAddress = savedAddresses?.find((a) => a.type === "work");
-  const hasSavedAddresses = savedAddresses !== undefined && savedAddresses.length > 0;
+  const hasSavedAddresses =
+    savedAddresses !== undefined && savedAddresses.length > 0;
 
   // Auto-initialise mode to the first available saved address
   useEffect(() => {
@@ -106,7 +138,7 @@ export default function CheckoutPage() {
       setAddress("");
       setSaveAs("none");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressMode]);
 
   // When userProfile first loads (async), prefill phone if still in custom mode and empty
@@ -115,7 +147,7 @@ export default function CheckoutPage() {
     if (addressMode !== "custom") return;
     if (phone) return; // don't override manual input
     setPhone(userProfile.phone);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile]);
 
   // If selected saved address gets deleted externally, fall back gracefully
@@ -132,7 +164,8 @@ export default function CheckoutPage() {
   const availableSaveSlots: SaveAs[] = [];
   if (!homeAddress) availableSaveSlots.push("home");
   if (!workAddress) availableSaveSlots.push("work");
-  const canSaveAddress = addressMode === "custom" && availableSaveSlots.length > 0;
+  const canSaveAddress =
+    addressMode === "custom" && availableSaveSlots.length > 0;
 
   // Pre-select saveAs to first available slot on load
   useEffect(() => {
@@ -158,6 +191,9 @@ export default function CheckoutPage() {
         await createOrder({
           shippingAddress,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(appliedVoucherCode && voucherResult?.valid
+            ? { voucherCode: appliedVoucherCode }
+            : {}),
         });
 
         // Fire-and-forget address save if user opted in
@@ -176,6 +212,9 @@ export default function CheckoutPage() {
         const result = await initiatePayment({
           shippingAddress,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(appliedVoucherCode && voucherResult?.valid
+            ? { voucherCode: appliedVoucherCode }
+            : {}),
         });
         toast.dismiss("ssl-init");
         // Full-page redirect to SSLCommerz hosted payment page
@@ -239,7 +278,7 @@ export default function CheckoutPage() {
                         "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-all",
                         addressMode === "home"
                           ? "bg-foreground text-background border-foreground"
-                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background"
+                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background",
                       )}
                     >
                       <Home className="h-3.5 w-3.5" />
@@ -254,7 +293,7 @@ export default function CheckoutPage() {
                         "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-all",
                         addressMode === "work"
                           ? "bg-foreground text-background border-foreground"
-                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background"
+                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background",
                       )}
                     >
                       <Briefcase className="h-3.5 w-3.5" />
@@ -268,7 +307,7 @@ export default function CheckoutPage() {
                       "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-all",
                       addressMode === "custom"
                         ? "bg-foreground text-background border-foreground"
-                        : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background"
+                        : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background",
                     )}
                   >
                     <MapPin className="h-3.5 w-3.5" />
@@ -277,7 +316,8 @@ export default function CheckoutPage() {
                 </div>
                 {addressMode !== "custom" && (
                   <p className="text-xs text-muted-foreground">
-                    Fields are pre-filled from your saved address. You can edit them for this order.
+                    Fields are pre-filled from your saved address. You can edit
+                    them for this order.
                   </p>
                 )}
               </div>
@@ -366,7 +406,9 @@ export default function CheckoutPage() {
                   <Banknote className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div>
                     <p className="text-sm font-medium">Cash on Delivery</p>
-                    <p className="text-xs text-muted-foreground">Pay when you receive</p>
+                    <p className="text-xs text-muted-foreground">
+                      Pay when you receive
+                    </p>
                   </div>
                 </label>
 
@@ -390,15 +432,17 @@ export default function CheckoutPage() {
                   <CreditCard className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div>
                     <p className="text-sm font-medium">Online Payment</p>
-                    <p className="text-xs text-muted-foreground">Card, Mobile Banking &amp; More</p>
+                    <p className="text-xs text-muted-foreground">
+                      Card, Mobile Banking &amp; More
+                    </p>
                   </div>
                 </label>
               </div>
 
               {paymentMethod === "sslcommerz" && (
                 <p className="text-xs text-muted-foreground">
-                  You&apos;ll be redirected to SSLCommerz secure payment page. Supports VISA,
-                  Mastercard, bKash, Nagad and more.
+                  You&apos;ll be redirected to SSLCommerz secure payment page.
+                  Supports VISA, Mastercard, bKash, Nagad and more.
                 </p>
               )}
             </div>
@@ -416,11 +460,97 @@ export default function CheckoutPage() {
               />
             </div>
 
+            {/* Voucher Code */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5" />
+                Voucher Code
+              </Label>
+              {appliedVoucherCode && voucherResult?.valid ? (
+                <div className="flex items-center gap-2 p-3 rounded-md bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                      <span className="font-mono">{appliedVoucherCode}</span>{" "}
+                      applied
+                    </p>
+                    {voucherResult.voucherDescription && (
+                      <p className="text-xs text-green-600 dark:text-green-500 truncate">
+                        {voucherResult.voucherDescription}
+                      </p>
+                    )}
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400">
+                      -৳{voucherDiscount.toLocaleString()} off
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedVoucherCode(null);
+                      setVoucherInput("");
+                    }}
+                    className="h-6 w-6 flex items-center justify-center rounded hover:bg-green-100 dark:hover:bg-green-900 transition-colors"
+                    aria-label="Remove voucher"
+                  >
+                    <X className="h-3.5 w-3.5 text-green-700 dark:text-green-400" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <Input
+                      id="voucherCode"
+                      value={voucherInput}
+                      onChange={(e) =>
+                        setVoucherInput(e.target.value.toUpperCase())
+                      }
+                      placeholder="Enter code"
+                      className="font-mono uppercase"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (voucherInput.trim())
+                            setAppliedVoucherCode(voucherInput.trim());
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!voucherInput.trim() || isApplyingVoucher}
+                      onClick={() => {
+                        if (voucherInput.trim()) {
+                          setIsApplyingVoucher(true);
+                          setAppliedVoucherCode(voucherInput.trim());
+                          setTimeout(() => setIsApplyingVoucher(false), 600);
+                        }
+                      }}
+                    >
+                      {isApplyingVoucher ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Apply"
+                      )}
+                    </Button>
+                  </div>
+                  {appliedVoucherCode &&
+                    voucherResult &&
+                    !voucherResult.valid && (
+                      <p className="text-xs text-destructive">
+                        {voucherResult.errorMessage ?? "Invalid voucher code."}
+                      </p>
+                    )}
+                </div>
+              )}
+            </div>
+
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {paymentMethod === "sslcommerz" ? "Connecting…" : "Placing Order…"}
+                  {paymentMethod === "sslcommerz"
+                    ? "Connecting…"
+                    : "Placing Order…"}
                 </>
               ) : paymentMethod === "sslcommerz" ? (
                 "Pay Online"
@@ -448,7 +578,9 @@ export default function CheckoutPage() {
                       />
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium line-clamp-2">{item.productName}</p>
+                      <p className="text-sm font-medium line-clamp-2">
+                        {item.productName}
+                      </p>
                       <p className="text-xs text-muted-foreground mb-2">
                         Size: {item.size}
                         {item.color ? ` · ${item.color}` : ""}
@@ -460,7 +592,10 @@ export default function CheckoutPage() {
                               className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
                               disabled={isItemLoading}
                               onClick={() =>
-                                setCheckoutDeleteConfirm({ cartItemId: item._id, productName: item.productName })
+                                setCheckoutDeleteConfirm({
+                                  cartItemId: item._id,
+                                  productName: item.productName,
+                                })
                               }
                               aria-label="Remove item"
                             >
@@ -473,9 +608,16 @@ export default function CheckoutPage() {
                               onClick={async () => {
                                 setCartUpdateLoadingId(item._id);
                                 try {
-                                  await updateCartQty({ cartItemId: item._id, quantity: item.quantity - 1 });
+                                  await updateCartQty({
+                                    cartItemId: item._id,
+                                    quantity: item.quantity - 1,
+                                  });
                                 } catch (e: unknown) {
-                                  toast.error(e instanceof Error ? e.message : "Failed to update quantity");
+                                  toast.error(
+                                    e instanceof Error
+                                      ? e.message
+                                      : "Failed to update quantity",
+                                  );
                                 } finally {
                                   setCartUpdateLoadingId(null);
                                 }
@@ -485,17 +627,30 @@ export default function CheckoutPage() {
                             </button>
                           )}
                           <span className="h-6 w-7 flex items-center justify-center text-xs font-medium border-x border-border">
-                            {isItemLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : item.quantity}
+                            {isItemLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              item.quantity
+                            )}
                           </span>
                           <button
                             className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
-                            disabled={item.quantity >= item.stock || isItemLoading}
+                            disabled={
+                              item.quantity >= item.stock || isItemLoading
+                            }
                             onClick={async () => {
                               setCartUpdateLoadingId(item._id);
                               try {
-                                await updateCartQty({ cartItemId: item._id, quantity: item.quantity + 1 });
+                                await updateCartQty({
+                                  cartItemId: item._id,
+                                  quantity: item.quantity + 1,
+                                });
                               } catch (e: unknown) {
-                                toast.error(e instanceof Error ? e.message : "Failed to update quantity");
+                                toast.error(
+                                  e instanceof Error
+                                    ? e.message
+                                    : "Failed to update quantity",
+                                );
                               } finally {
                                 setCartUpdateLoadingId(null);
                               }
@@ -505,7 +660,10 @@ export default function CheckoutPage() {
                           </button>
                         </div>
                         <p className="text-sm font-medium whitespace-nowrap">
-                          ৳{(item.discountedPrice * item.quantity).toLocaleString()}
+                          ৳
+                          {(
+                            item.discountedPrice * item.quantity
+                          ).toLocaleString()}
                         </p>
                       </div>
                     </div>
@@ -527,10 +685,21 @@ export default function CheckoutPage() {
                   <span>-৳{cart.discountAmount.toLocaleString()}</span>
                 </div>
               )}
+              {voucherDiscount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    Voucher ({appliedVoucherCode})
+                  </span>
+                  <span>-৳{voucherDiscount.toLocaleString()}</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between font-semibold text-base">
                 <span>Total</span>
-                <span>৳{cart.total.toLocaleString()}</span>
+                <span>
+                  ৳{Math.max(0, cart.total - voucherDiscount).toLocaleString()}
+                </span>
               </div>
             </div>
 
@@ -542,49 +711,79 @@ export default function CheckoutPage() {
                 </h3>
                 <div className="flex gap-3 overflow-x-auto pb-2">
                   {recommendations.map((rec: any) => {
-                    const cartItem = cart?.items.find((i) => i.variantId === rec.variantId);
+                    const cartItem = cart?.items.find(
+                      (i) => i.variantId === rec.variantId,
+                    );
                     const inCart = !!cartItem;
                     return (
                       <div
                         key={rec.variantId}
                         className="w-36 flex-shrink-0 border rounded-md overflow-hidden"
                       >
-                        <Link href={`/products/${rec.productSlug}`} className="block">
+                        <Link
+                          href={`/products/${rec.productSlug}`}
+                          className="block"
+                        >
                           <div className="aspect-square bg-muted">
                             {rec.imageUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={rec.imageUrl} alt={rec.productName} className="w-full h-full object-cover" />
+                              <img
+                                src={rec.imageUrl}
+                                alt={rec.productName}
+                                className="w-full h-full object-cover"
+                              />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No image</div>
+                              <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                                No image
+                              </div>
                             )}
                           </div>
                         </Link>
                         <div className="p-2 space-y-1.5">
-                          <p className="text-xs font-medium line-clamp-2">{rec.productName}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {rec.size}{rec.color ? ` / ${rec.color}` : ""}
+                          <p className="text-xs font-medium line-clamp-2">
+                            {rec.productName}
                           </p>
-                          <p className="text-xs font-semibold">৳{rec.effectivePrice.toLocaleString()}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {rec.size}
+                            {rec.color ? ` / ${rec.color}` : ""}
+                          </p>
+                          <p className="text-xs font-semibold">
+                            ৳{rec.effectivePrice.toLocaleString()}
+                          </p>
                           {inCart ? (
                             <div className="flex items-center justify-between gap-1">
                               <button
                                 onClick={async () => {
                                   if (cartItem.quantity <= 1) {
-                                    await removeFromCart({ cartItemId: cartItem._id });
+                                    await removeFromCart({
+                                      cartItemId: cartItem._id,
+                                    });
                                   } else {
-                                    await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity - 1 });
+                                    await updateCartQty({
+                                      cartItemId: cartItem._id,
+                                      quantity: cartItem.quantity - 1,
+                                    });
                                   }
                                 }}
                                 className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                              >−</button>
-                              <span className="text-xs font-medium">{cartItem.quantity}</span>
+                              >
+                                −
+                              </button>
+                              <span className="text-xs font-medium">
+                                {cartItem.quantity}
+                              </span>
                               <button
                                 onClick={async () => {
-                                  await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity + 1 });
+                                  await updateCartQty({
+                                    cartItemId: cartItem._id,
+                                    quantity: cartItem.quantity + 1,
+                                  });
                                 }}
                                 disabled={cartItem.quantity >= rec.stock}
                                 className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                              >+</button>
+                              >
+                                +
+                              </button>
                             </div>
                           ) : (
                             <Button
@@ -594,9 +793,17 @@ export default function CheckoutPage() {
                               disabled={rec.stock === 0}
                               onClick={async () => {
                                 try {
-                                  await addToCart({ productId: rec.productId, variantId: rec.variantId, quantity: 1 });
+                                  await addToCart({
+                                    productId: rec.productId,
+                                    variantId: rec.variantId,
+                                    quantity: 1,
+                                  });
                                 } catch (e: unknown) {
-                                  toast.error(e instanceof Error ? e.message : "Failed to add");
+                                  toast.error(
+                                    e instanceof Error
+                                      ? e.message
+                                      : "Failed to add",
+                                  );
                                 }
                               }}
                             >
@@ -622,7 +829,8 @@ export default function CheckoutPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove from cart?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove &ldquo;{checkoutDeleteConfirm?.productName}&rdquo; from your cart?
+              Remove &ldquo;{checkoutDeleteConfirm?.productName}&rdquo; from
+              your cart?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -633,10 +841,14 @@ export default function CheckoutPage() {
                 if (!checkoutDeleteConfirm) return;
                 setCartUpdateLoadingId(checkoutDeleteConfirm.cartItemId);
                 try {
-                  await removeFromCart({ cartItemId: checkoutDeleteConfirm.cartItemId });
+                  await removeFromCart({
+                    cartItemId: checkoutDeleteConfirm.cartItemId,
+                  });
                   setCheckoutDeleteConfirm(null);
                 } catch (e: unknown) {
-                  toast.error(e instanceof Error ? e.message : "Failed to remove item");
+                  toast.error(
+                    e instanceof Error ? e.message : "Failed to remove item",
+                  );
                 } finally {
                   setCartUpdateLoadingId(null);
                 }

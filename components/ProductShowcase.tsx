@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface ShowcaseProduct {
@@ -22,30 +24,18 @@ interface ProductShowcaseProps {
   products: ShowcaseProduct[];
 }
 
-// ─── Color swatch fallback map ──────────────────────────────────
-const COLOR_HEX_FALLBACKS: Record<string, string> = {
-  black: "#000000",
-  white: "#FFFFFF",
-  navy: "#1B2A4A",
-  gray: "#6B7280",
-  grey: "#6B7280",
-  red: "#DC2626",
-  blue: "#2563EB",
-  green: "#16A34A",
-  brown: "#92400E",
-  beige: "#D4C5A9",
-  cream: "#FFFDD0",
-  maroon: "#800000",
-  olive: "#808000",
-  charcoal: "#36454F",
-};
 
-function resolveColorHex(colorName: string): string {
-  return COLOR_HEX_FALLBACKS[colorName.toLowerCase()] ?? "#888888";
-}
 
 // ─── Component ──────────────────────────────────────────────────
 export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
+  const platformColors = useQuery(api.platformConfig.listColors);
+  const colorHexMap: Record<string, string> = platformColors
+    ? Object.fromEntries(platformColors.map((c) => [c.name.toLowerCase(), c.hexCode]))
+    : {};
+
+  function resolveColorHex(colorName: string): string {
+    return colorHexMap[colorName.toLowerCase()] ?? "#cccccc";
+  }
   const [offset, setOffset] = useState(0);
   const [visibleCount, setVisibleCount] = useState(3);
   const containerRef = useRef<HTMLDivElement>(null);
