@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useUploadFile } from "@convex-dev/r2/react";
 import { api } from "@/convex/_generated/api";
@@ -28,14 +28,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Pencil, Trash2, Upload, ToggleLeft, ToggleRight, MoreHorizontal } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Loader2,
+  Pencil,
+  Search,
+  Trash2,
+  Upload,
+  ToggleLeft,
+  ToggleRight,
+  MoreHorizontal,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,12 +47,7 @@ import {
 import { SortableList } from "@/components/admin/SortableList";
 
 // ─── Image slot metadata ────────────────────────────────────────────────────
-type ImageSlot =
-  | "hero"
-  | "splitImage"
-  | "tech1"
-  | "tech2"
-  | "tech3";
+type ImageSlot = "hero" | "splitImage" | "tech1" | "tech2" | "tech3";
 
 const IMAGE_SLOTS: { slot: ImageSlot; label: string; description: string }[] = [
   {
@@ -118,7 +115,11 @@ function QuoteDialog({
     setLoading(true);
     try {
       if (isEdit) {
-        await updateMutation({ id: state.quote._id, text: text.trim(), author: author.trim() });
+        await updateMutation({
+          id: state.quote._id,
+          text: text.trim(),
+          author: author.trim(),
+        });
         toast.success("Quote updated");
       } else {
         await addMutation({ text: text.trim(), author: author.trim() });
@@ -160,7 +161,12 @@ function QuoteDialog({
           />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button type="submit" disabled={loading}>
@@ -187,8 +193,6 @@ type AdminSection = {
   position: 1 | 2;
   heading: string;
   isActive: boolean;
-  tagId: Id<"tags"> | null;
-  tagName: string | null;
   products: AdminSectionProduct[];
 };
 
@@ -210,25 +214,57 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
   };
 
   const [heading, setHeading] = useState(section.heading);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
-  const [isSettingTag, setIsSettingTag] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [addingProductId, setAddingProductId] = useState<Id<"products"> | null>(
+    null,
+  );
+  const [removingItemId, setRemovingItemId] =
+    useState<Id<"landingPageProductSectionItems"> | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const upsertSection = useMutation(api.landingPage.upsertProductSection);
   const toggleSection = useMutation(api.landingPage.toggleProductSection);
-  const setTagForSection = useMutation(api.landingPage.setTagForSection);
+  const addProductToSection = useMutation(api.landingPage.addProductToSection);
+  const removeProductFromSection = useMutation(
+    api.landingPage.removeProductFromSection,
+  );
   const clearSectionMutation = useMutation(api.landingPage.clearSection);
   const reorderProducts = useMutation(api.landingPage.reorderSectionProducts);
+  const searchResults = useQuery(
+    api.products.searchForPicker,
+    section._id && debouncedSearchQuery
+      ? { query: debouncedSearchQuery }
+      : "skip",
+  );
 
-  const allTags = useQuery(api.tags.listAll);
+  useEffect(() => {
+    setHeading(section.heading);
+  }, [section.heading]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
+
+  const existingProductIds = new Set(
+    section.products.map((product) => product.productId),
+  );
 
   async function handleSaveHeading() {
     if (!heading.trim()) return;
     setIsSaving(true);
     try {
-      await upsertSection({ position: section.position, heading: heading.trim() });
+      await upsertSection({
+        position: section.position,
+        heading: heading.trim(),
+      });
       toast.success("Section heading updated");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
@@ -246,30 +282,49 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
     try {
       await toggleSection({ id: section._id });
       toast.success(section.isActive ? "Section hidden" : "Section visible");
-    } catch {
-      toast.error("Failed to toggle section");
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to toggle section",
+      );
     } finally {
       setIsToggling(false);
     }
   }
 
-  async function handleSetTag(tagId: string) {
+  async function handleAddProduct(productId: Id<"products">) {
     if (!section._id) {
-      toast.error("Save a heading first before setting a tag");
+      toast.error("Save a heading first before adding products");
       return;
     }
-    if (tagId === section.tagId) return;
-    setIsSettingTag(true);
+    if (existingProductIds.has(productId)) return;
+
+    setAddingProductId(productId);
     try {
-      await setTagForSection({
+      await addProductToSection({
         sectionId: section._id,
-        tagId: tagId as Id<"tags">,
+        productId,
       });
-      toast.success("Tag set — products updated");
+      toast.success("Product added");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to set tag");
+      toast.error(err instanceof Error ? err.message : "Failed to add product");
     } finally {
-      setIsSettingTag(false);
+      setAddingProductId(null);
+    }
+  }
+
+  async function handleRemoveProduct(
+    itemId: Id<"landingPageProductSectionItems">,
+  ) {
+    setRemovingItemId(itemId);
+    try {
+      await removeProductFromSection({ itemId });
+      toast.success("Product removed");
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to remove product",
+      );
+    } finally {
+      setRemovingItemId(null);
     }
   }
 
@@ -280,7 +335,9 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
       await clearSectionMutation({ sectionId: section._id });
       toast.success("Section cleared");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to clear section");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to clear section",
+      );
     } finally {
       setIsClearing(false);
       setShowClearConfirm(false);
@@ -300,10 +357,12 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
         toast.error("Failed to reorder");
       }
     },
-    [reorderProducts]
+    [reorderProducts],
   );
 
-  const canClear = !!(section._id && (section.tagId || section.products.length > 0));
+  const canClear = !!(section._id && section.products.length > 0);
+  const hasSearchTerm = debouncedSearchQuery.length > 0;
+  const isSearching = hasSearchTerm && searchResults === undefined;
 
   return (
     <div className="border border-border overflow-hidden">
@@ -324,7 +383,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
           {section._id && (
             <Badge
               variant={section.isActive ? "default" : "secondary"}
-              className="text-[9px] tracking-[0.1em] uppercase"
+              className="text-[9px] tracking-widest uppercase"
             >
               {section.isActive ? "Visible" : "Hidden"}
             </Badge>
@@ -352,7 +411,11 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
           <button
             className="h-7 w-7 flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
             title={section.isActive ? "Hide section" : "Show section"}
-            disabled={isToggling || !section._id || (!section.tagId && !section.isActive)}
+            disabled={
+              isToggling ||
+              !section._id ||
+              (!section.products.length && !section.isActive)
+            }
             onClick={handleToggle}
           >
             {isToggling ? (
@@ -378,50 +441,101 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
           <Button
             size="sm"
             onClick={handleSaveHeading}
-            disabled={isSaving || !heading.trim() || heading.trim() === section.heading}
+            disabled={
+              isSaving || !heading.trim() || heading.trim() === section.heading
+            }
           >
-            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+            {isSaving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Save"
+            )}
           </Button>
         </div>
 
-        {/* Tag Selector */}
+        {/* Product search */}
         {section._id && (
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Products Tag</Label>
-            <div className="flex items-center gap-2">
-              <Select
-                value={section.tagId ?? ""}
-                onValueChange={handleSetTag}
-                disabled={isSettingTag}
-              >
-                <SelectTrigger className="flex-1 h-8 text-xs">
-                  <SelectValue placeholder="Select a tag to populate this section" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(allTags ?? []).map((tag) => (
-                    <SelectItem key={tag._id} value={tag._id} className="text-xs">
-                      {tag.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {isSettingTag && (
-                <Loader2 className="h-3.5 w-3.5 animate-spin flex-shrink-0 text-muted-foreground" />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs text-muted-foreground">
+                Search and Add Products
+              </Label>
+              <p className="text-[10px] text-muted-foreground">
+                {section.products.length} selected
+              </p>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search products by name"
+                className="pl-9"
+              />
+            </div>
+            <div className="border border-border bg-muted/20">
+              {!searchQuery.trim() ? (
+                <p className="px-3 py-4 text-xs text-muted-foreground">
+                  Type to search products and add them to this section.
+                </p>
+              ) : isSearching ? (
+                <div className="flex items-center gap-2 px-3 py-4 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching
+                  products…
+                </div>
+              ) : (searchResults?.length ?? 0) === 0 ? (
+                <p className="px-3 py-4 text-xs text-muted-foreground">
+                  No products matched this search.
+                </p>
+              ) : (
+                <div className="divide-y divide-border">
+                  {(searchResults ?? []).map((product) => {
+                    const alreadyAdded = existingProductIds.has(product._id);
+                    const isAdding = addingProductId === product._id;
+
+                    return (
+                      <div
+                        key={product._id}
+                        className="flex items-center justify-between gap-3 px-3 py-2.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">
+                            {product.name}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate">
+                            /{product.slug}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={alreadyAdded ? "secondary" : "outline"}
+                          disabled={alreadyAdded || isAdding}
+                          onClick={() => handleAddProduct(product._id)}
+                          className="h-7 min-w-16 text-xs"
+                        >
+                          {isAdding ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : alreadyAdded ? (
+                            "Added"
+                          ) : (
+                            "Add"
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
-            {section.tagId && (
-              <p className="text-[10px] text-muted-foreground">
-                {section.products.length} product{section.products.length !== 1 ? "s" : ""} from{" "}
-                <span className="font-medium text-foreground">{section.tagName}</span>
-              </p>
-            )}
           </div>
         )}
 
         {/* Sortable product list */}
         {section.products.length > 0 && (
           <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">Drag to Reorder</Label>
+            <Label className="text-xs text-muted-foreground">
+              Drag to Reorder
+            </Label>
             <div className="border border-border divide-y">
               <SortableList
                 items={section.products}
@@ -433,10 +547,29 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
                       <img
                         src={item.imageUrl}
                         alt={item.name}
-                        className="w-8 h-8 object-cover flex-shrink-0"
+                        className="h-8 w-8 object-cover shrink-0"
                       />
                     )}
-                    <span className="text-sm flex-1 truncate">{item.name}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm truncate">{item.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        /{item.slug}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={removingItemId === item._id}
+                      onClick={() => handleRemoveProduct(item._id)}
+                      className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    >
+                      {removingItemId === item._id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        "Remove"
+                      )}
+                    </Button>
                   </div>
                 )}
               />
@@ -450,16 +583,13 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
             Save a heading to start configuring this section.
           </p>
         )}
-        {section._id && !section.tagId && (
-          <p className="text-xs text-muted-foreground py-2">
-            Select a tag above to populate this section with products.
-          </p>
-        )}
-        {section._id && section.tagId && section.products.length === 0 && (
-          <p className="text-xs text-muted-foreground py-2">
-            This tag has no products assigned yet.
-          </p>
-        )}
+        {section._id &&
+          section.products.length === 0 &&
+          !searchQuery.trim() && (
+            <p className="text-xs text-muted-foreground py-2">
+              Search above to start adding products to this section.
+            </p>
+          )}
       </div>
 
       {/* Clear Section Confirmation */}
@@ -468,7 +598,8 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Clear Section?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the tag and all products from this section. The section will remain hidden until a new tag is selected.
+              This will remove all curated products from this section and hide
+              it until you add products again.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -507,18 +638,28 @@ export default function LandingPageCmsPage() {
   const productSections = useQuery(api.landingPage.adminGetProductSections);
 
   // Upload tracking: slot → true while uploading
-  const [uploading, setUploading] = useState<Partial<Record<ImageSlot, boolean>>>({});
-  const fileInputRefs = useRef<Partial<Record<ImageSlot, HTMLInputElement | null>>>({});
+  const [uploading, setUploading] = useState<
+    Partial<Record<ImageSlot, boolean>>
+  >({});
+  const fileInputRefs = useRef<
+    Partial<Record<ImageSlot, HTMLInputElement | null>>
+  >({});
 
   // Quote dialog
-  const [quoteDialog, setQuoteDialog] = useState<QuoteDialogState>({ mode: "closed" });
+  const [quoteDialog, setQuoteDialog] = useState<QuoteDialogState>({
+    mode: "closed",
+  });
   const [deleteTarget, setDeleteTarget] = useState<Quote | null>(null);
-  const [togglingId, setTogglingId] = useState<Id<"landingPageQuotes"> | null>(null);
-  const [deletingId, setDeletingId] = useState<Id<"landingPageQuotes"> | null>(null);
+  const [togglingId, setTogglingId] = useState<Id<"landingPageQuotes"> | null>(
+    null,
+  );
+  const [deletingId, setDeletingId] = useState<Id<"landingPageQuotes"> | null>(
+    null,
+  );
 
   // Build a map of slot → current URL for easy lookup
   const imageMap = Object.fromEntries(
-    (imageRows ?? []).map((r) => [r.slot, r.url])
+    (imageRows ?? []).map((r) => [r.slot, r.url]),
   ) as Partial<Record<ImageSlot, string | null>>;
 
   // ── Image upload handler ──────────────────────────────────────────────────
@@ -527,7 +668,9 @@ export default function LandingPageCmsPage() {
     try {
       const key = await r2Upload(file);
       await updateImage({ slot, storageId: key });
-      toast.success(`${IMAGE_SLOTS.find((s) => s.slot === slot)?.label} updated`);
+      toast.success(
+        `${IMAGE_SLOTS.find((s) => s.slot === slot)?.label} updated`,
+      );
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -576,8 +719,9 @@ export default function LandingPageCmsPage() {
           Landing Page
         </h1>
         <p className="text-xs text-muted-foreground mt-3 tracking-wide max-w-xl">
-          Each section below mirrors the visual layout it controls on the homepage.
-          Upload images, configure product showcases, and manage testimonial quotes.
+          Each section below mirrors the visual layout it controls on the
+          homepage. Upload images, configure product showcases, and manage
+          testimonial quotes.
         </p>
       </div>
 
@@ -591,7 +735,8 @@ export default function LandingPageCmsPage() {
             Section Images
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Upload replacement images for each homepage section. Changes are live immediately.
+            Upload replacement images for each homepage section. Changes are
+            live immediately.
           </p>
         </div>
 
@@ -601,7 +746,6 @@ export default function LandingPageCmsPage() {
           </div>
         ) : (
           <div className="space-y-8">
-
             {/* ── Row A: Hero Banner (full-width 16:9, gradient + "BE BOLD" overlay) ── */}
             <div className="space-y-2">
               <p className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground">
@@ -614,18 +758,28 @@ export default function LandingPageCmsPage() {
                 return (
                   <div className="relative w-full aspect-video overflow-hidden bg-black">
                     {currentUrl ? (
-                      <img src={currentUrl} alt={label} className="w-full h-full object-cover object-center" />
+                      <img
+                        src={currentUrl}
+                        alt={label}
+                        className="w-full h-full object-cover object-center"
+                      />
                     ) : (
                       <div className="w-full h-full bg-neutral-900 flex items-center justify-center">
                         <Upload className="h-8 w-8 text-white/20" />
                       </div>
                     )}
                     {/* Gradient overlay — exact match from app/page.tsx */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
+                    <div className="absolute inset-0 bg-linear-to-r from-black/60 via-black/30 to-transparent" />
                     {/* Overlaid text — bottom left, like the real hero */}
                     <div className="absolute bottom-5 left-6 z-10 pointer-events-none">
-                      <p className="text-white/70 text-[9px] tracking-[0.3em] uppercase mb-1">Premium Comfort</p>
-                      <p className="text-white text-2xl font-bold tracking-tight leading-none">BE<br />BOLD</p>
+                      <p className="text-white/70 text-[9px] tracking-[0.3em] uppercase mb-1">
+                        Premium Comfort
+                      </p>
+                      <p className="text-white text-2xl font-bold tracking-tight leading-none">
+                        BE
+                        <br />
+                        BOLD
+                      </p>
                     </div>
                     {/* Upload badge — top right */}
                     <button
@@ -633,7 +787,11 @@ export default function LandingPageCmsPage() {
                       disabled={isUploading}
                       onClick={() => fileInputRefs.current[slot]?.click()}
                     >
-                      {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                      {isUploading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Upload className="h-3 w-3" />
+                      )}
                       {currentUrl ? "Replace" : "Upload"}
                     </button>
                     {isUploading && (
@@ -642,14 +800,21 @@ export default function LandingPageCmsPage() {
                       </div>
                     )}
                     <div className="absolute bottom-0 right-0 z-10 bg-black/40 px-3 py-1.5 pointer-events-none">
-                      <p className="text-white text-[9px] tracking-[0.2em] uppercase">{label}</p>
+                      <p className="text-white text-[9px] tracking-[0.2em] uppercase">
+                        {label}
+                      </p>
                     </div>
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      ref={(el) => { fileInputRefs.current[slot] = el; }}
-                      onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileChange(slot, file); }}
+                      ref={(el) => {
+                        fileInputRefs.current[slot] = el;
+                      }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileChange(slot, file);
+                      }}
                     />
                   </div>
                 );
@@ -670,7 +835,9 @@ export default function LandingPageCmsPage() {
                     {/* Left: dark panel with static text — mirrors actual dark side */}
                     <div className="bg-[#111111] flex flex-col justify-end p-5">
                       <p className="text-white text-sm font-bold uppercase tracking-[0.06em] leading-snug">
-                        Upgrade the way<br />you feel
+                        Upgrade the way
+                        <br />
+                        you feel
                       </p>
                       <p className="text-white/40 text-[9px] tracking-[0.2em] uppercase mt-2">
                         Static — no upload needed
@@ -679,18 +846,26 @@ export default function LandingPageCmsPage() {
                     {/* Right: portrait image upload */}
                     <div className="relative overflow-hidden bg-neutral-800">
                       {currentUrl ? (
-                        <img src={currentUrl} alt={label} className="w-full h-full object-cover object-center" />
+                        <img
+                          src={currentUrl}
+                          alt={label}
+                          className="w-full h-full object-cover object-center"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Upload className="h-8 w-8 text-white/20" />
                         </div>
                       )}
                       <button
-                        className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 hover:bg-black/80 text-white text-[10px] tracking-[0.1em] uppercase px-2.5 py-1.5 transition-colors disabled:opacity-50"
+                        className="absolute top-2 right-2 z-10 flex items-center gap-1 bg-black/60 hover:bg-black/80 text-white text-[10px] tracking-widest uppercase px-2.5 py-1.5 transition-colors disabled:opacity-50"
                         disabled={isUploading}
                         onClick={() => fileInputRefs.current[slot]?.click()}
                       >
-                        {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                        {isUploading ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Upload className="h-3 w-3" />
+                        )}
                         {currentUrl ? "Replace" : "Upload"}
                       </button>
                       {isUploading && (
@@ -699,14 +874,21 @@ export default function LandingPageCmsPage() {
                         </div>
                       )}
                       <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-3 py-1.5 pointer-events-none">
-                        <p className="text-white text-[9px] tracking-[0.2em] uppercase">{label}</p>
+                        <p className="text-white text-[9px] tracking-[0.2em] uppercase">
+                          {label}
+                        </p>
                       </div>
                       <input
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        ref={(el) => { fileInputRefs.current[slot] = el; }}
-                        onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileChange(slot, file); }}
+                        ref={(el) => {
+                          fileInputRefs.current[slot] = el;
+                        }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileChange(slot, file);
+                        }}
                       />
                     </div>
                   </div>
@@ -724,11 +906,18 @@ export default function LandingPageCmsPage() {
                   const currentUrl = imageMap[slot];
                   const isUploading = uploading[slot] ?? false;
                   return (
-                    <div key={slot} className="flex flex-col border-r border-border last:border-r-0">
+                    <div
+                      key={slot}
+                      className="flex flex-col border-r border-border last:border-r-0"
+                    >
                       {/* Portrait 3:4 image — matches actual tech section grid */}
-                      <div className="relative aspect-[3/4] overflow-hidden bg-neutral-100">
+                      <div className="relative aspect-3/4 overflow-hidden bg-neutral-100">
                         {currentUrl ? (
-                          <img src={currentUrl} alt={label} className="w-full h-full object-cover" />
+                          <img
+                            src={currentUrl}
+                            alt={label}
+                            className="w-full h-full object-cover"
+                          />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-neutral-100">
                             <Upload className="h-6 w-6 text-muted-foreground/30" />
@@ -741,7 +930,11 @@ export default function LandingPageCmsPage() {
                           onClick={() => fileInputRefs.current[slot]?.click()}
                           title={currentUrl ? "Replace image" : "Upload image"}
                         >
-                          {isUploading ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Upload className="h-2.5 w-2.5" />}
+                          {isUploading ? (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          ) : (
+                            <Upload className="h-2.5 w-2.5" />
+                          )}
                         </button>
                         {isUploading && (
                           <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
@@ -751,8 +944,12 @@ export default function LandingPageCmsPage() {
                       </div>
                       {/* Text below — mirrors actual tech section card layout */}
                       <div className="py-3 px-3 bg-background text-center">
-                        <p className="text-xs text-foreground tracking-wide leading-snug">{label}</p>
-                        <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">{description}</p>
+                        <p className="text-xs text-foreground tracking-wide leading-snug">
+                          {label}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+                          {description}
+                        </p>
                         <button
                           className="mt-2 text-[9px] tracking-[0.15em] uppercase text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                           disabled={isUploading}
@@ -765,15 +962,19 @@ export default function LandingPageCmsPage() {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        ref={(el) => { fileInputRefs.current[slot] = el; }}
-                        onChange={(e) => { const file = e.target.files?.[0]; if (file) handleFileChange(slot, file); }}
+                        ref={(el) => {
+                          fileInputRefs.current[slot] = el;
+                        }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileChange(slot, file);
+                        }}
                       />
                     </div>
                   );
                 })}
               </div>
             </div>
-
           </div>
         )}
       </section>
@@ -788,7 +989,8 @@ export default function LandingPageCmsPage() {
             Product Showcases
           </h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Two configurable product carousels. Set a heading, add products, drag to reorder, toggle visibility.
+            Two configurable product carousels. Set a heading, add products,
+            drag to reorder, toggle visibility.
           </p>
         </div>
 
@@ -816,28 +1018,37 @@ export default function LandingPageCmsPage() {
               Quote Carousel
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Displayed on the <span className="italic">light gray</span> section at the bottom of the page
+              Displayed on the <span className="italic">light gray</span>{" "}
+              section at the bottom of the page
             </p>
           </div>
           <button
             onClick={() => setQuoteDialog({ mode: "add" })}
-            className="text-[10px] tracking-[0.2em] uppercase text-foreground border border-foreground px-4 py-2 hover:bg-foreground hover:text-background transition-colors flex-shrink-0"
+            className="text-[10px] tracking-[0.2em] uppercase text-foreground border border-foreground px-4 py-2 hover:bg-foreground hover:text-background transition-colors shrink-0"
           >
             Add Quote
           </button>
         </div>
 
-        <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete quote by &quot;{deleteTarget?.author}&quot;?</AlertDialogTitle>
+              <AlertDialogTitle>
+                Delete quote by &quot;{deleteTarget?.author}&quot;?
+              </AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently remove the quote from the homepage carousel.
+                This will permanently remove the quote from the homepage
+                carousel.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => deleteTarget && handleDeleteQuote(deleteTarget)}>
+              <AlertDialogAction
+                onClick={() => deleteTarget && handleDeleteQuote(deleteTarget)}
+              >
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -862,7 +1073,9 @@ export default function LandingPageCmsPage() {
           </div>
         ) : quotes.length === 0 ? (
           <div className="bg-[#f5f5f5] p-8 text-center">
-            <div className="text-4xl text-gray-300 font-serif leading-none mb-3 select-none">&rdquo;</div>
+            <div className="text-4xl text-gray-300 font-serif leading-none mb-3 select-none">
+              &rdquo;
+            </div>
             <p className="text-xs text-muted-foreground tracking-wide">
               No quotes yet. Add your first testimonial above.
             </p>
@@ -885,14 +1098,14 @@ export default function LandingPageCmsPage() {
                   {quote.text}
                 </p>
                 {/* Author */}
-                <p className="mt-4 text-xs text-muted-foreground tracking-[0.1em]">
+                <p className="mt-4 text-xs text-muted-foreground tracking-widest">
                   &mdash; {quote.author}
                 </p>
                 {/* Action bar */}
                 <div className="mt-4 pt-3 border-t border-black/10 flex items-center justify-between">
                   <Badge
                     variant={quote.isActive ? "default" : "secondary"}
-                    className="text-[9px] tracking-[0.1em] uppercase"
+                    className="text-[9px] tracking-widest uppercase"
                   >
                     {quote.isActive ? "Visible" : "Hidden"}
                   </Badge>

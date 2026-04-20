@@ -898,57 +898,6 @@ export const assignTags = mutation({
       }),
     );
 
-    const addedTagIds = args.tagIds.filter((tagId) => !oldTagIds.has(tagId));
-    const removedTagIds = [...oldTagIds].filter(
-      (tagId) => !newTagSet.has(tagId),
-    );
-
-    for (const tagId of removedTagIds) {
-      const sections = await ctx.db
-        .query("landingPageProductSections")
-        .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
-        .collect();
-      for (const section of sections) {
-        const item = await ctx.db
-          .query("landingPageProductSectionItems")
-          .withIndex("by_sectionId_and_productId", (q) =>
-            q.eq("sectionId", section._id).eq("productId", args.productId),
-          )
-          .first();
-        if (item) await ctx.db.delete(item._id);
-      }
-    }
-
-    for (const tagId of addedTagIds) {
-      const sections = await ctx.db
-        .query("landingPageProductSections")
-        .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
-        .collect();
-      for (const section of sections) {
-        const existingItem = await ctx.db
-          .query("landingPageProductSectionItems")
-          .withIndex("by_sectionId_and_productId", (q) =>
-            q.eq("sectionId", section._id).eq("productId", args.productId),
-          )
-          .first();
-        if (!existingItem) {
-          const allItems = await ctx.db
-            .query("landingPageProductSectionItems")
-            .withIndex("by_sectionId", (q) => q.eq("sectionId", section._id))
-            .collect();
-          const maxSort = allItems.reduce(
-            (max, i) => Math.max(max, i.sortOrder),
-            -1,
-          );
-          await ctx.db.insert("landingPageProductSectionItems", {
-            sectionId: section._id,
-            productId: args.productId,
-            sortOrder: maxSort + 1,
-          });
-        }
-      }
-    }
-
     return null;
   },
 });

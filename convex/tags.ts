@@ -63,10 +63,11 @@ export const update = mutation({
         .query("tags")
         .withIndex("by_slug", (q) => q.eq("slug", updates.slug!))
         .unique();
-      if (existing && existing._id !== id) throw new ConvexError("Slug already in use");
+      if (existing && existing._id !== id)
+        throw new ConvexError("Slug already in use");
     }
     const clean = Object.fromEntries(
-      Object.entries(updates).filter(([, v]) => v !== undefined)
+      Object.entries(updates).filter(([, v]) => v !== undefined),
     );
     if (Object.keys(clean).length > 0) await ctx.db.patch(id, clean);
     return null;
@@ -97,30 +98,6 @@ export const remove = mutation({
       } else {
         await Promise.all(rows.map((r) => ctx.db.delete(r._id)));
       }
-    }
-
-    // Clear landing page sections that used this tag
-    const sectionsWithTag = await ctx.db
-      .query("landingPageProductSections")
-      .withIndex("by_tagId", (q) => q.eq("tagId", args.id))
-      .collect();
-
-    for (const section of sectionsWithTag) {
-      // Delete all items for this section in batches
-      let sectionDone = false;
-      while (!sectionDone) {
-        const items = await ctx.db
-          .query("landingPageProductSectionItems")
-          .withIndex("by_sectionId", (q) => q.eq("sectionId", section._id))
-          .take(64);
-        if (items.length === 0) {
-          sectionDone = true;
-        } else {
-          await Promise.all(items.map((item) => ctx.db.delete(item._id)));
-        }
-      }
-      // Clear the tagId from the section
-      await ctx.db.patch(section._id, { tagId: undefined });
     }
 
     await ctx.db.delete(args.id);

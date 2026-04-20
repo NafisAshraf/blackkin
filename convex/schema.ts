@@ -204,9 +204,15 @@ export default defineSchema({
     recommendedVariantId: v.optional(v.id("productVariants")), // used for also_bought (variant-based)
     forSize: v.optional(v.string()), // size category for also_bought sections
     sortOrder: v.number(),
+    sizeSortOrder: v.optional(v.number()),
   })
     .index("by_type", ["type"])
-    .index("by_type_and_forSize", ["type", "forSize"]),
+    .index("by_type_and_forSize", ["type", "forSize"])
+    .index("by_type_and_forSize_and_sizeSortOrder", [
+      "type",
+      "forSize",
+      "sizeSortOrder",
+    ]),
 
   // ─── CART (logged-in users; guest cart is localStorage) ───
   cartItems: defineTable({
@@ -382,11 +388,9 @@ export default defineSchema({
     position: v.union(v.literal(1), v.literal(2)), // 1 = below "Crafted for the Modern Man", 2 = below split section
     heading: v.string(),
     isActive: v.boolean(),
-    tagId: v.optional(v.id("tags")),
   })
     .index("by_position", ["position"])
-    .index("by_isActive", ["isActive"])
-    .index("by_tagId", ["tagId"]),
+    .index("by_isActive", ["isActive"]),
 
   // Individual products selected for each product section.
   landingPageProductSectionItems: defineTable({

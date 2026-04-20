@@ -239,12 +239,16 @@ function VariantPickerDialog({
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={adding === v._id || v.stock === 0}
+                        disabled={
+                          adding === v._id || v.stock === 0 || v.alreadyAdded
+                        }
                         onClick={() => handleAdd(v._id)}
                         className="h-7 text-xs"
                       >
                         {adding === v._id ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : v.alreadyAdded ? (
+                          "Added"
                         ) : (
                           "Add"
                         )}
@@ -268,6 +272,9 @@ function AlsoBoughtAdminSection() {
   const platformSizes = useQuery(api.platformConfig.listSizes);
   const removeRec = useMutation(api.recommendations.remove);
   const addVariantRec = useMutation(api.recommendations.addVariant);
+  const reorderForSize = useMutation(
+    api.recommendations.reorderAlsoBoughtForSize,
+  );
   const [pickerSize, setPickerSize] = useState<string | null>(null);
 
   async function handleAddVariant(
@@ -304,6 +311,23 @@ function AlsoBoughtAdminSection() {
     <div className="space-y-6">
       {allSizes.map((size) => {
         const items = sizeMap.get(size.name) ?? [];
+
+        async function handleReorder(
+          reordered: { id: string; sortOrder: number }[],
+        ) {
+          try {
+            await reorderForSize({
+              forSize: size.name,
+              items: reordered.map((item) => ({
+                id: item.id as Id<"productRecommendations">,
+                sortOrder: item.sortOrder,
+              })),
+            });
+          } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : "Failed to reorder");
+          }
+        }
+
         return (
           <div key={size._id} className="space-y-3">
             <div className="flex items-center justify-between">
@@ -323,49 +347,59 @@ function AlsoBoughtAdminSection() {
                 No variants added for this size yet.
               </p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {items.map((item) => (
-                  <div
-                    key={item._id}
-                    className="border rounded-md overflow-hidden group relative"
-                  >
-                    <div className="aspect-square bg-muted">
-                      {item.imageUrl ? (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.productName}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                          No image
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Drag to reorder within size {size.name}
+                </p>
+                <div className="rounded-md border divide-y">
+                  <SortableList
+                    items={items}
+                    onReorder={handleReorder}
+                    renderItem={(item, dragHandle) => (
+                      <div className="flex items-center gap-3 px-3 py-2.5 bg-background">
+                        {dragHandle}
+                        <div className="h-12 w-12 overflow-hidden rounded bg-muted shrink-0">
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.productName}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                              No image
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium truncate">
-                        {item.productName}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {item.color ?? "No color"} · {item.stock} in stock
-                      </p>
-                    </div>
-                    <button
-                      onClick={() =>
-                        removeRec({ id: item._id })
-                          .then(() => toast.success("Removed"))
-                          .catch((e: unknown) =>
-                            toast.error(
-                              e instanceof Error ? e.message : "Failed",
-                            ),
-                          )
-                      }
-                      className="absolute top-1 right-1 hidden group-hover:flex items-center justify-center w-6 h-6 rounded-full bg-black/70 text-white"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">
+                            {item.productName}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {item.color ?? "No color"} · {item.stock} in stock
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() =>
+                            removeRec({ id: item._id })
+                              .then(() => toast.success("Removed"))
+                              .catch((e: unknown) =>
+                                toast.error(
+                                  e instanceof Error ? e.message : "Failed",
+                                ),
+                              )
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    )}
+                  />
+                </div>
               </div>
             )}
           </div>

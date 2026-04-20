@@ -44,6 +44,18 @@ function variantPickerKey(size: string, color?: string) {
   return `${size.trim().toLowerCase()}::${color?.trim().toLowerCase() ?? ""}`;
 }
 
+function getAlsoBoughtRowSortOrder(row: Doc<"productRecommendations">) {
+  return row.sizeSortOrder ?? row.sortOrder;
+}
+
+function sortAlsoBoughtRows(rows: Doc<"productRecommendations">[]) {
+  return [...rows].sort((a, b) => {
+    const sizeCompare = (a.forSize ?? "").localeCompare(b.forSize ?? "");
+    if (sizeCompare !== 0) return sizeCompare;
+    return getAlsoBoughtRowSortOrder(a) - getAlsoBoughtRowSortOrder(b);
+  });
+}
+
 // ─── PUBLIC QUERIES ──────────────────────────────────────────
 
 /** "You may also like" — shown on ALL product detail pages */
@@ -111,30 +123,35 @@ export const getAlsoBought = query({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cards: any[] = [];
 
-    let rows: Doc<"productRecommendations">[];
+    const rows: Doc<"productRecommendations">[] = [];
     if (args.sizes.length === 0) {
-      rows = await ctx.db
-        .query("productRecommendations")
-        .withIndex("by_type", (q) => q.eq("type", "also_bought"))
-        .take(50);
+      rows.push(
+        ...(await ctx.db
+          .query("productRecommendations")
+          .withIndex("by_type", (q) => q.eq("type", "also_bought"))
+          .take(200)),
+      );
     } else {
-      const allRows: Doc<"productRecommendations">[] = [];
       for (const size of args.sizes) {
         const sizeRecs = await ctx.db
           .query("productRecommendations")
           .withIndex("by_type_and_forSize", (q) =>
             q.eq("type", "also_bought").eq("forSize", size),
           )
-          .take(20);
-        allRows.push(...sizeRecs);
+          .take(100);
+        rows.push(
+          ...sizeRecs.sort(
+            (a, b) =>
+              getAlsoBoughtRowSortOrder(a) - getAlsoBoughtRowSortOrder(b),
+          ),
+        );
       }
-      rows = allRows;
     }
 
-    // Sort by sortOrder
-    rows.sort((a, b) => a.sortOrder - b.sortOrder);
+    const sortedRows =
+      args.sizes.length === 0 ? sortAlsoBoughtRows(rows) : rows;
 
-    for (const row of rows) {
+    for (const row of sortedRows) {
       if (!row.recommendedVariantId) continue;
       if (seenVariantIds.has(row.recommendedVariantId)) continue;
       seenVariantIds.add(row.recommendedVariantId);
@@ -167,7 +184,7 @@ export const getAlsoBought = query({
         discountAmount,
         imageUrl,
         stock: variant.stock,
-        sortOrder: row.sortOrder,
+        sortOrder: getAlsoBoughtRowSortOrder(row),
       });
     }
 
@@ -258,7 +275,9 @@ export const listAlsoBoughtBySize = query({
     const result: { forSize: string; items: any[] }[] = [];
 
     for (const [forSize, sizeRows] of bySize) {
-      const sorted = [...sizeRows].sort((a, b) => a.sortOrder - b.sortOrder);
+      const sorted = [...sizeRows].sort(
+        (a, b) => getAlsoBoughtRowSortOrder(a) - getAlsoBoughtRowSortOrder(b),
+      );
       const items = await Promise.all(
         sorted.map(async (row) => {
           if (!row.recommendedVariantId) return null;
@@ -272,7 +291,7 @@ export const listAlsoBoughtBySize = query({
             : null;
           return {
             _id: row._id,
-            sortOrder: row.sortOrder,
+            sortOrder: getAlsoBoughtRowSortOrder(row),
             variantId: variant._id,
             productId: product._id,
             productName: product.name,
@@ -353,20 +372,17 @@ export const addVariant = mutation({
       throw new ConvexError("Variant already in this size section");
     }
 
-    const allBought = await ctx.db
-      .query("productRecommendations")
-      .withIndex("by_type", (q) => q.eq("type", "also_bought"))
-      .take(500);
     const maxSort =
-      allBought.length > 0
-        ? Math.max(...allBought.map((r) => r.sortOrder))
+      existing.length > 0
+        ? Math.max(...existing.map((r) => getAlsoBoughtRowSortOrder(r)))
         : -1;
 
     return await ctx.db.insert("productRecommendations", {
       type: "also_bought",
       recommendedVariantId: args.recommendedVariantId,
       forSize: args.forSize,
-      sortOrder: maxSort + 1,
+      sortOrder: 0,
+      sizeSortOrder: maxSort + 1,
     });
   },
 });
@@ -401,6 +417,41 @@ export const reorder = mutation({
   },
 });
 
+/** Admin: batch reorder People Also Bought inside a single size bucket */
+export const reorderAlsoBoughtForSize = mutation({
+  args: {
+    forSize: v.string(),
+    items: v.array(
+      v.object({ id: v.id("productRecommendations"), sortOrder: v.number() }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const existing = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type_and_forSize", (q) =>
+        q.eq("type", "also_bought").eq("forSize", args.forSize),
+      )
+      .take(500);
+    const existingIds = new Set(existing.map((item) => item._id));
+
+    if (args.items.some((item) => !existingIds.has(item.id))) {
+      throw new ConvexError(
+        "Reorder payload contains items outside this size section",
+      );
+    }
+
+    await Promise.all(
+      args.items.map((item) =>
+        ctx.db.patch(item.id, { sizeSortOrder: item.sortOrder }),
+      ),
+    );
+    return null;
+  },
+});
+
 /** Admin: get variants for a product filtered by size (for variant picker dialog) */
 export const getVariantsForPicker = query({
   args: {
@@ -413,10 +464,25 @@ export const getVariantsForPicker = query({
       size: v.string(),
       color: v.optional(v.string()),
       stock: v.number(),
+      alreadyAdded: v.boolean(),
     }),
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const existing = await ctx.db
+      .query("productRecommendations")
+      .withIndex("by_type_and_forSize", (q) =>
+        q.eq("type", "also_bought").eq("forSize", args.size),
+      )
+      .take(500);
+    const existingVariantIds = new Set(
+      existing
+        .map((item) => item.recommendedVariantId)
+        .filter((variantId): variantId is NonNullable<typeof variantId> =>
+          Boolean(variantId),
+        ),
+    );
+
     const variants = await ctx.db
       .query("productVariants")
       .withIndex("by_productId_and_size", (q) =>
@@ -443,6 +509,7 @@ export const getVariantsForPicker = query({
       size: v.size,
       color: v.color,
       stock: v.stock,
+      alreadyAdded: existingVariantIds.has(v._id),
     }));
   },
 });

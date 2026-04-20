@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
+import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { r2 } from "./r2";
@@ -10,8 +11,70 @@ const slotValidator = v.union(
   v.literal("splitImage"),
   v.literal("tech1"),
   v.literal("tech2"),
-  v.literal("tech3")
+  v.literal("tech3"),
 );
+
+const landingPageSectionPosition = v.union(v.literal(1), v.literal(2));
+
+async function resolveLandingSectionProducts(
+  ctx: QueryCtx | MutationCtx,
+  sectionId: Id<"landingPageProductSections">,
+) {
+  const items = await ctx.db
+    .query("landingPageProductSectionItems")
+    .withIndex("by_sectionId_and_sortOrder", (q) =>
+      q.eq("sectionId", sectionId),
+    )
+    .collect();
+
+  const products = (
+    await Promise.all(
+      items.map(async (item) => {
+        const product = await ctx.db.get(item.productId);
+        if (!product) return null;
+
+        const firstMedia = [...product.media]
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .find((media) => media.type === "image");
+        const imageUrl = firstMedia
+          ? await r2.getUrl(firstMedia.storageId)
+          : null;
+
+        return {
+          _id: item._id,
+          productId: product._id,
+          name: product.name,
+          slug: product.slug,
+          imageUrl,
+          sortOrder: item.sortOrder,
+        };
+      }),
+    )
+  ).filter(
+    (product): product is NonNullable<typeof product> => product !== null,
+  );
+
+  products.sort((a, b) => a.sortOrder - b.sortOrder);
+  return products;
+}
+
+async function deleteLandingSectionItems(
+  ctx: MutationCtx,
+  sectionId: Id<"landingPageProductSections">,
+) {
+  let clearDone = false;
+  while (!clearDone) {
+    const items = await ctx.db
+      .query("landingPageProductSectionItems")
+      .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
+      .take(64);
+    if (items.length === 0) {
+      clearDone = true;
+    } else {
+      await Promise.all(items.map((item) => ctx.db.delete(item._id)));
+    }
+  }
+}
 
 // ─── PUBLIC QUERY (used by SSR on the landing page) ────────────────────────
 /**
@@ -21,13 +84,7 @@ const slotValidator = v.union(
 export const getContent = query({
   args: {},
   handler: async (ctx) => {
-    const slots = [
-      "hero",
-      "splitImage",
-      "tech1",
-      "tech2",
-      "tech3",
-    ] as const;
+    const slots = ["hero", "splitImage", "tech1", "tech2", "tech3"] as const;
 
     const imageEntries = await Promise.all(
       slots.map(async (slot) => {
@@ -37,7 +94,7 @@ export const getContent = query({
           .first();
         const url = row ? await r2.getUrl(row.storageId) : null;
         return [slot, url] as const;
-      })
+      }),
     );
 
     const images = Object.fromEntries(imageEntries) as Record<
@@ -56,12 +113,14 @@ export const getContent = query({
       .withIndex("by_isActive", (q) => q.eq("isActive", true))
       .collect();
 
+    activeSections.sort((a, b) => a.position - b.position);
+
     const productSections = await Promise.all(
       activeSections.map(async (section) => {
         const items = await ctx.db
           .query("landingPageProductSectionItems")
           .withIndex("by_sectionId_and_sortOrder", (q) =>
-            q.eq("sectionId", section._id)
+            q.eq("sectionId", section._id),
           )
           .collect();
 
@@ -87,14 +146,12 @@ export const getContent = query({
               const variants = await ctx.db
                 .query("productVariants")
                 .withIndex("by_productId", (q) =>
-                  q.eq("productId", product._id)
+                  q.eq("productId", product._id),
                 )
                 .take(50);
               const colors = [
                 ...new Set(
-                  variants
-                    .map((v) => v.color)
-                    .filter((c): c is string => !!c)
+                  variants.map((v) => v.color).filter((c): c is string => !!c),
                 ),
               ];
 
@@ -110,11 +167,9 @@ export const getContent = query({
                 colors,
                 sortOrder: item.sortOrder,
               };
-            })
+            }),
           )
-        ).filter(
-          (p): p is NonNullable<typeof p> => p !== null
-        );
+        ).filter((p): p is NonNullable<typeof p> => p !== null);
 
         // Sort by sortOrder
         products.sort((a, b) => a.sortOrder - b.sortOrder);
@@ -124,10 +179,16 @@ export const getContent = query({
           heading: section.heading,
           products,
         };
-      })
+      }),
     );
 
-    return { images, quotes, productSections };
+    return {
+      images,
+      quotes,
+      productSections: productSections.filter(
+        (section) => section.products.length > 0,
+      ),
+    };
   },
 });
 
@@ -146,7 +207,7 @@ export const adminGetImages = query({
         slot: row.slot,
         storageId: row.storageId,
         url: await r2.getUrl(row.storageId),
-      }))
+      })),
     );
   },
 });
@@ -261,55 +322,13 @@ export const adminGetProductSections = query({
         .first();
 
       if (section) {
-        const items = await ctx.db
-          .query("landingPageProductSectionItems")
-          .withIndex("by_sectionId_and_sortOrder", (q) =>
-            q.eq("sectionId", section._id)
-          )
-          .collect();
-
-        // Resolve product names for display in admin
-        const products = (
-          await Promise.all(
-            items.map(async (item) => {
-              const product = await ctx.db.get(item.productId);
-              if (!product) return null;
-
-              // Resolve first image
-              const firstMedia = [...product.media]
-                .sort((a, b) => a.sortOrder - b.sortOrder)
-                .find((m) => m.type === "image");
-              const imageUrl = firstMedia
-                ? await r2.getUrl(firstMedia.storageId)
-                : null;
-
-              return {
-                _id: item._id,
-                productId: product._id,
-                name: product.name,
-                slug: product.slug,
-                imageUrl,
-                sortOrder: item.sortOrder,
-              };
-            })
-          )
-        ).filter(
-          (p): p is NonNullable<typeof p> => p !== null
-        );
-
-        products.sort((a, b) => a.sortOrder - b.sortOrder);
-
-        const tagName = section.tagId
-          ? (await ctx.db.get(section.tagId))?.name ?? null
-          : null;
+        const products = await resolveLandingSectionProducts(ctx, section._id);
 
         sections.push({
           _id: section._id,
           position: section.position,
           heading: section.heading,
           isActive: section.isActive,
-          tagId: section.tagId ?? null,
-          tagName,
           products,
         });
       } else {
@@ -318,8 +337,6 @@ export const adminGetProductSections = query({
           position: pos,
           heading: "",
           isActive: false,
-          tagId: null,
-          tagName: null,
           products: [],
         });
       }
@@ -332,7 +349,7 @@ export const adminGetProductSections = query({
 // ─── ADMIN MUTATION — upsert product section heading ───────────────────────
 export const upsertProductSection = mutation({
   args: {
-    position: v.union(v.literal(1), v.literal(2)),
+    position: landingPageSectionPosition,
     heading: v.string(),
   },
   handler: async (ctx, { position, heading }) => {
@@ -363,6 +380,17 @@ export const toggleProductSection = mutation({
     await requireAdmin(ctx);
     const section = await ctx.db.get(id);
     if (!section) throw new ConvexError("Section not found");
+    if (!section.isActive) {
+      const items = await ctx.db
+        .query("landingPageProductSectionItems")
+        .withIndex("by_sectionId", (q) => q.eq("sectionId", id))
+        .take(1);
+      if (items.length === 0) {
+        throw new ConvexError(
+          "Add at least one product before showing this section",
+        );
+      }
+    }
     await ctx.db.patch(id, { isActive: !section.isActive });
   },
 });
@@ -374,78 +402,88 @@ export const reorderSectionProducts = mutation({
       v.object({
         id: v.id("landingPageProductSectionItems"),
         sortOrder: v.number(),
-      })
+      }),
     ),
   },
   handler: async (ctx, { items }) => {
     await requireAdmin(ctx);
     await Promise.all(
-      items.map(({ id, sortOrder }) => ctx.db.patch(id, { sortOrder }))
+      items.map(({ id, sortOrder }) => ctx.db.patch(id, { sortOrder })),
     );
   },
 });
 
-// ─── ADMIN MUTATION — set tag for section (populates items from tag) ─────────
-export const setTagForSection = mutation({
+// ─── ADMIN MUTATION — add a product to a section ─────────────────────────────
+export const addProductToSection = mutation({
   args: {
     sectionId: v.id("landingPageProductSections"),
-    tagId: v.id("tags"),
+    productId: v.id("products"),
   },
   returns: v.null(),
-  handler: async (ctx, { sectionId, tagId }) => {
+  handler: async (ctx, { sectionId, productId }) => {
     await requireAdmin(ctx);
 
     const section = await ctx.db.get(sectionId);
     if (!section) throw new ConvexError("Section not found");
 
-    const tag = await ctx.db.get(tagId);
-    if (!tag) throw new ConvexError("Tag not found");
+    const product = await ctx.db.get(productId);
+    if (!product) throw new ConvexError("Product not found");
 
-    // Clear all existing items
-    let clearDone = false;
-    while (!clearDone) {
-      const existingItems = await ctx.db
-        .query("landingPageProductSectionItems")
-        .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
-        .take(64);
-      if (existingItems.length === 0) {
-        clearDone = true;
-      } else {
-        await Promise.all(existingItems.map((item) => ctx.db.delete(item._id)));
-      }
+    const existingItem = await ctx.db
+      .query("landingPageProductSectionItems")
+      .withIndex("by_sectionId_and_productId", (q) =>
+        q.eq("sectionId", sectionId).eq("productId", productId),
+      )
+      .first();
+    if (existingItem) {
+      throw new ConvexError("Product already in this section");
     }
 
-    // Set the new tag
-    await ctx.db.patch(sectionId, { tagId });
-
-    // Populate items from products with this tag (capped at 50 for transaction safety)
-    const productTagRows = await ctx.db
-      .query("productTags")
-      .withIndex("by_tagId", (q) => q.eq("tagId", tagId))
-      .take(50);
-
-    // Deduplicate by productId (guard against duplicate productTags rows)
-    const seenProductIds = new Set<string>();
-    const uniqueProductTagRows = productTagRows.filter((pt) => {
-      if (seenProductIds.has(pt.productId)) return false;
-      seenProductIds.add(pt.productId);
-      return true;
-    });
-
-    await Promise.all(
-      uniqueProductTagRows.map((pt, index) =>
-        ctx.db.insert("landingPageProductSectionItems", {
-          sectionId,
-          productId: pt.productId,
-          sortOrder: index,
-        })
-      )
+    const items = await ctx.db
+      .query("landingPageProductSectionItems")
+      .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
+      .collect();
+    const maxSort = items.reduce(
+      (max, item) => Math.max(max, item.sortOrder),
+      -1,
     );
+
+    await ctx.db.insert("landingPageProductSectionItems", {
+      sectionId,
+      productId,
+      sortOrder: maxSort + 1,
+    });
     return null;
   },
 });
 
-// ─── ADMIN MUTATION — clear tag and all items from section ───────────────────
+// ─── ADMIN MUTATION — remove a product from a section ────────────────────────
+export const removeProductFromSection = mutation({
+  args: {
+    itemId: v.id("landingPageProductSectionItems"),
+  },
+  returns: v.null(),
+  handler: async (ctx, { itemId }) => {
+    await requireAdmin(ctx);
+
+    const item = await ctx.db.get(itemId);
+    if (!item) throw new ConvexError("Section product not found");
+
+    await ctx.db.delete(itemId);
+
+    const remaining = await ctx.db
+      .query("landingPageProductSectionItems")
+      .withIndex("by_sectionId", (q) => q.eq("sectionId", item.sectionId))
+      .take(1);
+    if (remaining.length === 0) {
+      await ctx.db.patch(item.sectionId, { isActive: false });
+    }
+
+    return null;
+  },
+});
+
+// ─── ADMIN MUTATION — clear a section and hide it ───────────────────────────
 export const clearSection = mutation({
   args: {
     sectionId: v.id("landingPageProductSections"),
@@ -457,22 +495,8 @@ export const clearSection = mutation({
     const section = await ctx.db.get(sectionId);
     if (!section) throw new ConvexError("Section not found");
 
-    // Remove tag and hide the section
-    await ctx.db.patch(sectionId, { tagId: undefined, isActive: false });
-
-    // Delete all items
-    let clearDone = false;
-    while (!clearDone) {
-      const items = await ctx.db
-        .query("landingPageProductSectionItems")
-        .withIndex("by_sectionId", (q) => q.eq("sectionId", sectionId))
-        .take(64);
-      if (items.length === 0) {
-        clearDone = true;
-      } else {
-        await Promise.all(items.map((item) => ctx.db.delete(item._id)));
-      }
-    }
+    await ctx.db.patch(sectionId, { isActive: false });
+    await deleteLandingSectionItems(ctx, sectionId);
     return null;
   },
 });
