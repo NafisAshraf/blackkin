@@ -39,6 +39,7 @@ const userObject = v.object({
       pages: v.boolean(),
       users: v.boolean(),
       vouchers: v.boolean(),
+      blog: v.boolean(),
     }),
   ),
 });
