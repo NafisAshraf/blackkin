@@ -101,28 +101,9 @@ export default function RecommendationCarousel({
         </div>
       </div>
 
-      {/* Controls: arrows + progress bar */}
+      {/* Controls: progress bar + arrows */}
       {snapCount > 1 && (
-        <div className="flex items-center gap-4 mt-6">
-          <div className="flex gap-1.5 flex-shrink-0">
-            <button
-              onClick={() => emblaApi?.scrollPrev()}
-              disabled={!canScrollPrev}
-              className="h-9 w-9 border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
-              aria-label="Previous"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => emblaApi?.scrollNext()}
-              disabled={!canScrollNext}
-              className="h-9 w-9 border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
-              aria-label="Next"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-
+        <div className="flex items-center gap-6 mt-6">
           {/* Proportional progress bar */}
           <div className="flex-1 h-0.5 bg-gray-200 relative overflow-hidden">
             <div
@@ -132,6 +113,25 @@ export default function RecommendationCarousel({
                 transform: `translateX(${currentIndex * 100}%)`,
               }}
             />
+          </div>
+
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={() => emblaApi?.scrollPrev()}
+              disabled={!canScrollPrev}
+              className="h-11 w-11 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
+              aria-label="Previous"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => emblaApi?.scrollNext()}
+              disabled={!canScrollNext}
+              className="h-11 w-11 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
+              aria-label="Next"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
           </div>
         </div>
       )}

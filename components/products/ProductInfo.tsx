@@ -8,7 +8,12 @@ import WishlistButton from "@/components/wishlist/WishlistButton";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
-import { addToGuestCart, getGuestCart, updateGuestCartQuantity, removeFromGuestCart } from "@/lib/guest-cart";
+import {
+  addToGuestCart,
+  getGuestCart,
+  updateGuestCartQuantity,
+  removeFromGuestCart,
+} from "@/lib/guest-cart";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
@@ -57,27 +62,37 @@ interface ProductInfoProps {
   platformSizes: PlatformSize[];
 }
 
-
 function StarRating({ rating, count }: { rating: number; count: number }) {
   return (
     <div className="flex items-center gap-1 text-sm">
       {[1, 2, 3, 4, 5].map((i) => (
         <span
           key={i}
-          className={i <= Math.round(rating) ? "text-yellow-400" : "text-muted-foreground/30"}
+          className={
+            i <= Math.round(rating)
+              ? "text-yellow-400"
+              : "text-muted-foreground/30"
+          }
         >
           &#9733;
         </span>
       ))}
-      <span className="text-muted-foreground text-xs ml-1">({count} reviews)</span>
+      <span className="text-muted-foreground text-xs ml-1">
+        ({count} reviews)
+      </span>
     </div>
   );
 }
 
-export default function ProductInfo({ product, platformSizes }: ProductInfoProps) {
+export default function ProductInfo({
+  product,
+  platformSizes,
+}: ProductInfoProps) {
   const platformColors = useQuery(api.platformConfig.listColors);
   const colorHexMap = platformColors
-    ? Object.fromEntries(platformColors.map((c) => [c.name.toLowerCase(), c.hexCode]))
+    ? Object.fromEntries(
+        platformColors.map((c) => [c.name.toLowerCase(), c.hexCode]),
+      )
     : {};
 
   function getColorHex(colorName?: string): string {
@@ -104,13 +119,16 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
   const initialVariant = variants.find((v) => v.stock > 0) || variants[0];
 
   const [selectedSize, setSelectedSize] = useState<string | null>(
-    initialVariant?.size || null
+    initialVariant?.size || null,
   );
   const [selectedColor, setSelectedColor] = useState<string | null>(
-    initialVariant?.color || null
+    initialVariant?.color || null,
   );
   // Cart data and mutations
-  const cartWithPricing = useQuery(api.cart.getCartWithPricing, session ? {} : "skip");
+  const cartWithPricing = useQuery(
+    api.cart.getCartWithPricing,
+    session ? {} : "skip",
+  );
   const updateCartQty = useMutation(api.cart.updateQuantity);
   const removeFromCartMutation = useMutation(api.cart.remove);
 
@@ -135,20 +153,22 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
     : [];
 
   const uniqueColors = Array.from(
-    new Set(variantsForSize.map((v) => v.color).filter((c): c is string => !!c))
+    new Set(
+      variantsForSize.map((v) => v.color).filter((c): c is string => !!c),
+    ),
   );
 
   // Also get all colors across all sizes for the color picker
   const allColors = Array.from(
-    new Set(variants.map((v) => v.color).filter((c): c is string => !!c))
+    new Set(variants.map((v) => v.color).filter((c): c is string => !!c)),
   );
 
   const selectedVariant =
     selectedSize && uniqueColors.length === 0
-      ? variantsForSize[0] ?? null
+      ? (variantsForSize[0] ?? null)
       : selectedSize && selectedColor
-      ? variantsForSize.find((v) => v.color === selectedColor) ?? null
-      : null;
+        ? (variantsForSize.find((v) => v.color === selectedColor) ?? null)
+        : null;
 
   const selectedVariantId = selectedVariant?._id ?? null;
   const isDiscounted = discountAmount > 0;
@@ -157,10 +177,11 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
     : 0;
 
   // Check if selected variant is in cart
-  const cartItem = selectedVariantId && cartWithPricing
-    ? cartWithPricing.items.find((i) => i.variantId === selectedVariantId)
-    : null;
-  
+  const cartItem =
+    selectedVariantId && cartWithPricing
+      ? cartWithPricing.items.find((i) => i.variantId === selectedVariantId)
+      : null;
+
   const isInCart = !!cartItem;
 
   // If in cart, local quantity should match cart quantity (if not currently being edited)
@@ -194,7 +215,9 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
         )}
       </div>
       {discountGroupName && (
-        <p className="text-xs text-muted-foreground -mt-3">{discountGroupName}</p>
+        <p className="text-xs text-muted-foreground -mt-3">
+          {discountGroupName}
+        </p>
       )}
 
       {/* Color selector */}
@@ -247,7 +270,10 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
           {/* Show measurement hint if available */}
           {selectedSize && (
             <p className="text-xs text-muted-foreground">
-              {platformSizes.find((ps) => ps.name === selectedSize)?.measurements}
+              {
+                platformSizes.find((ps) => ps.name === selectedSize)
+                  ?.measurements
+              }
             </p>
           )}
           <SizeSelector
@@ -256,13 +282,17 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
             onChange={(size) => {
               setSelectedSize(size);
               // Color reconciliation for the new size
-              const variantsForNewSize = variants.filter((v) => v.size === size);
+              const variantsForNewSize = variants.filter(
+                (v) => v.size === size,
+              );
               const isColorStillValid = variantsForNewSize.some(
-                (v) => v.color === selectedColor && v.stock > 0
+                (v) => v.color === selectedColor && v.stock > 0,
               );
 
               if (!isColorStillValid) {
-                const firstInStock = variantsForNewSize.find((v) => v.stock > 0);
+                const firstInStock = variantsForNewSize.find(
+                  (v) => v.stock > 0,
+                );
                 if (firstInStock) {
                   setSelectedColor(firstInStock.color || null);
                 } else {
@@ -296,19 +326,29 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
                 onClick={async () => {
                   if (isInCart) {
                     setIsUpdatingCart(true);
-                    await updateCartQty({ cartItemId: cartItem!._id, quantity: cartItem!.quantity - 1 });
+                    await updateCartQty({
+                      cartItemId: cartItem!._id,
+                      quantity: cartItem!.quantity - 1,
+                    });
                     setIsUpdatingCart(false);
                   } else {
                     setQuantity((q) => Math.max(1, q - 1));
                   }
                 }}
-                disabled={(isInCart ? (cartItem?.quantity ?? 1) <= 1 : quantity <= 1) || isUpdatingCart}
+                disabled={
+                  (isInCart ? (cartItem?.quantity ?? 1) <= 1 : quantity <= 1) ||
+                  isUpdatingCart
+                }
               >
                 −
               </button>
             )}
             <span className="h-11 w-12 flex items-center justify-center text-sm font-medium border-x border-border">
-              {isUpdatingCart ? <Loader2 className="h-3 w-3 animate-spin" /> : displayQuantity}
+              {isUpdatingCart ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                displayQuantity
+              )}
             </span>
             <button
               type="button"
@@ -316,20 +356,25 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
               onClick={async () => {
                 if (isInCart) {
                   setIsUpdatingCart(true);
-                  await updateCartQty({ cartItemId: cartItem._id, quantity: cartItem.quantity + 1 });
+                  await updateCartQty({
+                    cartItemId: cartItem._id,
+                    quantity: cartItem.quantity + 1,
+                  });
                   setIsUpdatingCart(false);
                 } else {
                   setQuantity((q) => q + 1);
                 }
               }}
               disabled={
-                (selectedVariant ? displayQuantity >= selectedVariant.stock : false) || isUpdatingCart
+                (selectedVariant
+                  ? displayQuantity >= selectedVariant.stock
+                  : false) || isUpdatingCart
               }
             >
               +
             </button>
           </div>
-          
+
           <div className="flex-1 w-full min-w-0">
             {!isInCart ? (
               <AddToCartButton
@@ -368,7 +413,7 @@ export default function ProductInfo({ product, platformSizes }: ProductInfoProps
           {tags.map((tag) => (
             <span
               key={tag._id}
-              className="text-[10px] tracking-wider uppercase text-muted-foreground border border-border px-2 py-0.5"
+              className={`text-[10px] tracking-wider uppercase px-2 py-0.5 border ${tag.name.toLowerCase().includes("sale") || tag.name.toLowerCase().includes("off") ? "bg-red-600 text-white border-red-600" : "bg-emerald-600 text-white border-emerald-600"}`}
             >
               {tag.name}
             </span>

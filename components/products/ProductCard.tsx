@@ -33,6 +33,7 @@ interface ProductCardProps {
     }>;
   };
   imageUrl?: string | null;
+  hideTags?: boolean;
 }
 
 function useColorHexMap(): Record<string, string> {
@@ -45,7 +46,10 @@ function useColorHexMap(): Record<string, string> {
   return map;
 }
 
-function getColorHexFromMap(map: Record<string, string>, colorName: string): string {
+function getColorHexFromMap(
+  map: Record<string, string>,
+  colorName: string,
+): string {
   return map[colorName.toLowerCase()] ?? "#cccccc";
 }
 
@@ -108,14 +112,10 @@ function SaleCountdownTimer({ endTime }: { endTime: number }) {
 
 function TagBadge({ name }: { name: string }) {
   const lower = name.toLowerCase();
-  let bg = "bg-gray-700";
-  if (lower.includes("new") || lower.includes("arrival")) bg = "bg-emerald-600";
-  else if (lower.includes("best") || lower.includes("seller"))
-    bg = "bg-red-600";
-  else if (lower.includes("popular")) bg = "bg-blue-600";
-  else if (lower.includes("free") || lower.includes("delivery"))
-    bg = "bg-emerald-600";
-  else if (lower.includes("sale") || lower.includes("off")) bg = "bg-red-600";
+  const bg =
+    lower.includes("sale") || lower.includes("off")
+      ? "bg-red-600"
+      : "bg-emerald-600";
   return (
     <span
       className={`${bg} text-white text-[10px] font-semibold tracking-wider px-2 py-0.5 uppercase`}
@@ -125,7 +125,7 @@ function TagBadge({ name }: { name: string }) {
   );
 }
 
-export default function ProductCard({ product, imageUrl }: ProductCardProps) {
+export default function ProductCard({ product, imageUrl, hideTags }: ProductCardProps) {
   const colorMap = useColorHexMap();
   const {
     name,
@@ -145,7 +145,7 @@ export default function ProductCard({ product, imageUrl }: ProductCardProps) {
     : 0;
 
   // Show last 2 tags (end of array = most recently added)
-  const displayTags = tags && tags.length > 0 ? tags.slice(-2) : [];
+  const displayTags = !hideTags && tags && tags.length > 0 ? tags.slice(-2) : [];
 
   // Unique colors from variants (up to 5)
   const uniqueColors = variants
@@ -206,8 +206,6 @@ export default function ProductCard({ product, imageUrl }: ProductCardProps) {
           <p className="text-sm leading-tight line-clamp-2 group-hover:text-foreground transition-colors">
             {name}
           </p>
-
-
 
           {/* Rating */}
           {totalRatings > 0 && (

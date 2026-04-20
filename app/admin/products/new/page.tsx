@@ -15,7 +15,13 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ArrowLeft, Loader2, Upload, X, Box, Tag, Search } from "lucide-react";
 import {
@@ -33,8 +39,14 @@ import {
 type ProductStatus = "draft" | "active" | "scheduled" | "archived";
 type SaleDisplayMode = "percentage" | "amount";
 
-interface VideoMediaItem { storageId: string; previewUrl: string | null }
-interface Model3DItem { storageId: string; fileName: string }
+interface VideoMediaItem {
+  storageId: string;
+  previewUrl: string | null;
+}
+interface Model3DItem {
+  storageId: string;
+  fileName: string;
+}
 
 const SKU_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -45,12 +57,15 @@ function skuPrefix(name: string): string {
 
 function randomSkuSuffix(): string {
   let s = "";
-  for (let i = 0; i < 6; i++) s += SKU_CHARS[Math.floor(Math.random() * SKU_CHARS.length)];
+  for (let i = 0; i < 6; i++)
+    s += SKU_CHARS[Math.floor(Math.random() * SKU_CHARS.length)];
   return s;
 }
 
 function slugify(str: string) {
-  return str.toLowerCase().trim()
+  return str
+    .toLowerCase()
+    .trim()
     .replace(/[^\w\s-]/g, "")
     .replace(/[\s_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
@@ -68,15 +83,36 @@ function fromDatetimeLocal(val: string): number {
 
 // ─── Character counter helper ─────────────────────────────────────────────────
 
-function CharCounter({ value, max, warn }: { value: string; max: number; warn: number }) {
+function CharCounter({
+  value,
+  max,
+  warn,
+}: {
+  value: string;
+  max: number;
+  warn: number;
+}) {
   const len = value.length;
-  const color = len > max ? "text-destructive" : len > warn ? "text-yellow-600" : "text-muted-foreground";
-  return <span className={`text-xs ${color}`}>{len}/{max}</span>;
+  const color =
+    len > max
+      ? "text-destructive"
+      : len > warn
+        ? "text-yellow-600"
+        : "text-muted-foreground";
+  return (
+    <span className={`text-xs ${color}`}>
+      {len}/{max}
+    </span>
+  );
 }
 
 // ─── Discount display helper ───────────────────────────────────────────────────
 
-function discountDisplay(basePrice: string, salePrice: string, mode: SaleDisplayMode): string | null {
+function discountDisplay(
+  basePrice: string,
+  salePrice: string,
+  mode: SaleDisplayMode,
+): string | null {
   const base = Number(basePrice);
   const sale = Number(salePrice);
   if (!base || !sale || sale >= base) return null;
@@ -134,10 +170,15 @@ function NewProductForm() {
   const [basePrice, setBasePrice] = useState("");
   const [saleEnabled, setSaleEnabled] = useState(true);
   const [salePrice, setSalePrice] = useState("");
-  const [saleDisplayMode, setSaleDisplayMode] = useState<SaleDisplayMode>("percentage");
-  const [saleStartMode, setSaleStartMode] = useState<"immediately" | "custom">("immediately");
+  const [saleDisplayMode, setSaleDisplayMode] =
+    useState<SaleDisplayMode>("percentage");
+  const [saleStartMode, setSaleStartMode] = useState<"immediately" | "custom">(
+    "immediately",
+  );
   const [saleStartTime, setSaleStartTime] = useState("");
-  const [saleEndMode, setSaleEndMode] = useState<"indefinite" | "custom">("indefinite");
+  const [saleEndMode, setSaleEndMode] = useState<"indefinite" | "custom">(
+    "indefinite",
+  );
   const [saleEndTime, setSaleEndTime] = useState("");
 
   // ── SEO ──────────────────────────────────────────────────────
@@ -152,7 +193,7 @@ function NewProductForm() {
 
   const slugAvailable = useQuery(
     api.products.checkSlugAvailable,
-    debouncedSlug.trim() ? { slug: debouncedSlug } : "skip"
+    debouncedSlug.trim() ? { slug: debouncedSlug } : "skip",
   );
   const slugTaken = debouncedSlug.trim() && slugAvailable === false;
 
@@ -164,7 +205,7 @@ function NewProductForm() {
 
   const skuAvailable = useQuery(
     api.products.checkSkuAvailable,
-    debouncedSku.trim() ? { sku: debouncedSku } : "skip"
+    debouncedSku.trim() ? { sku: debouncedSku } : "skip",
   );
   const skuTaken = debouncedSku.trim() && skuAvailable === false;
 
@@ -199,7 +240,9 @@ function NewProductForm() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // ── Tags ─────────────────────────────────────────────────────
-  const [selectedTagIds, setSelectedTagIds] = useState<Set<Id<"tags">>>(new Set());
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<Id<"tags">>>(
+    new Set(),
+  );
 
   useEffect(() => {
     if (preselectedTagId && tags) {
@@ -216,7 +259,8 @@ function NewProductForm() {
   function handleNameChange(val: string) {
     setName(val);
     if (!slugManual) setSlug(slugify(val));
-    if (!skuManual) setSku(val.trim() ? `${skuPrefix(val)}-${skuSuffixRef.current}` : "");
+    if (!skuManual)
+      setSku(val.trim() ? `${skuPrefix(val)}-${skuSuffixRef.current}` : "");
   }
 
   function handleSaleStartTimeChange(val: string) {
@@ -228,14 +272,21 @@ function NewProductForm() {
   }
 
   async function handleVideoUpload(file: File) {
-    if (!file.type.startsWith("video/")) { toast.error("Only video files are allowed"); return; }
+    if (!file.type.startsWith("video/")) {
+      toast.error("Only video files are allowed");
+      return;
+    }
     setUploadingVideo(true);
     try {
       const oldKey = videoItem?.storageId;
       const storageId = await r2Upload(file);
       if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
       setVideoItem({ storageId, previewUrl: URL.createObjectURL(file) });
-    } catch { toast.error("Upload failed"); } finally { setUploadingVideo(false); }
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploadingVideo(false);
+    }
   }
 
   function handleRemoveVideo() {
@@ -246,14 +297,21 @@ function NewProductForm() {
   }
 
   async function handleModel3DUpload(file: File) {
-    if (!file.name.toLowerCase().endsWith(".glb")) { toast.error("Only .glb files are supported"); return; }
+    if (!file.name.toLowerCase().endsWith(".glb")) {
+      toast.error("Only .glb files are supported");
+      return;
+    }
     setUploadingModel3d(true);
     try {
       const oldKey = model3dItem?.storageId;
       const storageId = await r2Upload(file);
       if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
       setModel3dItem({ storageId, fileName: file.name });
-    } catch { toast.error("Upload failed"); } finally { setUploadingModel3d(false); }
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploadingModel3d(false);
+    }
   }
 
   function handleRemoveModel3D() {
@@ -264,12 +322,22 @@ function NewProductForm() {
   }
 
   async function handleImageUpload(file: File) {
-    if (!file.type.startsWith("image/")) { toast.error("Only image files are allowed"); return; }
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are allowed");
+      return;
+    }
     setUploadingImage(true);
     try {
       const storageId = await r2Upload(file);
-      setImages((prev) => [...prev, { storageId, previewUrl: URL.createObjectURL(file) }]);
-    } catch { toast.error("Upload failed"); } finally { setUploadingImage(false); }
+      setImages((prev) => [
+        ...prev,
+        { storageId, previewUrl: URL.createObjectURL(file) },
+      ]);
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploadingImage(false);
+    }
   }
 
   const removeImage = useCallback(
@@ -277,43 +345,70 @@ function NewProductForm() {
       setImages((prev) => prev.filter((img) => img.storageId !== storageId));
       r2Delete({ key: storageId }).catch(() => {});
     },
-    [r2Delete]
+    [r2Delete],
   );
 
   function toggleTag(tagId: Id<"tags">) {
     setSelectedTagIds((prev) => {
       const next = new Set(prev);
-      if (next.has(tagId)) next.delete(tagId); else next.add(tagId);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
       return next;
     });
   }
 
-  const hasNoConfig = (colors !== undefined && colors.length === 0) ||
+  const hasNoConfig =
+    (colors !== undefined && colors.length === 0) ||
     (sizes !== undefined && sizes.length === 0);
+  const isUploadingMedia = uploadingVideo || uploadingModel3d || uploadingImage;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!categoryId) { toast.error("Please select a category"); return; }
-    if (!basePrice || isNaN(Number(basePrice)) || Number(basePrice) <= 0) {
-      toast.error("Enter a valid regular price"); return;
+    if (!categoryId) {
+      toast.error("Please select a category");
+      return;
     }
-    if (slugTaken) { toast.error("This slug is already in use"); return; }
-    if (skuTaken) { toast.error("This SKU is already in use"); return; }
-    if (hasNoConfig) { toast.error("Configure colors and sizes first in Platform Configuration"); return; }
+    if (!basePrice || isNaN(Number(basePrice)) || Number(basePrice) <= 0) {
+      toast.error("Enter a valid regular price");
+      return;
+    }
+    if (slugTaken) {
+      toast.error("This slug is already in use");
+      return;
+    }
+    if (skuTaken) {
+      toast.error("This SKU is already in use");
+      return;
+    }
+    if (hasNoConfig) {
+      toast.error("Configure colors and sizes first in Platform Configuration");
+      return;
+    }
+    if (isUploadingMedia) {
+      toast.error("Wait for uploads to finish before saving");
+      return;
+    }
     if (selectedColors.length === 0 || selectedSizes.length === 0) {
-      toast.error("Select at least one color and one size"); return;
+      toast.error("Select at least one color and one size");
+      return;
     }
     if (saleEnabled && salePrice && Number(salePrice) >= Number(basePrice)) {
-      toast.error("Sale price must be less than regular price"); return;
+      toast.error("Sale price must be less than regular price");
+      return;
     }
     if (status === "scheduled" && !scheduledPublishTime) {
-      toast.error("Set a publish date for scheduled status"); return;
+      toast.error("Set a publish date for scheduled status");
+      return;
     }
 
     setSubmitting(true);
     try {
-      const variants = matrixToVariants(stockMatrix, selectedColors, selectedSizes);
+      const variants = matrixToVariants(
+        stockMatrix,
+        selectedColors,
+        selectedSizes,
+      );
 
       const productId = await createProduct({
         name: name.trim(),
@@ -323,24 +418,54 @@ function NewProductForm() {
         categoryId: categoryId as Id<"categories">,
         basePrice: Number(basePrice),
         status,
-        scheduledPublishTime: scheduledPublishTime ? fromDatetimeLocal(scheduledPublishTime) : undefined,
+        scheduledPublishTime: scheduledPublishTime
+          ? fromDatetimeLocal(scheduledPublishTime)
+          : undefined,
         saleEnabled,
         salePrice: saleEnabled && salePrice ? Number(salePrice) : undefined,
         saleDisplayMode: saleEnabled ? saleDisplayMode : undefined,
         saleStartMode: saleEnabled ? saleStartMode : "immediately",
-        saleStartTime: saleEnabled && saleStartMode === "custom" && saleStartTime
-          ? fromDatetimeLocal(saleStartTime) : undefined,
+        saleStartTime:
+          saleEnabled && saleStartMode === "custom" && saleStartTime
+            ? fromDatetimeLocal(saleStartTime)
+            : undefined,
         saleEndMode: saleEnabled ? saleEndMode : "indefinite",
-        saleEndTime: saleEnabled && saleEndMode === "custom" && saleEndTime
-          ? fromDatetimeLocal(saleEndTime) : undefined,
+        saleEndTime:
+          saleEnabled && saleEndMode === "custom" && saleEndTime
+            ? fromDatetimeLocal(saleEndTime)
+            : undefined,
         metaTitle: metaTitle.trim() || undefined,
         metaDescription: metaDescription.trim() || undefined,
         media: [
-          ...(videoItem ? [{ storageId: videoItem.storageId, type: "video" as const, sortOrder: 0 }] : []),
-          ...(model3dItem ? [{ storageId: model3dItem.storageId, type: "model3d" as const, sortOrder: 1 }] : []),
-          ...images.map((img, i) => ({ storageId: img.storageId, type: "image" as const, sortOrder: 2 + i })),
+          ...(videoItem
+            ? [
+                {
+                  storageId: videoItem.storageId,
+                  type: "video" as const,
+                  sortOrder: 0,
+                },
+              ]
+            : []),
+          ...(model3dItem
+            ? [
+                {
+                  storageId: model3dItem.storageId,
+                  type: "model3d" as const,
+                  sortOrder: 1,
+                },
+              ]
+            : []),
+          ...images.map((img, i) => ({
+            storageId: img.storageId,
+            type: "image" as const,
+            sortOrder: 2 + i,
+          })),
         ],
-        variants: variants.map((v) => ({ size: v.size, color: v.color, stock: v.stock })),
+        variants: variants.map((v) => ({
+          size: v.size,
+          color: v.color,
+          stock: v.stock,
+        })),
       });
 
       if (selectedTagIds.size > 0) {
@@ -357,15 +482,18 @@ function NewProductForm() {
       toast.success("Product created successfully");
       router.push(backHref);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to create product");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create product",
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  const discountText = saleEnabled && salePrice
-    ? discountDisplay(basePrice, salePrice, saleDisplayMode)
-    : null;
+  const discountText =
+    saleEnabled && salePrice
+      ? discountDisplay(basePrice, salePrice, saleDisplayMode)
+      : null;
 
   // ── Render ───────────────────────────────────────────────────
 
@@ -373,35 +501,53 @@ function NewProductForm() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" asChild>
-          <Link href={backHref}><ArrowLeft className="h-4 w-4 mr-1" />Back</Link>
+          <Link href={backHref}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Link>
         </Button>
         <h1 className="text-2xl font-bold">New Product</h1>
       </div>
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
-
           {/* ── Left column ── */}
           <div className="space-y-6">
-
             {/* Basic Info */}
             <Card>
-              <CardHeader><CardTitle>Basic Info</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Basic Info</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Name *</Label>
-                    <Input id="name" required value={name} onChange={(e) => handleNameChange(e.target.value)} placeholder="Product name" />
+                    <Input
+                      id="name"
+                      required
+                      value={name}
+                      onChange={(e) => handleNameChange(e.target.value)}
+                      placeholder="Product name"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="slug">Slug *</Label>
                     <Input
-                      id="slug" required value={slug}
-                      onChange={(e) => { setSlug(e.target.value); setSlugManual(true); }}
+                      id="slug"
+                      required
+                      value={slug}
+                      onChange={(e) => {
+                        setSlug(e.target.value);
+                        setSlugManual(true);
+                      }}
                       placeholder="product-slug"
                       className={slugTaken ? "border-destructive" : ""}
                     />
-                    {slugTaken && <p className="text-xs text-destructive">This slug is already in use</p>}
+                    {slugTaken && (
+                      <p className="text-xs text-destructive">
+                        This slug is already in use
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -409,26 +555,45 @@ function NewProductForm() {
                   <Input
                     id="sku"
                     value={sku}
-                    onChange={(e) => { setSku(e.target.value.toUpperCase()); setSkuManual(true); }}
+                    onChange={(e) => {
+                      setSku(e.target.value.toUpperCase());
+                      setSkuManual(true);
+                    }}
                     placeholder="Auto-generated"
                     className={`max-w-xs ${skuTaken ? "border-destructive" : ""}`}
                   />
-                  {skuTaken
-                    ? <p className="text-xs text-destructive">This SKU is already in use</p>
-                    : <p className="text-xs text-muted-foreground">Leave blank to auto-generate</p>
-                  }
+                  {skuTaken ? (
+                    <p className="text-xs text-destructive">
+                      This SKU is already in use
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Leave blank to auto-generate
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">Description *</Label>
-                  <Textarea id="description" required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Product description" rows={4} />
+                  <Textarea
+                    id="description"
+                    required
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Product description"
+                    rows={4}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
                   <Select value={categoryId} onValueChange={setCategoryId}>
-                    <SelectTrigger id="category"><SelectValue placeholder="Select category" /></SelectTrigger>
+                    <SelectTrigger id="category">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
                     <SelectContent>
                       {(categories ?? []).map((cat) => (
-                        <SelectItem key={cat._id} value={cat._id}>{cat.name}</SelectItem>
+                        <SelectItem key={cat._id} value={cat._id}>
+                          {cat.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -438,7 +603,9 @@ function NewProductForm() {
 
             {/* Variants & Stock */}
             <Card>
-              <CardHeader><CardTitle>Variants & Stock</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Variants & Stock</CardTitle>
+              </CardHeader>
               <CardContent>
                 <VariantMatrix
                   platformSizes={sizes}
@@ -455,12 +622,43 @@ function NewProductForm() {
 
             {/* Images */}
             <Card>
-              <CardHeader><CardTitle>Images <span className="text-sm font-normal text-muted-foreground">(optional, multiple — drag to reorder)</span></CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>
+                  Images{" "}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    (optional, multiple — drag to reorder)
+                  </span>
+                </CardTitle>
+              </CardHeader>
               <CardContent className="space-y-4">
-                <input ref={imageInputRef} type="file" accept="image/*" className="hidden"
-                  onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleImageUpload(f); e.target.value = ""; }} />
-                <Button type="button" variant="outline" disabled={uploadingImage} onClick={() => imageInputRef.current?.click()}>
-                  {uploadingImage ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</> : <><Upload className="mr-2 h-4 w-4" />Upload Image</>}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) await handleImageUpload(f);
+                    e.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={uploadingImage}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  {uploadingImage ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading…
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Image
+                    </>
+                  )}
                 </Button>
                 {images.length > 0 && (
                   <SortableImageGrid
@@ -474,21 +672,69 @@ function NewProductForm() {
 
             {/* Video */}
             <Card>
-              <CardHeader><CardTitle>Video <span className="text-sm font-normal text-muted-foreground">(optional)</span></CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>
+                  Video{" "}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </CardTitle>
+              </CardHeader>
               <CardContent>
-                <input ref={videoInputRef} type="file" accept="video/*" className="hidden"
-                  onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleVideoUpload(f); e.target.value = ""; }} />
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) await handleVideoUpload(f);
+                    e.target.value = "";
+                  }}
+                />
                 {videoItem ? (
                   <div className="relative group w-48 h-28 rounded-md overflow-hidden border bg-muted">
-                    {videoItem.previewUrl ? <video src={videoItem.previewUrl} className="w-full h-full object-cover" muted /> :
-                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">video</div>}
+                    {videoItem.previewUrl ? (
+                      <video
+                        src={videoItem.previewUrl}
+                        className="w-full h-full object-cover"
+                        muted
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                        video
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button type="button" variant="destructive" size="icon" className="h-7 w-7" onClick={handleRemoveVideo}><X className="h-3 w-3" /></Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={handleRemoveVideo}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  <Button type="button" variant="outline" disabled={uploadingVideo} onClick={() => videoInputRef.current?.click()}>
-                    {uploadingVideo ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</> : <><Upload className="mr-2 h-4 w-4" />Upload Video</>}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={uploadingVideo}
+                    onClick={() => videoInputRef.current?.click()}
+                  >
+                    {uploadingVideo ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Video
+                      </>
+                    )}
                   </Button>
                 )}
               </CardContent>
@@ -496,51 +742,109 @@ function NewProductForm() {
 
             {/* 3D Model */}
             <Card>
-              <CardHeader><CardTitle>3D Model <span className="text-sm font-normal text-muted-foreground">(optional — GLB format)</span></CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>
+                  3D Model{" "}
+                  <span className="text-sm font-normal text-muted-foreground">
+                    (optional — GLB format)
+                  </span>
+                </CardTitle>
+              </CardHeader>
               <CardContent className="space-y-2">
-                <input ref={model3dInputRef} type="file" accept=".glb" className="hidden"
-                  onChange={async (e) => { const f = e.target.files?.[0]; if (f) await handleModel3DUpload(f); e.target.value = ""; }} />
+                <input
+                  ref={model3dInputRef}
+                  type="file"
+                  accept=".glb"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) await handleModel3DUpload(f);
+                    e.target.value = "";
+                  }}
+                />
                 {model3dItem ? (
                   <div className="flex items-center gap-3 p-3 rounded-md border bg-muted">
-                    <Box className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm truncate flex-1">{model3dItem.fileName}</span>
-                    <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={handleRemoveModel3D}><X className="h-3 w-3" /></Button>
+                    <Box className="h-5 w-5 text-muted-foreground shrink-0" />
+                    <span className="text-sm truncate flex-1">
+                      {model3dItem.fileName}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={handleRemoveModel3D}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
                   </div>
                 ) : (
                   <>
-                    <Button type="button" variant="outline" disabled={uploadingModel3d} onClick={() => model3dInputRef.current?.click()}>
-                      {uploadingModel3d ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading…</> : <><Upload className="mr-2 h-4 w-4" />Upload 3D Model</>}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={uploadingModel3d}
+                      onClick={() => model3dInputRef.current?.click()}
+                    >
+                      {uploadingModel3d ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading…
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="mr-2 h-4 w-4" />
+                          Upload 3D Model
+                        </>
+                      )}
                     </Button>
-                    <p className="text-xs text-muted-foreground">Only .glb files are supported</p>
+                    <p className="text-xs text-muted-foreground">
+                      Only .glb files are supported
+                    </p>
                   </>
                 )}
               </CardContent>
             </Card>
-
           </div>
 
           {/* ── Right column (sidebar) ── */}
           <div className="space-y-6">
-
             {/* Availability */}
             <Card>
-              <CardHeader><CardTitle>Availability</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Availability</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Status</Label>
-                  <Select value={status} onValueChange={(v) => setStatus(v as ProductStatus)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select
+                    value={status}
+                    onValueChange={(v) => setStatus(v as ProductStatus)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="draft">Draft — hidden from customers</SelectItem>
-                      <SelectItem value="active">Active — visible and purchasable</SelectItem>
-                      <SelectItem value="scheduled">Scheduled — goes live at a set date</SelectItem>
-                      <SelectItem value="archived">Archived — retired product</SelectItem>
+                      <SelectItem value="draft">
+                        Draft — hidden from customers
+                      </SelectItem>
+                      <SelectItem value="active">
+                        Active — visible and purchasable
+                      </SelectItem>
+                      <SelectItem value="scheduled">
+                        Scheduled — goes live at a set date
+                      </SelectItem>
+                      <SelectItem value="archived">
+                        Archived — retired product
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {status === "scheduled" && (
                   <div className="space-y-2">
-                    <Label htmlFor="scheduledPublishTime">Publish date & time *</Label>
+                    <Label htmlFor="scheduledPublishTime">
+                      Publish date & time *
+                    </Label>
                     <Input
                       id="scheduledPublishTime"
                       type="datetime-local"
@@ -549,7 +853,8 @@ function NewProductForm() {
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      The product will become visible at this time automatically.
+                      The product will become visible at this time
+                      automatically.
                     </p>
                   </div>
                 )}
@@ -558,20 +863,36 @@ function NewProductForm() {
 
             {/* Pricing */}
             <Card>
-              <CardHeader><CardTitle>Pricing</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>Pricing</CardTitle>
+              </CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">
                   <Label htmlFor="basePrice">Regular Price (৳) *</Label>
                   <Input
-                    id="basePrice" type="number" min="1" step="1" required
-                    value={basePrice} onChange={(e) => setBasePrice(e.target.value)}
+                    id="basePrice"
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    value={basePrice}
+                    onChange={(e) => setBasePrice(e.target.value)}
                     placeholder="0"
                   />
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Switch id="saleToggle" checked={saleEnabled} onCheckedChange={setSaleEnabled} />
-                  <Label htmlFor="saleToggle" className="cursor-pointer font-medium">Enable Sale Pricing</Label>
+                  <Switch
+                    id="saleToggle"
+                    checked={saleEnabled}
+                    onCheckedChange={setSaleEnabled}
+                  />
+                  <Label
+                    htmlFor="saleToggle"
+                    className="cursor-pointer font-medium"
+                  >
+                    Enable Sale Pricing
+                  </Label>
                 </div>
 
                 {saleEnabled && (
@@ -579,8 +900,12 @@ function NewProductForm() {
                     <div className="space-y-2">
                       <Label htmlFor="salePrice">Sale Price (৳)</Label>
                       <Input
-                        id="salePrice" type="number" min="0" step="1"
-                        value={salePrice} onChange={(e) => setSalePrice(e.target.value)}
+                        id="salePrice"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={salePrice}
+                        onChange={(e) => setSalePrice(e.target.value)}
                         placeholder="0"
                       />
                     </div>
@@ -590,44 +915,81 @@ function NewProductForm() {
                       <Label className="text-sm">Show Discount As</Label>
                       <RadioGroup
                         value={saleDisplayMode}
-                        onValueChange={(v) => setSaleDisplayMode(v as SaleDisplayMode)}
+                        onValueChange={(v) =>
+                          setSaleDisplayMode(v as SaleDisplayMode)
+                        }
                         className="flex gap-4"
                       >
                         <div className="flex items-center gap-2">
                           <RadioGroupItem value="percentage" id="mode-pct" />
-                          <Label htmlFor="mode-pct" className="cursor-pointer font-normal text-sm">Percentage</Label>
+                          <Label
+                            htmlFor="mode-pct"
+                            className="cursor-pointer font-normal text-sm"
+                          >
+                            Percentage
+                          </Label>
                         </div>
                         <div className="flex items-center gap-2">
                           <RadioGroupItem value="amount" id="mode-amt" />
-                          <Label htmlFor="mode-amt" className="cursor-pointer font-normal text-sm">Fixed Amount</Label>
+                          <Label
+                            htmlFor="mode-amt"
+                            className="cursor-pointer font-normal text-sm"
+                          >
+                            Fixed Amount
+                          </Label>
                         </div>
                       </RadioGroup>
                       {discountText && (
-                        <p className="text-sm font-medium text-green-600">Discount: {discountText}</p>
+                        <p className="text-sm font-medium text-green-600">
+                          Discount: {discountText}
+                        </p>
                       )}
                     </div>
 
                     {/* Discount Schedule */}
                     <div className="space-y-4">
-                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Discount Schedule</p>
+                      <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                        Discount Schedule
+                      </p>
 
                       <div className="space-y-2">
                         <Label className="text-sm">Starts</Label>
-                        <RadioGroup value={saleStartMode} onValueChange={(v) => setSaleStartMode(v as "immediately" | "custom")} className="gap-2">
+                        <RadioGroup
+                          value={saleStartMode}
+                          onValueChange={(v) =>
+                            setSaleStartMode(v as "immediately" | "custom")
+                          }
+                          className="gap-2"
+                        >
                           <div className="flex items-center gap-2">
-                            <RadioGroupItem value="immediately" id="start-immediately" />
-                            <Label htmlFor="start-immediately" className="cursor-pointer font-normal">Immediately</Label>
+                            <RadioGroupItem
+                              value="immediately"
+                              id="start-immediately"
+                            />
+                            <Label
+                              htmlFor="start-immediately"
+                              className="cursor-pointer font-normal"
+                            >
+                              Immediately
+                            </Label>
                           </div>
                           <div className="flex items-center gap-2">
                             <RadioGroupItem value="custom" id="start-custom" />
-                            <Label htmlFor="start-custom" className="cursor-pointer font-normal">Custom date & time</Label>
+                            <Label
+                              htmlFor="start-custom"
+                              className="cursor-pointer font-normal"
+                            >
+                              Custom date & time
+                            </Label>
                           </div>
                         </RadioGroup>
                         {saleStartMode === "custom" && (
                           <Input
                             type="datetime-local"
                             value={saleStartTime}
-                            onChange={(e) => handleSaleStartTimeChange(e.target.value)}
+                            onChange={(e) =>
+                              handleSaleStartTimeChange(e.target.value)
+                            }
                             className="mt-2"
                           />
                         )}
@@ -635,14 +997,33 @@ function NewProductForm() {
 
                       <div className="space-y-2">
                         <Label className="text-sm">Ends</Label>
-                        <RadioGroup value={saleEndMode} onValueChange={(v) => setSaleEndMode(v as "indefinite" | "custom")} className="gap-2">
+                        <RadioGroup
+                          value={saleEndMode}
+                          onValueChange={(v) =>
+                            setSaleEndMode(v as "indefinite" | "custom")
+                          }
+                          className="gap-2"
+                        >
                           <div className="flex items-center gap-2">
-                            <RadioGroupItem value="indefinite" id="end-indefinite" />
-                            <Label htmlFor="end-indefinite" className="cursor-pointer font-normal">Indefinite</Label>
+                            <RadioGroupItem
+                              value="indefinite"
+                              id="end-indefinite"
+                            />
+                            <Label
+                              htmlFor="end-indefinite"
+                              className="cursor-pointer font-normal"
+                            >
+                              Indefinite
+                            </Label>
                           </div>
                           <div className="flex items-center gap-2">
                             <RadioGroupItem value="custom" id="end-custom" />
-                            <Label htmlFor="end-custom" className="cursor-pointer font-normal">Custom date & time</Label>
+                            <Label
+                              htmlFor="end-custom"
+                              className="cursor-pointer font-normal"
+                            >
+                              Custom date & time
+                            </Label>
                           </div>
                         </RadioGroup>
                         {saleEndMode === "custom" && (
@@ -672,13 +1053,24 @@ function NewProductForm() {
                 {!tags ? (
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                 ) : tags.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No tags available.</p>
+                  <p className="text-sm text-muted-foreground">
+                    No tags available.
+                  </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
                     {tags.map((tag) => (
                       <div key={tag._id} className="flex items-center gap-2">
-                        <Checkbox id={`tag-${tag._id}`} checked={selectedTagIds.has(tag._id)} onCheckedChange={() => toggleTag(tag._id)} />
-                        <Label htmlFor={`tag-${tag._id}`} className="cursor-pointer font-normal text-sm">{tag.name}</Label>
+                        <Checkbox
+                          id={`tag-${tag._id}`}
+                          checked={selectedTagIds.has(tag._id)}
+                          onCheckedChange={() => toggleTag(tag._id)}
+                        />
+                        <Label
+                          htmlFor={`tag-${tag._id}`}
+                          className="cursor-pointer font-normal text-sm"
+                        >
+                          {tag.name}
+                        </Label>
                       </div>
                     ))}
                   </div>
@@ -695,7 +1087,10 @@ function NewProductForm() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">These fields appear in search engine results. Leave blank to use product name and description.</p>
+                <p className="text-xs text-muted-foreground">
+                  These fields appear in search engine results. Leave blank to
+                  use product name and description.
+                </p>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="metaTitle">Meta Title</Label>
@@ -708,7 +1103,9 @@ function NewProductForm() {
                     placeholder={name || "Product name"}
                     maxLength={80}
                   />
-                  <p className="text-xs text-muted-foreground">Recommended: under 60 characters</p>
+                  <p className="text-xs text-muted-foreground">
+                    Recommended: under 60 characters
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -723,21 +1120,41 @@ function NewProductForm() {
                     rows={3}
                     maxLength={200}
                   />
-                  <p className="text-xs text-muted-foreground">Recommended: under 160 characters</p>
+                  <p className="text-xs text-muted-foreground">
+                    Recommended: under 160 characters
+                  </p>
                 </div>
               </CardContent>
             </Card>
 
             {/* Submit */}
             <div className="flex items-center gap-3">
-              <Button type="submit" disabled={submitting || !!slugTaken || !!skuTaken || hasNoConfig} className="flex-1">
-                {submitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating…</> : "Create Product"}
+              <Button
+                type="submit"
+                disabled={
+                  submitting ||
+                  isUploadingMedia ||
+                  !!slugTaken ||
+                  !!skuTaken ||
+                  hasNoConfig
+                }
+                className="flex-1"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating…
+                  </>
+                ) : isUploadingMedia ? (
+                  "Uploads in progress…"
+                ) : (
+                  "Create Product"
+                )}
               </Button>
               <Button type="button" variant="outline" asChild>
                 <Link href={backHref}>Cancel</Link>
               </Button>
             </div>
-
           </div>
         </div>
       </form>
@@ -749,7 +1166,13 @@ function NewProductForm() {
 
 export default function NewProductPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
       <NewProductForm />
     </Suspense>
   );

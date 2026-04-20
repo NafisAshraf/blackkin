@@ -36,6 +36,7 @@ import type * as reviews from "../reviews.js";
 import type * as tags from "../tags.js";
 import type * as triggers from "../triggers.js";
 import type * as users from "../users.js";
+import type * as vouchers from "../vouchers.js";
 import type * as wishlist from "../wishlist.js";
 
 import type {
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   tags: typeof tags;
   triggers: typeof triggers;
   users: typeof users;
+  vouchers: typeof vouchers;
   wishlist: typeof wishlist;
 }>;
 

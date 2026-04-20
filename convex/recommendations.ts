@@ -7,10 +7,7 @@ import { r2 } from "./r2";
 
 // ─── Validators ─────────────────────────────────────────────
 
-const recType = v.union(
-  v.literal("also_like"),
-  v.literal("also_bought")
-);
+const recType = v.union(v.literal("also_like"), v.literal("also_bought"));
 
 const recommendedProductCard = v.object({
   _id: v.id("products"),
@@ -23,6 +20,7 @@ const recommendedProductCard = v.object({
   averageRating: v.number(),
   totalRatings: v.number(),
   imageUrl: v.union(v.string(), v.null()),
+  variants: v.optional(v.array(v.object({ color: v.optional(v.string()) }))),
 });
 
 // Variant card for "People Also Bought" customer display
@@ -41,6 +39,10 @@ const alsoBoughtVariantCard = v.object({
   stock: v.number(),
   sortOrder: v.number(),
 });
+
+function variantPickerKey(size: string, color?: string) {
+  return `${size.trim().toLowerCase()}::${color?.trim().toLowerCase() ?? ""}`;
+}
 
 // ─── PUBLIC QUERIES ──────────────────────────────────────────
 
@@ -61,11 +63,18 @@ export const getAlsoLike = query({
         const product = await ctx.db.get(row.recommendedProductId);
         if (!product || !isProductVisible(product)) return null;
 
-        const { effectivePrice, discountAmount, discountGroupName } = await getEffectivePrice(ctx, product);
+        const { effectivePrice, discountAmount, discountGroupName } =
+          await getEffectivePrice(ctx, product);
         const firstImage = product.media.find((m) => m.type === "image");
         const imageUrl = firstImage
           ? await r2.getUrl(firstImage.storageId)
           : null;
+
+        // Fetch variants for color swatches
+        const variants = await ctx.db
+          .query("productVariants")
+          .withIndex("by_productId", (q) => q.eq("productId", product._id))
+          .take(50);
 
         return {
           _id: product._id,
@@ -78,8 +87,9 @@ export const getAlsoLike = query({
           averageRating: product.averageRating,
           totalRatings: product.totalRatings,
           imageUrl,
+          variants: variants.map((v) => ({ color: v.color })),
         };
-      })
+      }),
     );
 
     return cards.filter(Boolean) as NonNullable<(typeof cards)[0]>[];
@@ -113,7 +123,7 @@ export const getAlsoBought = query({
         const sizeRecs = await ctx.db
           .query("productRecommendations")
           .withIndex("by_type_and_forSize", (q) =>
-            q.eq("type", "also_bought").eq("forSize", size)
+            q.eq("type", "also_bought").eq("forSize", size),
           )
           .take(20);
         allRows.push(...sizeRecs);
@@ -135,9 +145,14 @@ export const getAlsoBought = query({
       const product = await ctx.db.get(variant.productId);
       if (!product || !isProductVisible(product)) continue;
 
-      const { effectivePrice, discountAmount } = await getEffectivePrice(ctx, product);
+      const { effectivePrice, discountAmount } = await getEffectivePrice(
+        ctx,
+        product,
+      );
       const firstImage = product.media.find((m) => m.type === "image");
-      const imageUrl = firstImage ? await r2.getUrl(firstImage.storageId) : null;
+      const imageUrl = firstImage
+        ? await r2.getUrl(firstImage.storageId)
+        : null;
 
       cards.push({
         recId: row._id,
@@ -174,7 +189,7 @@ export const listByType = query({
       forSize: v.optional(v.string()),
       sortOrder: v.number(),
       productName: v.string(),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -196,7 +211,7 @@ export const listByType = query({
           ...row,
           productName,
         };
-      })
+      }),
     );
   },
 });
@@ -207,20 +222,24 @@ export const listByType = query({
  */
 export const listAlsoBoughtBySize = query({
   args: {},
-  returns: v.array(v.object({
-    forSize: v.string(),
-    items: v.array(v.object({
-      _id: v.id("productRecommendations"),
-      sortOrder: v.number(),
-      variantId: v.id("productVariants"),
-      productId: v.id("products"),
-      productName: v.string(),
-      size: v.string(),
-      color: v.optional(v.string()),
-      imageUrl: v.union(v.string(), v.null()),
-      stock: v.number(),
-    })),
-  })),
+  returns: v.array(
+    v.object({
+      forSize: v.string(),
+      items: v.array(
+        v.object({
+          _id: v.id("productRecommendations"),
+          sortOrder: v.number(),
+          variantId: v.id("productVariants"),
+          productId: v.id("products"),
+          productName: v.string(),
+          size: v.string(),
+          color: v.optional(v.string()),
+          imageUrl: v.union(v.string(), v.null()),
+          stock: v.number(),
+        }),
+      ),
+    }),
+  ),
   handler: async (ctx) => {
     await requireAdmin(ctx);
     const rows = await ctx.db
@@ -248,7 +267,9 @@ export const listAlsoBoughtBySize = query({
           const product = await ctx.db.get(variant.productId);
           if (!product) return null;
           const firstImage = product.media.find((m) => m.type === "image");
-          const imageUrl = firstImage ? await r2.getUrl(firstImage.storageId) : null;
+          const imageUrl = firstImage
+            ? await r2.getUrl(firstImage.storageId)
+            : null;
           return {
             _id: row._id,
             sortOrder: row.sortOrder,
@@ -260,7 +281,7 @@ export const listAlsoBoughtBySize = query({
             imageUrl,
             stock: variant.stock,
           };
-        })
+        }),
       );
       result.push({ forSize, items: items.filter(Boolean) });
     }
@@ -289,11 +310,14 @@ export const add = mutation({
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", args.type))
       .take(200);
-    if (existing.some((r) => r.recommendedProductId === args.recommendedProductId)) {
+    if (
+      existing.some((r) => r.recommendedProductId === args.recommendedProductId)
+    ) {
       throw new ConvexError("Product already in this section");
     }
 
-    const maxSort = existing.length > 0 ? Math.max(...existing.map((r) => r.sortOrder)) : -1;
+    const maxSort =
+      existing.length > 0 ? Math.max(...existing.map((r) => r.sortOrder)) : -1;
     return await ctx.db.insert("productRecommendations", {
       type: args.type,
       recommendedProductId: args.recommendedProductId,
@@ -319,11 +343,13 @@ export const addVariant = mutation({
     const existing = await ctx.db
       .query("productRecommendations")
       .withIndex("by_type_and_forSize", (q) =>
-        q.eq("type", "also_bought").eq("forSize", args.forSize)
+        q.eq("type", "also_bought").eq("forSize", args.forSize),
       )
       .take(200);
 
-    if (existing.some((r) => r.recommendedVariantId === args.recommendedVariantId)) {
+    if (
+      existing.some((r) => r.recommendedVariantId === args.recommendedVariantId)
+    ) {
       throw new ConvexError("Variant already in this size section");
     }
 
@@ -331,7 +357,10 @@ export const addVariant = mutation({
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", "also_bought"))
       .take(500);
-    const maxSort = allBought.length > 0 ? Math.max(...allBought.map((r) => r.sortOrder)) : -1;
+    const maxSort =
+      allBought.length > 0
+        ? Math.max(...allBought.map((r) => r.sortOrder))
+        : -1;
 
     return await ctx.db.insert("productRecommendations", {
       type: "also_bought",
@@ -357,14 +386,16 @@ export const remove = mutation({
 export const reorder = mutation({
   args: {
     items: v.array(
-      v.object({ id: v.id("productRecommendations"), sortOrder: v.number() })
+      v.object({ id: v.id("productRecommendations"), sortOrder: v.number() }),
     ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     await Promise.all(
-      args.items.map((item) => ctx.db.patch(item.id, { sortOrder: item.sortOrder }))
+      args.items.map((item) =>
+        ctx.db.patch(item.id, { sortOrder: item.sortOrder }),
+      ),
     );
     return null;
   },
@@ -376,21 +407,38 @@ export const getVariantsForPicker = query({
     productId: v.id("products"),
     size: v.string(),
   },
-  returns: v.array(v.object({
-    _id: v.id("productVariants"),
-    size: v.string(),
-    color: v.optional(v.string()),
-    stock: v.number(),
-  })),
+  returns: v.array(
+    v.object({
+      _id: v.id("productVariants"),
+      size: v.string(),
+      color: v.optional(v.string()),
+      stock: v.number(),
+    }),
+  ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const variants = await ctx.db
       .query("productVariants")
       .withIndex("by_productId_and_size", (q) =>
-        q.eq("productId", args.productId).eq("size", args.size)
+        q.eq("productId", args.productId).eq("size", args.size),
       )
       .take(50);
-    return variants.map((v) => ({
+
+    const deduped = [...variants]
+      .sort((a, b) => b._creationTime - a._creationTime)
+      .filter((variant, index, all) => {
+        const key = variantPickerKey(variant.size, variant.color);
+        return (
+          index ===
+          all.findIndex(
+            (candidate) =>
+              variantPickerKey(candidate.size, candidate.color) === key,
+          )
+        );
+      })
+      .sort((a, b) => (a.color ?? "").localeCompare(b.color ?? ""));
+
+    return deduped.map((v) => ({
       _id: v._id,
       size: v.size,
       color: v.color,

@@ -52,6 +52,7 @@ interface SortableProductGridProps {
   /** Slot prepended before the sortable items (e.g. AddProductCard) */
   prefix?: React.ReactNode;
   onPublish?: (id: Id<"products">) => void;
+  renderOverlay?: (item: SortableProductItem) => React.ReactNode;
 }
 
 // ─── Sortable Card ─────────────────────────────────────────────────────────────
@@ -61,11 +62,13 @@ function SortableProductCard({
   isSelected,
   onToggleSelect,
   onPublish,
+  renderOverlay,
 }: {
   item: SortableProductItem;
   isSelected: boolean;
   onToggleSelect?: (id: string) => void;
   onPublish?: (id: Id<"products">) => void;
+  renderOverlay?: (item: SortableProductItem) => React.ReactNode;
 }) {
   const {
     attributes,
@@ -124,6 +127,7 @@ function SortableProductCard({
         }
         onPublish={onPublish ? () => onPublish(item.id) : undefined}
       />
+      {renderOverlay?.(item)}
     </div>
   );
 }
@@ -137,12 +141,13 @@ export function SortableProductGrid({
   onReorder,
   prefix,
   onPublish,
+  renderOverlay,
 }: SortableProductGridProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   function handleDragEnd(event: DragEndEvent) {
@@ -176,6 +181,7 @@ export function SortableProductGrid({
               isSelected={selectedIds?.has(item.id) ?? false}
               onToggleSelect={onToggleSelect}
               onPublish={onPublish}
+              renderOverlay={renderOverlay}
             />
           ))}
         </div>

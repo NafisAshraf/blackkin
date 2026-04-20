@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import useEmblaCarousel from "embla-carousel-react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -26,6 +27,8 @@ import {
   Tag,
   X,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -102,6 +105,43 @@ export default function CheckoutPage() {
     cartItemId: Id<"cartItems">;
     productName: string;
   } | null>(null);
+
+  // Embla Carousel for People Also Bought
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: false,
+    align: "start",
+    dragFree: true,
+  });
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [snapCount, setSnapCount] = useState(0);
+
+  const onInit = useCallback(() => {
+    if (!emblaApi) return;
+    setSnapCount(emblaApi.scrollSnapList().length);
+  }, [emblaApi]);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setCanScrollPrev(emblaApi.canScrollPrev());
+    setCanScrollNext(emblaApi.canScrollNext());
+    setCurrentIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onInit();
+    onSelect();
+    emblaApi.on("reInit", onInit);
+    emblaApi.on("reInit", onSelect);
+    emblaApi.on("select", onSelect);
+    return () => {
+      emblaApi.off("reInit", onInit);
+      emblaApi.off("reInit", onSelect);
+      emblaApi.off("select", onSelect);
+    };
+  }, [emblaApi, onInit, onSelect]);
 
   const homeAddress = savedAddresses?.find((a) => a.type === "home");
   const workAddress = savedAddresses?.find((a) => a.type === "work");
@@ -709,7 +749,8 @@ export default function CheckoutPage() {
                 <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
                   People Also Bought
                 </h3>
-                <div className="flex gap-3 overflow-x-auto pb-2">
+                <div ref={emblaRef} className="overflow-hidden pb-2">
+                  <div className="flex gap-3">
                   {recommendations.map((rec: any) => {
                     const cartItem = cart?.items.find(
                       (i) => i.variantId === rec.variantId,
@@ -718,7 +759,7 @@ export default function CheckoutPage() {
                     return (
                       <div
                         key={rec.variantId}
-                        className="w-36 flex-shrink-0 border rounded-md overflow-hidden"
+                        className="flex-[0_0_calc(40%-8px)] flex-shrink-0 border rounded-md overflow-hidden"
                       >
                         <Link
                           href={`/products/${rec.productSlug}`}
@@ -814,7 +855,41 @@ export default function CheckoutPage() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
+
+                {/* Progress Bar & Arrows */}
+                {snapCount > 1 && (
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex-1 h-0.5 bg-gray-200 relative overflow-hidden">
+                      <div
+                        className="absolute top-0 left-0 h-full bg-foreground transition-all duration-300 ease-out"
+                        style={{
+                          width: `${snapCount > 0 ? 100 / snapCount : 100}%`,
+                          transform: `translateX(${currentIndex * 100}%)`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => emblaApi?.scrollPrev()}
+                        disabled={!canScrollPrev}
+                        className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => emblaApi?.scrollNext()}
+                        disabled={!canScrollNext}
+                        className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

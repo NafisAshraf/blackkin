@@ -162,6 +162,31 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
   };
 }
 
+function normalizeVariantValue(value?: string) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function variantCombinationKey(variant: { size: string; color?: string }) {
+  return `${normalizeVariantValue(variant.size)}::${normalizeVariantValue(variant.color)}`;
+}
+
+function assertUniqueVariantCombinations(
+  variants: Array<{ size: string; color?: string }>,
+) {
+  const seen = new Set<string>();
+
+  for (const variant of variants) {
+    const key = variantCombinationKey(variant);
+    if (seen.has(key)) {
+      const colorLabel = variant.color?.trim() || "No color";
+      throw new ConvexError(
+        `Duplicate variant combination: ${variant.size.trim()} / ${colorLabel}`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
 // ─── PUBLIC QUERIES ────────────────────────────────────────
 
 export const search = query({
@@ -560,6 +585,7 @@ export const create = mutation({
     if (args.basePrice <= 0) throw new ConvexError("Price must be positive");
     if (args.variants.length === 0)
       throw new ConvexError("At least one variant required");
+    assertUniqueVariantCombinations(args.variants);
 
     const existing = await ctx.db
       .query("products")
@@ -767,6 +793,42 @@ export const updateVariants = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+
+    const currentVariants = await ctx.db
+      .query("productVariants")
+      .withIndex("by_productId", (q) => q.eq("productId", args.productId))
+      .take(200);
+
+    const deleteIds = new Set(
+      (args.deleteIds ?? []).map((id) => id.toString()),
+    );
+    const updatesById = new Map(
+      args.variants
+        .filter((variant) => variant.id)
+        .map((variant) => [variant.id!.toString(), variant]),
+    );
+
+    const finalVariants: Array<{ size: string; color?: string }> = [];
+
+    for (const variant of currentVariants) {
+      const variantId = variant._id.toString();
+      if (deleteIds.has(variantId)) continue;
+
+      const updated = updatesById.get(variantId);
+      if (updated) {
+        finalVariants.push({ size: updated.size, color: updated.color });
+      } else {
+        finalVariants.push({ size: variant.size, color: variant.color });
+      }
+    }
+
+    for (const variant of args.variants) {
+      if (!variant.id) {
+        finalVariants.push({ size: variant.size, color: variant.color });
+      }
+    }
+
+    assertUniqueVariantCombinations(finalVariants);
 
     if (args.deleteIds) {
       await Promise.all(args.deleteIds.map((id) => ctx.db.delete(id)));
