@@ -72,8 +72,7 @@ export const { onCreate, onUpdate, onDelete } = authComponent.triggersApi();
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   return betterAuth({
     baseURL: siteUrl,
-    trustedOrigins: ["*"],
-    // trustedOrigins: ["http://192.168.100.14:3000", "https://blackkin.vercel.app"],
+    trustedOrigins: ["http://192.168.100.14:3000"],
     database: authComponent.adapter(ctx),
     // Configure simple, non-verified email/password to get started
     emailAndPassword: {
