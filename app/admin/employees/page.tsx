@@ -43,6 +43,7 @@ type Permissions = {
   pages: boolean;
   users: boolean;
   vouchers: boolean;
+  blog: boolean;
 };
 
 type Employee = {
@@ -66,6 +67,7 @@ const PERMISSION_LABELS: Omit<Record<keyof Permissions, string>, "orders"> & {
   pages: "Pages",
   users: "Users",
   vouchers: "Vouchers",
+  blog: "Blog",
 };
 
 const NON_ORDER_PERMISSION_KEYS = [
@@ -75,6 +77,7 @@ const NON_ORDER_PERMISSION_KEYS = [
   "pages",
   "users",
   "vouchers",
+  "blog",
 ] as const;
 type NonOrderPermissionKey = (typeof NON_ORDER_PERMISSION_KEYS)[number];
 
@@ -86,6 +89,7 @@ const DEFAULT_PERMISSIONS: Permissions = {
   pages: false,
   users: false,
   vouchers: false,
+  blog: false,
 };
 
 const DROPDOWN_STATUS_OPTIONS = [

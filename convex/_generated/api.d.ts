@@ -10,6 +10,7 @@
 
 import type * as addresses from "../addresses.js";
 import type * as auth from "../auth.js";
+import type * as blog from "../blog.js";
 import type * as cart from "../cart.js";
 import type * as categories from "../categories.js";
 import type * as dashboard from "../dashboard.js";
@@ -48,6 +49,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   addresses: typeof addresses;
   auth: typeof auth;
+  blog: typeof blog;
   cart: typeof cart;
   categories: typeof categories;
   dashboard: typeof dashboard;

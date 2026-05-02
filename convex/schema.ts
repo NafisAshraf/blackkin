@@ -31,6 +31,7 @@ export default defineSchema({
         pages: v.boolean(),
         users: v.boolean(),
         vouchers: v.boolean(),
+        blog: v.boolean(),
       }),
     ),
   })
@@ -73,6 +74,27 @@ export default defineSchema({
   })
     .index("by_slug", ["slug"])
     .index("by_isActive", ["isActive"]),
+
+  // ─── BLOG POSTS ─────────────────────────────────────────
+  blogPosts: defineTable({
+    title: v.string(),
+    slug: v.string(),
+    excerpt: v.optional(v.string()),
+    contentHtml: v.string(),
+    contentJson: v.string(),
+    contentText: v.string(),
+    status: v.union(v.literal("draft"), v.literal("published")),
+    authorName: v.optional(v.string()),
+    authorUserId: v.optional(v.id("users")),
+    imageStorageId: v.optional(v.string()),
+    publishedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+    metaTitle: v.optional(v.string()),
+    metaDescription: v.optional(v.string()),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_updatedAt", ["updatedAt"])
+    .index("by_status_and_publishedAt", ["status", "publishedAt"]),
 
   // ─── PRODUCTS ────────────────────────────────────────────
   products: defineTable({

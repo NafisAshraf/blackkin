@@ -112,6 +112,12 @@ export function Footer() {
               >
                 Privacy Policy
               </Link>
+              <Link
+                href="/blog"
+                className="hover:text-white transition-colors"
+              >
+                Blog
+              </Link>
             </div>
           </div>
         </div>
@@ -141,7 +147,12 @@ export function Footer() {
         {/* Bottom bar */}
         <div className="border-t border-white/10 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-xs text-white/40">© 2026 Blackkin</p>
-          <p className="text-xs text-white/40">Privacy Policy</p>
+          <div className="flex items-center gap-4 text-xs text-white/40">
+            <Link href="/blog" className="hover:text-white transition-colors">
+              Blog
+            </Link>
+            <p>Privacy Policy</p>
+          </div>
         </div>
 
         <div className="mt-8 flex justify-center">

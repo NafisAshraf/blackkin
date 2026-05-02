@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
+  BookOpen,
   LayoutDashboard,
   Package,
   ShoppingCart,
@@ -31,6 +32,7 @@ export interface SidebarUser {
     pages: boolean;
     users: boolean;
     vouchers: boolean;
+    blog: boolean;
   };
 }
 
@@ -108,6 +110,10 @@ function buildNavItems(user: SidebarUser): NavItem[] {
       label: "Landing Page",
       icon: Layout,
     });
+  }
+
+  if (hasPermission(user, "blog")) {
+    items.push({ href: "/admin/blog", label: "Blog", icon: BookOpen });
   }
 
   // Settings (sizes, colors, platform config)

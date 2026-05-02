@@ -694,7 +694,7 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Order — {formatOrderId(order.orderNumber)}</DialogTitle>
         </DialogHeader>
@@ -1128,14 +1128,35 @@ function OrderRow({
 
         {/* Customer Info — name is clickable */}
         <TableCell className="min-w-[150px]">
-          <button
-            onClick={() => setCustomerDialogOpen(true)}
-            className="text-sm font-semibold hover:underline text-left focus:outline-none"
-          >
-            {customerDisplayName}
-          </button>
-          <p className="text-xs text-muted-foreground">{customerPhone}</p>
-          <p className="text-xs text-muted-foreground">{order.shippingAddress.address?.split(",")[0]}</p>
+          <div className="flex flex-col">
+            {customerPhone !== "—" ? (
+              <a
+                href={`tel:${customerPhone.replace(/\D/g, "")}`}
+                onClick={(e) => {
+                  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                  if (!isMobile) {
+                    e.preventDefault();
+                    navigator.clipboard.writeText(customerPhone);
+                    toast.success("Copied to clipboard");
+                  }
+                }}
+                className="text-sm font-bold hover:underline text-left focus:outline-none text-foreground"
+              >
+                {customerPhone}
+              </a>
+            ) : (
+              <p className="text-sm font-bold text-foreground">{customerPhone}</p>
+            )}
+            <button
+              onClick={() => setCustomerDialogOpen(true)}
+              className="text-[11px] text-muted-foreground hover:underline text-left focus:outline-none w-fit"
+            >
+              {customerDisplayName}
+            </button>
+            <p className="text-[11px] text-muted-foreground truncate max-w-[180px]">
+              {order.shippingAddress.address?.split(",")[0]}
+            </p>
+          </div>
         </TableCell>
 
         {/* Products */}

@@ -18,6 +18,7 @@ const permissionsValidator = v.object({
   pages: v.boolean(),
   users: v.boolean(),
   vouchers: v.boolean(),
+  blog: v.boolean(),
 });
 
 const SITE_URL = process.env.SITE_URL!;

@@ -18,6 +18,7 @@ type UserPermissions = {
   pages: boolean;
   users: boolean;
   vouchers: boolean;
+  blog: boolean;
 };
 
 /**
