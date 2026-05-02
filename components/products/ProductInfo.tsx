@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Heart, Loader2, ShoppingCart, Info, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Heart, Loader2, ShoppingCart, Info, Trash2, Zap } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import SizeSelector from "./SizeSelector";
 import AddToCartButton from "@/components/cart/AddToCartButton";
 import WishlistButton from "@/components/wishlist/WishlistButton";
@@ -54,12 +56,51 @@ interface ProductInfoProps {
     effectivePrice: number;
     discountAmount: number;
     discountGroupName: string | null;
+    discountEndTime?: number | null;
     averageRating: number;
     totalRatings: number;
     variants: Variant[];
     tags: Tag[];
   };
   platformSizes: PlatformSize[];
+}
+
+function SaleCountdownTimer({ endTime }: { endTime: number }) {
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    function compute() {
+      const remaining = endTime - Date.now();
+      if (remaining <= 0) {
+        setLabel(null);
+        return;
+      }
+      const totalSecs = Math.floor(remaining / 1000);
+      const days = Math.floor(totalSecs / 86400);
+      const hours = Math.floor((totalSecs % 86400) / 3600);
+      const mins = Math.floor((totalSecs % 3600) / 60);
+      const secs = totalSecs % 60;
+      if (days > 0) {
+        setLabel(`${days}d ${hours}h ${mins}m`);
+      } else {
+        const hh = String(hours).padStart(2, "0");
+        const mm = String(mins).padStart(2, "0");
+        const ss = String(secs).padStart(2, "0");
+        setLabel(`${hh}:${mm}:${ss}`);
+      }
+    }
+    compute();
+    const id = setInterval(compute, 1000);
+    return () => clearInterval(id);
+  }, [endTime]);
+
+  if (!label) return null;
+
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+      ⏱ Sale ends in {label}
+    </span>
+  );
 }
 
 function StarRating({ rating, count }: { rating: number; count: number }) {
@@ -88,6 +129,7 @@ export default function ProductInfo({
   product,
   platformSizes,
 }: ProductInfoProps) {
+  const router = useRouter();
   const platformColors = useQuery(api.platformConfig.listColors);
   const colorHexMap = platformColors
     ? Object.fromEntries(
@@ -107,6 +149,7 @@ export default function ProductInfo({
     effectivePrice,
     discountAmount,
     discountGroupName,
+    discountEndTime,
     averageRating,
     totalRatings,
     variants,
@@ -131,6 +174,8 @@ export default function ProductInfo({
   );
   const updateCartQty = useMutation(api.cart.updateQuantity);
   const removeFromCartMutation = useMutation(api.cart.remove);
+  const addToCartMutation = useMutation(api.cart.add);
+  const [isBuyingNow, setIsBuyingNow] = useState(false);
 
   const [quantity, setQuantity] = useState(1);
   const [isUpdatingCart, setIsUpdatingCart] = useState(false);
@@ -218,6 +263,11 @@ export default function ProductInfo({
         <p className="text-xs text-muted-foreground -mt-3">
           {discountGroupName}
         </p>
+      )}
+      {isDiscounted && discountEndTime && (
+        <div className="-mt-2">
+          <SaleCountdownTimer endTime={discountEndTime} />
+        </div>
       )}
 
       {/* Color selector */}
@@ -400,6 +450,51 @@ export default function ProductInfo({
             )}
           </div>
         </div>
+
+        {/* Buy Now / Checkout button */}
+        {!isInCart ? (
+          <button
+            type="button"
+            disabled={!selectedVariantId || isBuyingNow}
+            onClick={async () => {
+              if (!selectedVariantId) return;
+              setIsBuyingNow(true);
+              try {
+                if (session) {
+                  await addToCartMutation({
+                    productId: _id,
+                    variantId: selectedVariantId,
+                    quantity,
+                  });
+                } else {
+                  addToGuestCart(selectedVariantId, quantity);
+                }
+                router.push("/checkout");
+              } catch {
+                toast.error("Could not proceed to checkout");
+                setIsBuyingNow(false);
+              }
+            }}
+            className="w-full h-11 bg-foreground text-background text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40"
+          >
+            {isBuyingNow ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Zap className="h-4 w-4" />
+                Buy Now
+              </>
+            )}
+          </button>
+        ) : (
+          <Link
+            href="/checkout"
+            className="w-full h-11 bg-foreground text-background text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+          >
+            <Zap className="h-4 w-4" />
+            Checkout
+          </Link>
+        )}
 
         {/* Save to Wishlist */}
         <div className="flex justify-center mt-2">

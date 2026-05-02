@@ -42,6 +42,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type AddressMode = "home" | "work" | "custom";
 type SaveAs = "home" | "work" | "none";
@@ -63,6 +70,7 @@ export default function CheckoutPage() {
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
   const initiatePayment = useAction(api.paymentActions.initiate);
   const userProfile = useQuery(api.users.getCurrentUserWithRole, {});
+  const updateProfile = useMutation(api.users.updateProfile);
   const addToCart = useMutation(api.cart.add);
   const updateCartQty = useMutation(api.cart.updateQuantity);
   const removeFromCart = useMutation(api.cart.remove);
@@ -98,6 +106,9 @@ export default function CheckoutPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showEmailCapture, setShowEmailCapture] = useState(false);
+  const [captureEmail, setCaptureEmail] = useState("");
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [cartUpdateLoadingId, setCartUpdateLoadingId] = useState<string | null>(
     null,
   );
@@ -173,7 +184,7 @@ export default function CheckoutPage() {
       setPhone(workAddress.phone);
       setAddress(workAddress.address);
     } else if (addressMode === "custom") {
-      setName("");
+      setName(userProfile?.name ?? "");
       setPhone(userProfile?.phone ?? "");
       setAddress("");
       setSaveAs("none");
@@ -187,6 +198,15 @@ export default function CheckoutPage() {
     if (addressMode !== "custom") return;
     if (phone) return; // don't override manual input
     setPhone(userProfile.phone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userProfile]);
+
+  // When userProfile first loads (async), prefill name if still in custom mode and empty
+  useEffect(() => {
+    if (!userProfile?.name) return;
+    if (addressMode !== "custom") return;
+    if (name) return; // don't override manual input
+    setName(userProfile.name);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userProfile]);
 
@@ -245,7 +265,14 @@ export default function CheckoutPage() {
         }
 
         toast.success("Order placed!");
-        router.push("/account/orders");
+
+        // If user has no email on file, prompt them before redirecting
+        if (!userProfile?.email) {
+          setIsSubmitting(false);
+          setShowEmailCapture(true);
+        } else {
+          router.push("/account/orders");
+        }
       } else {
         // ── SSLCommerz Online Payment ──
         toast.loading("Connecting to payment gateway…", { id: "ssl-init" });
@@ -383,6 +410,10 @@ export default function CheckoutPage() {
                 required
                 placeholder="+880 1XXX XXXXXX"
               />
+              <p className="text-[11px] text-muted-foreground">
+                Changing this number only applies to this order and won&apos;t
+                update your account.
+              </p>
             </div>
 
             <div className="space-y-1">
@@ -751,110 +782,110 @@ export default function CheckoutPage() {
                 </h3>
                 <div ref={emblaRef} className="overflow-hidden pb-2">
                   <div className="flex gap-3">
-                  {recommendations.map((rec: any) => {
-                    const cartItem = cart?.items.find(
-                      (i) => i.variantId === rec.variantId,
-                    );
-                    const inCart = !!cartItem;
-                    return (
-                      <div
-                        key={rec.variantId}
-                        className="flex-[0_0_calc(40%-8px)] flex-shrink-0 border rounded-md overflow-hidden"
-                      >
-                        <Link
-                          href={`/products/${rec.productSlug}`}
-                          className="block"
+                    {recommendations.map((rec: any) => {
+                      const cartItem = cart?.items.find(
+                        (i) => i.variantId === rec.variantId,
+                      );
+                      const inCart = !!cartItem;
+                      return (
+                        <div
+                          key={rec.variantId}
+                          className="flex-[0_0_calc(40%-8px)] flex-shrink-0 border rounded-md overflow-hidden"
                         >
-                          <div className="aspect-square bg-muted">
-                            {rec.imageUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={rec.imageUrl}
-                                alt={rec.productName}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                                No image
-                              </div>
-                            )}
-                          </div>
-                        </Link>
-                        <div className="p-2 space-y-1.5">
-                          <p className="text-xs font-medium line-clamp-2">
-                            {rec.productName}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {rec.size}
-                            {rec.color ? ` / ${rec.color}` : ""}
-                          </p>
-                          <p className="text-xs font-semibold">
-                            ৳{rec.effectivePrice.toLocaleString()}
-                          </p>
-                          {inCart ? (
-                            <div className="flex items-center justify-between gap-1">
-                              <button
-                                onClick={async () => {
-                                  if (cartItem.quantity <= 1) {
-                                    await removeFromCart({
-                                      cartItemId: cartItem._id,
-                                    });
-                                  } else {
+                          <Link
+                            href={`/products/${rec.productSlug}`}
+                            className="block"
+                          >
+                            <div className="aspect-square bg-muted">
+                              {rec.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={rec.imageUrl}
+                                  alt={rec.productName}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                                  No image
+                                </div>
+                              )}
+                            </div>
+                          </Link>
+                          <div className="p-2 space-y-1.5">
+                            <p className="text-xs font-medium line-clamp-2">
+                              {rec.productName}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {rec.size}
+                              {rec.color ? ` / ${rec.color}` : ""}
+                            </p>
+                            <p className="text-xs font-semibold">
+                              ৳{rec.effectivePrice.toLocaleString()}
+                            </p>
+                            {inCart ? (
+                              <div className="flex items-center justify-between gap-1">
+                                <button
+                                  onClick={async () => {
+                                    if (cartItem.quantity <= 1) {
+                                      await removeFromCart({
+                                        cartItemId: cartItem._id,
+                                      });
+                                    } else {
+                                      await updateCartQty({
+                                        cartItemId: cartItem._id,
+                                        quantity: cartItem.quantity - 1,
+                                      });
+                                    }
+                                  }}
+                                  className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                                >
+                                  −
+                                </button>
+                                <span className="text-xs font-medium">
+                                  {cartItem.quantity}
+                                </span>
+                                <button
+                                  onClick={async () => {
                                     await updateCartQty({
                                       cartItemId: cartItem._id,
-                                      quantity: cartItem.quantity - 1,
+                                      quantity: cartItem.quantity + 1,
                                     });
+                                  }}
+                                  disabled={cartItem.quantity >= rec.stock}
+                                  className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full h-7 text-xs"
+                                disabled={rec.stock === 0}
+                                onClick={async () => {
+                                  try {
+                                    await addToCart({
+                                      productId: rec.productId,
+                                      variantId: rec.variantId,
+                                      quantity: 1,
+                                    });
+                                  } catch (e: unknown) {
+                                    toast.error(
+                                      e instanceof Error
+                                        ? e.message
+                                        : "Failed to add",
+                                    );
                                   }
                                 }}
-                                className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                               >
-                                −
-                              </button>
-                              <span className="text-xs font-medium">
-                                {cartItem.quantity}
-                              </span>
-                              <button
-                                onClick={async () => {
-                                  await updateCartQty({
-                                    cartItemId: cartItem._id,
-                                    quantity: cartItem.quantity + 1,
-                                  });
-                                }}
-                                disabled={cartItem.quantity >= rec.stock}
-                                className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-                              >
-                                +
-                              </button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full h-7 text-xs"
-                              disabled={rec.stock === 0}
-                              onClick={async () => {
-                                try {
-                                  await addToCart({
-                                    productId: rec.productId,
-                                    variantId: rec.variantId,
-                                    quantity: 1,
-                                  });
-                                } catch (e: unknown) {
-                                  toast.error(
-                                    e instanceof Error
-                                      ? e.message
-                                      : "Failed to add",
-                                  );
-                                }
-                              }}
-                            >
-                              {rec.stock === 0 ? "Out of stock" : "Add"}
-                            </Button>
-                          )}
+                                {rec.stock === 0 ? "Out of stock" : "Add"}
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -934,6 +965,62 @@ export default function CheckoutPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Email capture dialog — shown after COD order when no email on file */}
+      <Dialog open={showEmailCapture} onOpenChange={setShowEmailCapture}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Stay in touch</DialogTitle>
+            <DialogDescription>
+              Add an email address to receive order updates and receipts.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <Label htmlFor="capture-email">Email address</Label>
+              <Input
+                id="capture-email"
+                type="email"
+                placeholder="you@example.com"
+                value={captureEmail}
+                onChange={(e) => setCaptureEmail(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => router.push("/account/orders")}
+              >
+                Skip
+              </Button>
+              <Button
+                className="flex-1"
+                disabled={!captureEmail.trim() || isSavingEmail}
+                onClick={async () => {
+                  setIsSavingEmail(true);
+                  try {
+                    await updateProfile({ email: captureEmail.trim() });
+                    toast.success("Email saved!");
+                  } catch {
+                    toast.error("Could not save email.");
+                  } finally {
+                    setIsSavingEmail(false);
+                  }
+                  router.push("/account/orders");
+                }}
+              >
+                {isSavingEmail ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Save & Continue"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

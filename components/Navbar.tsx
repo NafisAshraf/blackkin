@@ -60,7 +60,7 @@ function NavbarInner() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  const showAnnouncement = !announcementDismissed && atTop;
+  const showAnnouncement = !announcementDismissed && atTop && pathname === "/";
   const announcementHeight = showAnnouncement ? 36 : 0;
 
   const loginHref =
@@ -182,7 +182,11 @@ function NavbarInner() {
               href="/"
               className="absolute left-1/2 -translate-x-1/2 flex items-center"
             >
-              <img src="/assets/blackkin_logo_black.svg" alt="Blackkin" className="h-7 w-auto" />
+              <img
+                src="/assets/blackkin_logo_black.svg"
+                alt="Blackkin"
+                className="h-7 w-auto"
+              />
             </Link>
 
             {/* Right: Search, Cart, Wishlist, Account */}
