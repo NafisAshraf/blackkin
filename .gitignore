@@ -53,3 +53,4 @@ CLAUDE.md
 
 # superpowers workflow artifacts
 docs/superpowers/
+.env.example
