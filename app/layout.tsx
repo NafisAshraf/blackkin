@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Montserrat, Cormorant_Garamond } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+  Montserrat,
+  Cormorant_Garamond,
+} from "next/font/google";
 import "./globals.css";
+import Script from "next/script";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -50,7 +56,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("font-sans", montserrat.variable, cormorant.variable)}>
+    <html
+      lang="en"
+      className={cn("font-sans", montserrat.variable, cormorant.variable)}
+    >
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
@@ -64,6 +73,28 @@ export default function RootLayout({
             </CartProvider>
           </TooltipProvider>
         </ConvexClientProvider>
+        <Script id="scroll-anim" strategy="afterInteractive">{`
+          (function() {
+            var observer = new IntersectionObserver(function(entries) {
+              entries.forEach(function(e) {
+                if (e.isIntersecting) {
+                  e.target.classList.add('is-visible');
+                  observer.unobserve(e.target);
+                }
+              });
+            }, { threshold: 0.12 });
+            function observe() {
+              document.querySelectorAll('.anim-on-scroll').forEach(function(el) {
+                observer.observe(el);
+              });
+            }
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', observe);
+            } else {
+              observe();
+            }
+          })();
+        `}</Script>
       </body>
     </html>
   );

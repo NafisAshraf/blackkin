@@ -74,24 +74,22 @@ export default async function HomePage() {
         >
           <div className="flex flex-col items-center gap-8 md:gap-10 max-w-7xl">
             <div className="space-y-3 md:space-y-5">
-              <h1 className="text-white text-4xl md:text-6xl font-extrabold scale-y-125 tracking-tighter uppercase">
+              <h1 className="hero-anim-1 text-white text-4xl md:text-6xl font-extrabold scale-y-125 tracking-tighter uppercase">
                 Bangladesh&apos;s Best Underwear
               </h1>
-              <p className="text-white text-lg md:text-5xl font-serif tracking-[0.15em] uppercase opacity-90">
+              <p className="hero-anim-2 text-white text-lg md:text-5xl font-serif tracking-[0.15em] uppercase opacity-90">
                 With World Class Technology
               </p>
             </div>
             <Link
               href="/products"
-              className="inline-block bg-white text-black text-xs md:text-sm  tracking-[0.1em] uppercase px-12 py-4 hover:bg-white/90 transition-all active:scale-95 shadow-xl"
+              className="hero-anim-3 inline-block bg-white text-black text-xs md:text-sm  tracking-[0.1em] uppercase px-12 py-4 hover:bg-white/90 transition-all active:scale-95 shadow-xl"
             >
               Shop Now
             </Link>
           </div>
         </div>
       </section>
-
-
 
       {/* Product Showcase Section 1 — below "Crafted for the Modern Man" */}
       {productSection1 && productSection1.products.length > 0 && (
@@ -105,17 +103,19 @@ export default async function HomePage() {
       <section className="w-full py-24 md:py-32 px-6 text-center font-light h-screen flex flex-col justify-center items-center">
         <div className="">
           <h2 className="text-3xl md:text-4xl lg:text-6xl">
-            <span className="block text-[#111111] mb-5">CRAFTED FOR THE</span>
-            <span className="block text-[#A3A3A3] mt-2">MODERN MAN.</span>
+            <span className="anim-on-scroll block text-[#111111] mb-5">
+              CRAFTED FOR THE
+            </span>
+            <span className="anim-on-scroll anim-d2 block text-[#A3A3A3] mt-2">
+              MODERN MAN.
+            </span>
           </h2>
-          <p className="mt-12 text-lg md:text-xl lg:text-3xl font-serif italic max-w-6xl mx-auto leading-relaxed tracking-wide ">
+          <p className="anim-on-scroll anim-d4 mt-12 text-lg md:text-xl lg:text-3xl font-serif italic max-w-6xl mx-auto leading-relaxed tracking-wide ">
             "We Believe That What You Wear Closest To Your Skin Should Be Your
             Most Considered Choice."
           </p>
         </div>
       </section>
-
-
 
       {/* Product Showcase Section 2 — below the split section */}
       {productSection2 && productSection2.products.length > 0 && (
@@ -125,11 +125,10 @@ export default async function HomePage() {
         />
       )}
 
-
       {/* Split: Text Left / Image Right */}
       <section className="w-full min-h-screen lg:h-screen grid grid-cols-1 lg:grid-cols-2 items-stretch">
         <div className="bg-[#111111] flex flex-col justify-center items-center px-12 lg:px-20 py-16 h-full text-center">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-normal uppercase tracking-[0.1em] leading-[1.4] text-white">
+          <h2 className="anim-on-scroll text-3xl md:text-4xl lg:text-5xl font-normal uppercase tracking-[0.1em] leading-[1.4] text-white">
             UPGRADE THE WAY
             <br />
             YOU FEEL, STARTING
@@ -140,9 +139,10 @@ export default async function HomePage() {
           </h2>
           <Link
             href="/products"
-            className="mt-12 inline-block text-xs font-light tracking-[0.2em] uppercase text-white hover:text-white/60 transition-colors border-b border-white pb-1"
+            className="anim-on-scroll anim-d3 group mt-12 inline-block relative text-xs font-light tracking-[0.2em] uppercase text-white hover:text-white/60 transition-colors pb-1"
           >
             DISCOVER MORE
+            <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-white" />
           </Link>
         </div>
         <div className="relative h-full min-h-[50vh] lg:min-h-0">

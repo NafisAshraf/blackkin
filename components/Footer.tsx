@@ -52,9 +52,8 @@ export function Footer() {
   return (
     <footer className="w-full bg-black pt-12 ">
       <div className="w-full bg-black pt-12 max-w-[1500px] mx-auto">
-
         {/* Newsletter Section */}
-        <div className=" text-white pt-10 pb-18 px-6 text-center">
+        <div className="anim-on-scroll text-white pt-10 pb-18 px-6 text-center">
           <h3 className="text-lg font-semibold tracking-[0.15em] uppercase mb-1">
             Stay Comfortable. Stay Updated.
           </h3>
@@ -79,12 +78,18 @@ export function Footer() {
         <div className="bg-black text-white py-12 px-6 lg:px-10">
           <div className="w-full grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
             {/* Logo */}
-            <div className="col-span-2 md:col-span-1 flex flex-col gap-6 items-center text-center pe-28">
+            <div className="anim-on-scroll col-span-2 md:col-span-1 flex flex-col gap-6 items-center text-center pe-28">
               <Link href="/">
                 <img
                   src="/assets/blackkin_logo_text_black_trimmed.svg"
                   alt="Blackkin"
-                  style={{ height: "auto", width: "200px", display: "block", filter: "invert(1)", opacity: 0.85 }}
+                  style={{
+                    height: "auto",
+                    width: "200px",
+                    display: "block",
+                    filter: "invert(1)",
+                    opacity: 0.85,
+                  }}
                   className="hover:opacity-100 transition-opacity"
                 />
               </Link>
@@ -92,21 +97,21 @@ export function Footer() {
               <div className="flex items-center gap-4">
                 <a
                   href="#"
-                  className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center text-white/60 hover:bg-white hover:text-black hover:border-white transition-all"
+                  className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center text-white/60 hover:bg-white hover:text-black hover:border-white transition-all hover:scale-110"
                   aria-label="Facebook"
                 >
                   <Facebook size={18} />
                 </a>
                 <a
                   href="#"
-                  className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center text-white/60 hover:bg-white hover:text-black hover:border-white transition-all"
+                  className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center text-white/60 hover:bg-white hover:text-black hover:border-white transition-all hover:scale-110"
                   aria-label="Instagram"
                 >
                   <Instagram size={18} />
                 </a>
                 <a
                   href="#"
-                  className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center text-white/60 hover:bg-white hover:text-black hover:border-white transition-all"
+                  className="h-10 w-10 rounded-full border border-white/20 flex items-center justify-center text-white/60 hover:bg-white hover:text-black hover:border-white transition-all hover:scale-110"
                   aria-label="YouTube"
                 >
                   <Youtube size={18} />
@@ -114,34 +119,33 @@ export function Footer() {
               </div>
             </div>
 
-
             {/* Shopping Links */}
-            <div>
+            <div className="anim-on-scroll anim-d1">
               <h4 className="text-xs font-semibold tracking-wider uppercase text-white/50 mb-4">
                 Shopping
               </h4>
               <nav className="flex flex-col gap-2.5">
                 <Link
                   href="/products"
-                  className="text-sm text-white/70 hover:text-white transition-colors"
+                  className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   Catalog
                 </Link>
                 <Link
                   href="/products?tag=sale"
-                  className="text-sm text-white/70 hover:text-white transition-colors"
+                  className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   Sale
                 </Link>
                 <Link
                   href="/products?tag=new-arrivals"
-                  className="text-sm text-white/70 hover:text-white transition-colors"
+                  className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   About Us
                 </Link>
                 <Link
                   href="/products"
-                  className="text-sm text-white/70 hover:text-white transition-colors"
+                  className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   Contact Us
                 </Link>
@@ -149,20 +153,20 @@ export function Footer() {
             </div>
 
             {/* Contact */}
-            <div>
+            <div className="anim-on-scroll anim-d2">
               <h4 className="text-xs font-semibold tracking-wider uppercase text-white/50 mb-4">
                 Contact Us
               </h4>
               <div className="flex flex-col gap-2.5 text-sm text-white/70">
                 <a
                   href="tel:+8801234567890"
-                  className="hover:text-white transition-colors"
+                  className="group relative inline-block hover:text-white transition-colors pb-0.5"
                 >
                   +880 1234-567890
                 </a>
                 <a
                   href="mailto:info@blackkin.com"
-                  className="hover:text-white transition-colors"
+                  className="group relative inline-block hover:text-white transition-colors pb-0.5"
                 >
                   [EMAIL_ADDRESS]
                 </a>
@@ -170,7 +174,7 @@ export function Footer() {
             </div>
 
             {/* Find Us */}
-            <div>
+            <div className="anim-on-scroll anim-d3">
               <h4 className="text-xs font-semibold tracking-wider uppercase text-white/50 mb-4">
                 Find Us
               </h4>
@@ -183,13 +187,10 @@ export function Footer() {
             </div>
           </div>
 
-
-
           {/* Bottom bar */}
-          <div className=" pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="anim-on-scroll pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-white/40">© 2026 Blackkin</p>
             <div className="flex items-center gap-4 text-xs text-white/40">
-
               <p>Privacy Policy</p>
             </div>
           </div>
@@ -198,12 +199,19 @@ export function Footer() {
             <img
               src="/assets/blackkin_footer.png"
               alt="Blackkin"
-              style={{ width: "100%", maxWidth: "none", display: "block", opacity: 0.45, userSelect: "none", pointerEvents: "none" }}
+              style={{
+                width: "100%",
+                maxWidth: "none",
+                display: "block",
+                opacity: 0.45,
+                userSelect: "none",
+                pointerEvents: "none",
+              }}
+              className="anim-on-scroll"
             />
           </div>
         </div>
       </div>
-
     </footer>
   );
 }

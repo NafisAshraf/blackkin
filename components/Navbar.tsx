@@ -132,8 +132,11 @@ function NavbarInner() {
 
         {/* Main Navbar */}
         <header
-          className={`transition-colors duration-300 ${atTop ? "bg-transparent border-transparent" : "bg-white border-b border-border"
-            }`}
+          className={`transition-colors duration-300 ${
+            atTop
+              ? "bg-transparent border-transparent"
+              : "bg-white border-b border-border"
+          }`}
         >
           <div className="w-full max-w-[1500px] mx-auto px-6 lg:px-10 h-20 flex items-center justify-between relative">
             {/* Left: Hamburger (mobile) / Nav links (desktop) */}
@@ -151,13 +154,14 @@ function NavbarInner() {
               <nav className="hidden md:flex items-center text-xs font-medium tracking-wide uppercase">
                 <Link
                   href="/products"
-                  className={`px-3 py-1.5 relative transition-colors hover:text-foreground group ${pathname === "/products"
-                    ? "text-foreground"
-                    : "text-muted-foreground"
-                    }`}
+                  className={`px-3 py-1.5 relative transition-colors hover:text-foreground group ${
+                    pathname === "/products"
+                      ? "text-foreground"
+                      : "text-muted-foreground"
+                  }`}
                 >
                   Catalog
-                  <span className="absolute bottom-0 left-3 right-3 h-px bg-foreground scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+                  <span className="sweep-underline absolute bottom-0 left-3 right-3 h-px bg-foreground/50" />
                 </Link>
 
                 {navbarCategories?.map((cat) => (
@@ -167,7 +171,7 @@ function NavbarInner() {
                     className="px-3 py-1.5 relative text-muted-foreground hover:text-foreground transition-colors group"
                   >
                     {cat.name}
-                    <span className="absolute bottom-0 left-3 right-3 h-px bg-foreground scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+                    <span className="sweep-underline absolute bottom-0 left-3 right-3 h-px bg-foreground" />
                   </Link>
                 ))}
 
@@ -177,7 +181,7 @@ function NavbarInner() {
                 >
                   Sale
                   <Flame className="h-3.5 w-3.5" />
-                  <span className="absolute bottom-0 left-3 right-3 h-px bg-red-500 scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+                  <span className="sweep-underline absolute bottom-0 left-3 right-3 h-px bg-red-500" />
                 </Link>
               </nav>
             </div>
@@ -198,7 +202,7 @@ function NavbarInner() {
             <div className="flex items-center gap-0.5">
               <button
                 onClick={() => setSearchOpen(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent transition-colors"
+                className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                 aria-label="Search"
               >
                 <Search className="h-5 w-5" />
@@ -208,7 +212,7 @@ function NavbarInner() {
 
               <Link
                 href={session ? "/account/wishlist" : loginHref}
-                className="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent transition-colors"
+                className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                 aria-label="Wishlist"
               >
                 <Heart className="h-5 w-5" />
@@ -217,7 +221,7 @@ function NavbarInner() {
               {isPending ? null : session ? (
                 <Link
                   href="/account"
-                  className="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent transition-colors"
+                  className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                   aria-label="Account"
                 >
                   <User className="h-5 w-5" />
@@ -225,7 +229,7 @@ function NavbarInner() {
               ) : (
                 <Link
                   href={loginHref}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent transition-colors"
+                  className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                   aria-label="Sign in"
                 >
                   <User className="h-5 w-5" />
@@ -236,7 +240,7 @@ function NavbarInner() {
 
           {/* Mobile Menu */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-border bg-white">
+            <div className="mobile-menu-animate md:hidden border-t border-border bg-white">
               <nav className="flex flex-col py-3 px-6 gap-1">
                 <Link
                   href="/products"

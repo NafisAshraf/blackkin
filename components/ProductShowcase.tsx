@@ -71,15 +71,16 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
     <section className="w-full bg-white py-20 md:py-28 ">
       <div className="max-w-[1500px] mx-auto px-6 lg:px-10">
         {/* Section Header */}
-        <div className="mb-12 md:mb-16 flex items-center justify-between">
+        <div className="anim-on-scroll mb-12 md:mb-16 flex items-center justify-between">
           <h2 className="text-2xl md:text-2xl lg:text-3xl uppercase ">
             {heading}
           </h2>
           <Link
             href="/products"
-            className="text-sm font-medium tracking-wide uppercase border-b border-foreground/30 hover:border-foreground transition-colors pb-0.5"
+            className="group relative text-sm font-medium tracking-wide uppercase pb-0.5 hover:opacity-70 transition-opacity"
           >
             View all products
+            <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-foreground/50" />
           </Link>
         </div>
 
