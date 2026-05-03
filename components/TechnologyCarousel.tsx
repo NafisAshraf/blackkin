@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export interface CarouselItem {
   _id: string;
   imageUrl: string;
   text: string;
+  url?: string;
 }
 
 interface TechnologyCarouselProps {
@@ -16,6 +18,7 @@ interface TechnologyCarouselProps {
 }
 
 export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
+  const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -128,7 +131,11 @@ export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
               animate={position}
               transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
               onClick={() => {
-                if (!isCenter) setCurrentIndex(index);
+                if (!isCenter) {
+                  setCurrentIndex(index);
+                } else if (item.url) {
+                  router.push(item.url);
+                }
               }}
             >
               <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl relative ">

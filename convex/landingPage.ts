@@ -118,6 +118,7 @@ export const getContent = query({
             _id: c._id,
             imageUrl,
             text: c.text,
+            url: c.url,
           };
         }),
       )
@@ -536,6 +537,7 @@ export const adminGetCarouselItems = query({
         _id: item._id,
         storageId: item.storageId,
         text: item.text,
+        url: item.url,
         sortOrder: item.sortOrder,
         isActive: item.isActive,
         imageUrl: await r2.getUrl(item.storageId),
@@ -548,8 +550,9 @@ export const addCarouselItem = mutation({
   args: {
     storageId: v.string(),
     text: v.string(),
+    url: v.optional(v.string()),
   },
-  handler: async (ctx, { storageId, text }) => {
+  handler: async (ctx, { storageId, text, url }) => {
     await requireAdmin(ctx);
 
     const existing = await ctx.db.query("landingPageCarouselItems").collect();
@@ -565,6 +568,7 @@ export const addCarouselItem = mutation({
     await ctx.db.insert("landingPageCarouselItems", {
       storageId,
       text,
+      url,
       sortOrder: maxSortOrder + 1,
       isActive: true,
     });
@@ -579,6 +583,17 @@ export const updateCarouselItemText = mutation({
   handler: async (ctx, { id, text }) => {
     await requireAdmin(ctx);
     await ctx.db.patch(id, { text });
+  },
+});
+
+export const updateCarouselItemUrl = mutation({
+  args: {
+    id: v.id("landingPageCarouselItems"),
+    url: v.string(),
+  },
+  handler: async (ctx, { id, url }) => {
+    await requireAdmin(ctx);
+    await ctx.db.patch(id, { url });
   },
 });
 

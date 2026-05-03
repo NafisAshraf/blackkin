@@ -19,12 +19,14 @@ export function CarouselEditor() {
 
   const addItem = useMutation(api.landingPage.addCarouselItem);
   const updateText = useMutation(api.landingPage.updateCarouselItemText);
+  const updateUrl = useMutation(api.landingPage.updateCarouselItemUrl);
   const updateImage = useMutation(api.landingPage.updateCarouselImage);
   const toggleItem = useMutation(api.landingPage.toggleCarouselItem);
   const deleteItem = useMutation(api.landingPage.deleteCarouselItem);
   const reorderItems = useMutation(api.landingPage.reorderCarouselItems);
 
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [uploadingId, setUploadingId] = useState<Id<"landingPageCarouselItems"> | null>(null);
@@ -36,10 +38,11 @@ export function CarouselEditor() {
     setIsAdding(true);
     try {
       const storageId = await r2Upload(file);
-      await addItem({ storageId, text: text.trim() });
+      await addItem({ storageId, text: text.trim(), url: url.trim() || undefined });
       toast.success("Carousel item added");
       setFile(null);
       setText("");
+      setUrl("");
       (document.getElementById("carousel-image-upload") as HTMLInputElement).value = "";
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add item");
@@ -66,6 +69,14 @@ export function CarouselEditor() {
       await updateText({ id, text: newText });
     } catch (err) {
       toast.error("Failed to update text");
+    }
+  };
+  
+  const handleUpdateUrl = async (id: Id<"landingPageCarouselItems">, newUrl: string) => {
+    try {
+      await updateUrl({ id, url: newUrl });
+    } catch (err) {
+      toast.error("Failed to update URL");
     }
   };
 
@@ -96,6 +107,15 @@ export function CarouselEditor() {
               onChange={(e) => setText(e.target.value)} 
               placeholder="e.g. Dynamic Stretch"
               required 
+            />
+          </div>
+          <div className="space-y-1.5 flex-1 w-full">
+            <Label htmlFor="carousel-url">URL (Optional)</Label>
+            <Input 
+              id="carousel-url" 
+              value={url} 
+              onChange={(e) => setUrl(e.target.value)} 
+              placeholder="e.g. /products/new-arrival"
             />
           </div>
           <Button type="submit" disabled={isAdding || items.length >= 10 || !file || !text.trim()}>
@@ -132,11 +152,18 @@ export function CarouselEditor() {
                     }} />
                   </label>
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 space-y-2">
                   <Input 
                     value={item.text} 
                     onChange={(e) => handleUpdateText(item._id, e.target.value)} 
                     className="h-8 text-sm"
+                    placeholder="Text"
+                  />
+                  <Input 
+                    value={item.url || ""} 
+                    onChange={(e) => handleUpdateUrl(item._id, e.target.value)} 
+                    className="h-8 text-[10px] text-muted-foreground"
+                    placeholder="Redirect URL (optional)"
                   />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

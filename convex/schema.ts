@@ -411,6 +411,7 @@ export default defineSchema({
   landingPageCarouselItems: defineTable({
     storageId: v.string(),
     text: v.string(),
+    url: v.optional(v.string()),
     sortOrder: v.number(),
     isActive: v.boolean(),
   })
