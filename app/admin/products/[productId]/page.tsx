@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { useUploadFile } from "@convex-dev/r2/react";
@@ -26,11 +26,8 @@ import { toast } from "sonner";
 import {
   Loader2,
   ArrowLeft,
-  Upload,
-  X,
   MoreHorizontal,
   Trash2,
-  Box,
   Tag,
   Search,
 } from "lucide-react";
@@ -58,23 +55,15 @@ import {
   type StockMatrix,
 } from "@/components/admin/VariantMatrix";
 import {
-  SortableImageGrid,
-  type ImageMediaItem,
-} from "@/components/admin/SortableImageGrid";
+  ColorVariantMediaSection,
+  type ThumbnailItem,
+  type VariantMediaItem,
+} from "@/components/admin/ColorVariantMediaSection";
 
 // ─── Types ────────────────────────────────────────────────────
 
 type ProductStatus = "draft" | "active" | "scheduled" | "archived";
 type SaleDisplayMode = "percentage" | "amount";
-
-interface VideoMediaItem {
-  storageId: string;
-  previewUrl: string | null;
-}
-interface Model3DItem {
-  storageId: string;
-  fileName: string;
-}
 
 function slugify(str: string) {
   return str
@@ -157,22 +146,16 @@ export default function EditProductPage() {
   const tags = useQuery(api.tags.list);
   const sizes = useQuery(api.platformConfig.listSizes);
   const colors = useQuery(api.platformConfig.listColors);
-  const existingMedia = (product?.media ?? []) as any[];
-  const existingVideo = existingMedia.find((m) => m.type === "video") ?? null;
-  const existingModel3d =
-    existingMedia.find((m) => m.type === "model3d") ?? null;
-  const existingImages = [...existingMedia]
-    .filter((m) => m.type === "image")
-    .sort((a, b) => a.sortOrder - b.sortOrder);
-  const existingImageUrls = useQuery(
+
+  // Collect all storageIds for batch URL resolution
+  const allStorageIds: string[] = [];
+  if (product?.thumbnailStorageId) allStorageIds.push(product.thumbnailStorageId);
+  for (const entry of product?.variantMedia ?? []) {
+    for (const item of entry.media) allStorageIds.push(item.storageId);
+  }
+  const allUrlResults = useQuery(
     api.files.getUrls,
-    existingImages.length > 0
-      ? { storageIds: existingImages.map((media) => media.storageId) }
-      : "skip",
-  );
-  const existingVideoUrl = useQuery(
-    api.files.getUrl,
-    existingVideo ? { storageId: existingVideo.storageId } : "skip",
+    allStorageIds.length > 0 ? { storageIds: allStorageIds } : "skip",
   );
 
   // ── Mutations ─────────────────────────────────────────────────
@@ -193,9 +176,8 @@ export default function EditProductPage() {
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [selectedTags, setSelectedTags] = useState<Set<Id<"tags">>>(new Set());
-  const [videoItem, setVideoItem] = useState<VideoMediaItem | null>(null);
-  const [model3dItem, setModel3dItem] = useState<Model3DItem | null>(null);
-  const [images, setImages] = useState<ImageMediaItem[]>([]);
+  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(null);
+  const [variantMediaMap, setVariantMediaMap] = useState<Record<string, VariantMediaItem[]>>({});
   const [existingVariantIds, setExistingVariantIds] = useState<
     Id<"productVariants">[]
   >([]);
@@ -231,16 +213,9 @@ export default function EditProductPage() {
   const [stockMatrix, setStockMatrix] = useState<StockMatrix>({});
 
   // ── Other UI state ────────────────────────────────────────────
-  const [uploadingVideo, setUploadingVideo] = useState(false);
-  const [uploadingModel3d, setUploadingModel3d] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const model3dInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // ── Slug debounce ─────────────────────────────────────────────
   useEffect(() => {
@@ -326,41 +301,36 @@ export default function EditProductPage() {
 
   useEffect(() => {
     if (!product || mediaInitialized) return;
-    if (existingImages.length > 0 && existingImageUrls === undefined) return;
-    if (existingVideo && existingVideoUrl === undefined) return;
+    // Wait until all URLs are resolved (or there are none)
+    if (allStorageIds.length > 0 && allUrlResults === undefined) return;
 
-    setVideoItem(
-      existingVideo
-        ? {
-            storageId: existingVideo.storageId,
-            previewUrl: existingVideoUrl ?? null,
-          }
+    // Build a storageId → url map
+    const urlMap: Record<string, string | null> = {};
+    allStorageIds.forEach((id, i) => {
+      urlMap[id] = allUrlResults?.[i] ?? null;
+    });
+
+    // Thumbnail
+    setThumbnailItem(
+      product.thumbnailStorageId
+        ? { storageId: product.thumbnailStorageId, previewUrl: urlMap[product.thumbnailStorageId] ?? null }
         : null,
     );
-    setModel3dItem(
-      existingModel3d
-        ? {
-            storageId: existingModel3d.storageId,
-            fileName: "Existing 3D model",
-          }
-        : null,
-    );
-    setImages(
-      existingImages.map((media, index) => ({
-        storageId: media.storageId,
-        previewUrl: existingImageUrls?.[index] ?? null,
-      })),
-    );
+
+    // Per-color variant media
+    const newMap: Record<string, VariantMediaItem[]> = {};
+    for (const entry of product.variantMedia ?? []) {
+      newMap[entry.color] = [...entry.media]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((item) => ({
+          storageId: item.storageId,
+          type: item.type as VariantMediaItem["type"],
+          previewUrl: urlMap[item.storageId] ?? null,
+        }));
+    }
+    setVariantMediaMap(newMap);
     setMediaInitialized(true);
-  }, [
-    product,
-    mediaInitialized,
-    existingImages,
-    existingImageUrls,
-    existingVideo,
-    existingVideoUrl,
-    existingModel3d,
-  ]);
+  }, [product, mediaInitialized, allStorageIds.join(","), allUrlResults]);
 
   // ── Helpers ───────────────────────────────────────────────────
 
@@ -371,85 +341,6 @@ export default function EditProductPage() {
       setSaleEndTime(toDatetimeLocal(ms + 7 * 24 * 60 * 60 * 1000));
     }
   }
-
-  async function handleVideoUpload(file: File) {
-    if (!file.type.startsWith("video/")) {
-      toast.error("Only video files are allowed");
-      return;
-    }
-    setUploadingVideo(true);
-    try {
-      const oldKey = videoItem?.storageId;
-      const s = await r2Upload(file);
-      if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
-      setVideoItem({ storageId: s, previewUrl: URL.createObjectURL(file) });
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploadingVideo(false);
-    }
-  }
-
-  function handleRemoveVideo() {
-    if (videoItem) {
-      r2Delete({ key: videoItem.storageId }).catch(() => {});
-      setVideoItem(null);
-    }
-  }
-
-  async function handleModel3DUpload(file: File) {
-    if (!file.name.toLowerCase().endsWith(".glb")) {
-      toast.error("Only .glb files are supported");
-      return;
-    }
-    setUploadingModel3d(true);
-    try {
-      const oldKey = model3dItem?.storageId;
-      const s = await r2Upload(file);
-      if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
-      setModel3dItem({ storageId: s, fileName: file.name });
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploadingModel3d(false);
-    }
-  }
-
-  function handleRemoveModel3D() {
-    if (model3dItem) {
-      r2Delete({ key: model3dItem.storageId }).catch(() => {});
-      setModel3dItem(null);
-    }
-  }
-
-  async function handleImageUpload(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Only image files are allowed");
-      return;
-    }
-    setUploadingImage(true);
-    try {
-      const s = await r2Upload(file);
-      setImages((prev) => [
-        ...prev,
-        { storageId: s, previewUrl: URL.createObjectURL(file) },
-      ]);
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploadingImage(false);
-    }
-  }
-
-  const removeImage = useCallback(
-    (storageId: string) => {
-      setImages((prev) => prev.filter((img) => img.storageId !== storageId));
-      r2Delete({ key: storageId }).catch(() => {});
-    },
-    [r2Delete],
-  );
-
-  const isUploadingMedia = uploadingVideo || uploadingModel3d || uploadingImage;
 
   // ── Save ──────────────────────────────────────────────────────
   async function handleSave() {
@@ -465,10 +356,6 @@ export default function EditProductPage() {
       toast.error("This SKU is already in use");
       return;
     }
-    if (isUploadingMedia) {
-      toast.error("Wait for uploads to finish before saving");
-      return;
-    }
     if (saleEnabled && salePrice && Number(salePrice) >= Number(basePrice)) {
       toast.error("Sale price must be less than regular price");
       return;
@@ -480,6 +367,16 @@ export default function EditProductPage() {
 
     setSaving(true);
     try {
+      // Build variantMedia from variantMediaMap
+      const variantMedia = selectedColors.map((color) => ({
+        color,
+        media: (variantMediaMap[color] ?? []).map((item, i) => ({
+          storageId: item.storageId,
+          type: item.type,
+          sortOrder: i,
+        })),
+      }));
+
       await updateProduct({
         id: productId,
         name,
@@ -507,31 +404,8 @@ export default function EditProductPage() {
             : undefined,
         metaTitle: metaTitle.trim() || undefined,
         metaDescription: metaDescription.trim() || undefined,
-        media: [
-          ...(videoItem
-            ? [
-                {
-                  storageId: videoItem.storageId,
-                  type: "video" as const,
-                  sortOrder: 0,
-                },
-              ]
-            : []),
-          ...(model3dItem
-            ? [
-                {
-                  storageId: model3dItem.storageId,
-                  type: "model3d" as const,
-                  sortOrder: 1,
-                },
-              ]
-            : []),
-          ...images.map((img, i) => ({
-            storageId: img.storageId,
-            type: "image" as const,
-            sortOrder: 2 + i,
-          })),
-        ],
+        thumbnailStorageId: thumbnailItem?.storageId ?? null,
+        variantMedia,
       });
 
       const matrixVariants = matrixToVariants(
@@ -772,194 +646,16 @@ export default function EditProductPage() {
             </CardContent>
           </Card>
 
-          {/* Images */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Images{" "}
-                <span className="text-sm font-normal text-muted-foreground">
-                  (optional, multiple — drag to reorder)
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) await handleImageUpload(f);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={uploadingImage}
-                onClick={() => imageInputRef.current?.click()}
-              >
-                {uploadingImage ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Uploading…
-                  </>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Image
-                  </>
-                )}
-              </Button>
-              {images.length > 0 && (
-                <SortableImageGrid
-                  images={images}
-                  onReorder={setImages}
-                  onRemove={removeImage}
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Video */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Video{" "}
-                <span className="text-sm font-normal text-muted-foreground">
-                  (optional)
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <input
-                ref={videoInputRef}
-                type="file"
-                accept="video/*"
-                className="hidden"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) await handleVideoUpload(f);
-                  e.target.value = "";
-                }}
-              />
-              {videoItem ? (
-                <div className="relative group w-48 h-28 rounded-md overflow-hidden border bg-muted">
-                  {videoItem.previewUrl ? (
-                    <video
-                      src={videoItem.previewUrl}
-                      className="w-full h-full object-cover"
-                      muted
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                      video
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={handleRemoveVideo}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={uploadingVideo}
-                  onClick={() => videoInputRef.current?.click()}
-                >
-                  {uploadingVideo ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading…
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Video
-                    </>
-                  )}
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 3D Model */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                3D Model{" "}
-                <span className="text-sm font-normal text-muted-foreground">
-                  (optional — GLB)
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <input
-                ref={model3dInputRef}
-                type="file"
-                accept=".glb"
-                className="hidden"
-                onChange={async (e) => {
-                  const f = e.target.files?.[0];
-                  if (f) await handleModel3DUpload(f);
-                  e.target.value = "";
-                }}
-              />
-              {model3dItem ? (
-                <div className="flex items-center gap-3 p-3 rounded-md border bg-muted">
-                  <Box className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <span className="text-sm truncate flex-1">
-                    {model3dItem.fileName}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    onClick={handleRemoveModel3D}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={uploadingModel3d}
-                    onClick={() => model3dInputRef.current?.click()}
-                  >
-                    {uploadingModel3d ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading…
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload 3D Model
-                      </>
-                    )}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    Only .glb files are supported
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          {/* Media */}
+          <ColorVariantMediaSection
+            colors={selectedColors}
+            variantMediaMap={variantMediaMap}
+            onChange={setVariantMediaMap}
+            thumbnailItem={thumbnailItem}
+            onThumbnailChange={setThumbnailItem}
+            onUpload={(file) => r2Upload(file)}
+            onDelete={(key) => r2Delete({ key }).catch(() => {})}
+          />
         </div>
 
         {/* ── Right column (sidebar) ── */}
@@ -1290,7 +986,6 @@ export default function EditProductPage() {
               onClick={handleSave}
               disabled={
                 saving ||
-                isUploadingMedia ||
                 !!slugTaken ||
                 !!skuTaken ||
                 hasNoConfig
@@ -1302,8 +997,6 @@ export default function EditProductPage() {
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Saving…
                 </>
-              ) : isUploadingMedia ? (
-                "Uploads in progress…"
               ) : (
                 "Save Changes"
               )}

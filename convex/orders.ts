@@ -22,6 +22,7 @@ import {
 import { r2 } from "./r2";
 import { Id } from "./_generated/dataModel";
 import { applyVoucherInMutation } from "./vouchers";
+import { computeBundleDiscount } from "./bundleDiscount";
 
 const shippingAddressValidator = v.object({
   name: v.string(),
@@ -66,6 +67,8 @@ const orderObject = v.object({
   adminNote: v.optional(v.string()),
   voucherCode: v.optional(v.string()),
   voucherDiscountAmount: v.optional(v.number()),
+  bundleDiscountAmount: v.optional(v.number()),
+  bundleDiscountFreeDelivery: v.optional(v.boolean()),
   confirmedBy: v.optional(
     v.object({ userId: v.id("users"), name: v.string(), at: v.number() }),
   ),
@@ -165,9 +168,17 @@ export const create = mutation({
       }),
     );
 
-    // effective cart total = what the customer pays after per-product discounts, before voucher
+    // effective cart total = what the customer pays after per-product discounts, before bundle/voucher
     const effectiveCartTotal = subtotal - discountAmount;
-    const total = effectiveCartTotal; // will be reduced further if voucher applied below
+
+    // Bundle discount — automatic tier-based discount
+    const totalQuantity = enrichedItems.reduce((sum, i) => sum + i.quantity, 0);
+    const bundle = await computeBundleDiscount(
+      ctx,
+      totalQuantity,
+      effectiveCartTotal,
+    );
+    const afterBundleTotal = effectiveCartTotal - bundle.bundleDiscountAmount;
 
     // Create the order first (we need orderId to create voucherUsage)
     const orderNumber = await nextOrderNumber(ctx);
@@ -178,7 +189,11 @@ export const create = mutation({
       shippingAddress: { ...args.shippingAddress, email: user.email },
       subtotal,
       discountAmount,
-      total, // will be patched below if voucher applied
+      total: afterBundleTotal, // will be patched below if voucher applied
+      ...(bundle.bundleDiscountAmount > 0 && {
+        bundleDiscountAmount: bundle.bundleDiscountAmount,
+        bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
+      }),
       paymentStatus: "unpaid",
       notes: args.notes,
     });
@@ -188,7 +203,7 @@ export const create = mutation({
     if (args.voucherCode && args.voucherCode.trim()) {
       voucherDiscountAmount = await applyVoucherInMutation(ctx, {
         code: args.voucherCode,
-        effectiveCartTotal,
+        effectiveCartTotal: afterBundleTotal,
         userId: user._id,
         email: user.email ?? "",
         orderId,
@@ -198,9 +213,11 @@ export const create = mutation({
       await ctx.db.patch(orderId, {
         voucherCode: args.voucherCode.toUpperCase().trim(),
         voucherDiscountAmount,
-        total: Math.max(0, effectiveCartTotal - voucherDiscountAmount),
+        total: Math.max(0, afterBundleTotal - voucherDiscountAmount),
       });
     }
+
+    const finalTotal = Math.max(0, afterBundleTotal - voucherDiscountAmount);
 
     const order = await ctx.db.get(orderId);
     if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
@@ -212,12 +229,12 @@ export const create = mutation({
       .unique();
     if (existing) {
       await ctx.db.patch(existing._id, {
-        totalAmount: existing.totalAmount + total,
+        totalAmount: existing.totalAmount + finalTotal,
       });
     } else {
       await ctx.db.insert("orderStatusAmounts", {
         status: "new",
-        totalAmount: total,
+        totalAmount: finalTotal,
       });
     }
 
@@ -557,6 +574,15 @@ export const createInternal = internalMutation({
 
     const effectiveCartTotal = subtotal - discountAmount;
 
+    // Bundle discount — automatic tier-based discount
+    const totalQuantity = enrichedItems.reduce((sum, i) => sum + i.quantity, 0);
+    const bundle = await computeBundleDiscount(
+      ctx,
+      totalQuantity,
+      effectiveCartTotal,
+    );
+    const afterBundleTotal = effectiveCartTotal - bundle.bundleDiscountAmount;
+
     const orderNumber = await nextOrderNumber(ctx);
     const orderId = await ctx.db.insert("orders", {
       orderNumber,
@@ -565,7 +591,11 @@ export const createInternal = internalMutation({
       shippingAddress: { ...shippingAddress, email: user?.email },
       subtotal,
       discountAmount,
-      total: effectiveCartTotal, // will be patched below if voucher applied
+      total: afterBundleTotal, // will be patched below if voucher applied
+      ...(bundle.bundleDiscountAmount > 0 && {
+        bundleDiscountAmount: bundle.bundleDiscountAmount,
+        bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
+      }),
       paymentStatus: "unpaid",
       paymentMethod: "sslcommerz",
       notes,
@@ -576,7 +606,7 @@ export const createInternal = internalMutation({
     if (args.voucherCode && args.voucherCode.trim()) {
       voucherDiscountAmount = await applyVoucherInMutation(ctx, {
         code: args.voucherCode,
-        effectiveCartTotal,
+        effectiveCartTotal: afterBundleTotal,
         userId,
         email: user?.email ?? "",
         orderId,
@@ -585,11 +615,11 @@ export const createInternal = internalMutation({
       await ctx.db.patch(orderId, {
         voucherCode: args.voucherCode.toUpperCase().trim(),
         voucherDiscountAmount,
-        total: Math.max(0, effectiveCartTotal - voucherDiscountAmount),
+        total: Math.max(0, afterBundleTotal - voucherDiscountAmount),
       });
     }
 
-    const finalTotal = Math.max(0, effectiveCartTotal - voucherDiscountAmount);
+    const finalTotal = Math.max(0, afterBundleTotal - voucherDiscountAmount);
 
     const order = await ctx.db.get(orderId);
     if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
@@ -832,9 +862,8 @@ export const listAllEnriched = query({
           items.map(async (item) => {
             const product = await ctx.db.get(item.productId);
             let imageUrl: string | null = null;
-            if (product) {
-              const firstImage = product.media.find((m) => m.type === "image");
-              if (firstImage) imageUrl = await r2.getUrl(firstImage.storageId);
+            if (product?.thumbnailStorageId) {
+              imageUrl = await r2.getUrl(product.thumbnailStorageId);
             }
             return {
               productId: item.productId,

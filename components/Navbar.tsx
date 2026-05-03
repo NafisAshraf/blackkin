@@ -63,6 +63,9 @@ function NavbarInner() {
   const showAnnouncement = !announcementDismissed && atTop && pathname === "/";
   const announcementHeight = showAnnouncement ? 36 : 0;
 
+  const isHomePage = pathname === "/";
+  const spacerHeight = isHomePage ? 0 : announcementHeight + 80;
+
   const loginHref =
     pathname && pathname !== "/login" && pathname !== "/register"
       ? `/login?next=${encodeURIComponent(pathname)}`
@@ -70,7 +73,7 @@ function NavbarInner() {
 
   return (
     <>
-      <div style={{ height: `${announcementHeight + 56}px` }} />
+      <div style={{ height: `${spacerHeight}px` }} />
 
       <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
 
@@ -82,7 +85,7 @@ function NavbarInner() {
         }}
       >
         {/* Announcement Bar */}
-        {!announcementDismissed && (
+        {!announcementDismissed && isHomePage && (
           <div
             className="bg-black text-white overflow-hidden relative"
             style={{
@@ -128,8 +131,11 @@ function NavbarInner() {
         )}
 
         {/* Main Navbar */}
-        <header className="bg-white border-b border-border">
-          <div className="w-full px-6 lg:px-10 h-14 flex items-center justify-between relative">
+        <header
+          className={`transition-colors duration-300 ${atTop ? "bg-transparent border-transparent" : "bg-white border-b border-border"
+            }`}
+        >
+          <div className="w-full max-w-[1500px] mx-auto px-6 lg:px-10 h-20 flex items-center justify-between relative">
             {/* Left: Hamburger (mobile) / Nav links (desktop) */}
             <div className="flex items-center">
               {/* Hamburger */}
@@ -145,11 +151,10 @@ function NavbarInner() {
               <nav className="hidden md:flex items-center text-xs font-medium tracking-wide uppercase">
                 <Link
                   href="/products"
-                  className={`px-3 py-1.5 relative transition-colors hover:text-foreground group ${
-                    pathname === "/products"
-                      ? "text-foreground"
-                      : "text-muted-foreground"
-                  }`}
+                  className={`px-3 py-1.5 relative transition-colors hover:text-foreground group ${pathname === "/products"
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                    }`}
                 >
                   Catalog
                   <span className="absolute bottom-0 left-3 right-3 h-px bg-foreground scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
@@ -183,9 +188,9 @@ function NavbarInner() {
               className="absolute left-1/2 -translate-x-1/2 flex items-center"
             >
               <img
-                src="/assets/blackkin_logo_black.svg"
+                src="/assets/blackkin_logo_text_black_trimmed.svg"
                 alt="Blackkin"
-                className="h-7 w-auto"
+                className="h-16 w-auto"
               />
             </Link>
 

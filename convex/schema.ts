@@ -139,16 +139,24 @@ export default defineSchema({
     // Search field: concatenated name + description for full-text search
     searchText: v.optional(v.string()),
 
-    // Media stored inline - bounded list, well under 8192 limit
-    media: v.array(
+    // Product thumbnail (shown on listing cards, hover fallback)
+    thumbnailStorageId: v.optional(v.string()),
+
+    // Per-colour variant media — unified ordered array of images/video/3D model
+    variantMedia: v.array(
       v.object({
-        storageId: v.string(),
-        type: v.union(
-          v.literal("image"),
-          v.literal("video"),
-          v.literal("model3d"),
+        color: v.string(),
+        media: v.array(
+          v.object({
+            storageId: v.string(),
+            type: v.union(
+              v.literal("image"),
+              v.literal("video"),
+              v.literal("model3d"),
+            ),
+            sortOrder: v.number(),
+          }),
         ),
-        sortOrder: v.number(),
       }),
     ),
   })
@@ -302,6 +310,8 @@ export default defineSchema({
     adminNote: v.optional(v.string()), // single admin note (replaces chat-style orderNotes)
     voucherCode: v.optional(v.string()), // applied voucher code snapshot
     voucherDiscountAmount: v.optional(v.number()), // flat BDT deducted by voucher
+    bundleDiscountAmount: v.optional(v.number()), // BDT deducted by bundle tier discount
+    bundleDiscountFreeDelivery: v.optional(v.boolean()), // true = delivery should be waived
     confirmedBy: v.optional(
       v.object({ userId: v.id("users"), name: v.string(), at: v.number() }),
     ),
@@ -385,14 +395,9 @@ export default defineSchema({
   // One row per image slot. Upserted by admin. Falls back to
   // static public-folder images on the frontend if absent.
   landingPageImages: defineTable({
-    slot: v.union(
-      v.literal("hero"),
-      v.literal("splitImage"),
-      v.literal("tech1"),
-      v.literal("tech2"),
-      v.literal("tech3"),
-    ),
+    slot: v.union(v.literal("hero"), v.literal("splitImage")),
     storageId: v.string(),
+    type: v.union(v.literal("image"), v.literal("video")),
   }).index("by_slot", ["slot"]),
 
   // Testimonial quotes for the homepage carousel.
@@ -401,6 +406,16 @@ export default defineSchema({
     author: v.string(),
     isActive: v.boolean(),
   }).index("by_isActive", ["isActive"]),
+
+  // ─── LANDING PAGE TECHNOLOGY CAROUSEL ─────────────────────
+  landingPageCarouselItems: defineTable({
+    storageId: v.string(),
+    text: v.string(),
+    sortOrder: v.number(),
+    isActive: v.boolean(),
+  })
+    .index("by_isActive", ["isActive"])
+    .index("by_sortOrder", ["sortOrder"]),
 
   // ─── LANDING PAGE PRODUCT SECTIONS ────────────────────────
   // Two configurable product showcase sections (position 1 & 2).
@@ -452,7 +467,10 @@ export default defineSchema({
   vouchers: defineTable({
     code: v.string(), // uppercase, unique, e.g. "SAVE100"
     description: v.optional(v.string()),
-    discountAmount: v.number(), // flat BDT off the cart
+    discountType: v.union(v.literal("flat"), v.literal("percentage")), // "flat" = fixed BDT; "percentage" = % of cart
+    discountAmount: v.number(), // flat: BDT amount; percentage: value 1–100
+    maxDiscountAmount: v.optional(v.number()), // percentage only: BDT cap (e.g. 100 means max ৳100 off)
+    isGlobal: v.boolean(), // true = appears in all customer profiles
     minSpend: v.number(), // minimum effective cart total required (0 = no min)
     expiresAt: v.number(), // unix ms — hard expiry
     maxUses: v.number(), // global cap (0 = unlimited)
@@ -499,4 +517,22 @@ export default defineSchema({
     sortOrder: v.number(),
     isActive: v.boolean(),
   }).index("by_isActive", ["isActive"]),
+
+  // ─── BUNDLE DISCOUNT CONFIG (singleton) ───────────────────
+  // At most one document. If absent the feature is treated as inactive.
+  bundleDiscountConfig: defineTable({
+    isActive: v.boolean(), // master toggle
+    tier2: v.object({
+      isActive: v.boolean(),
+      discountType: v.union(v.literal("percentage"), v.literal("flat")),
+      discountAmount: v.number(), // percentage: 1-100, flat: BDT amount
+      freeDelivery: v.boolean(),
+    }),
+    tier3: v.object({
+      isActive: v.boolean(),
+      discountType: v.union(v.literal("percentage"), v.literal("flat")),
+      discountAmount: v.number(),
+      freeDelivery: v.boolean(),
+    }),
+  }),
 });

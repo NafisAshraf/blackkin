@@ -11,12 +11,6 @@ import SortDropdown from "@/components/products/SortDropdown";
 
 const INITIAL_LIMIT = 24;
 
-interface MediaItem {
-  storageId: string;
-  type: "image" | "video" | "model3d";
-  sortOrder: number;
-}
-
 interface CatalogProduct {
   _id: Id<"products">;
   name: string;
@@ -29,7 +23,7 @@ interface CatalogProduct {
   averageRating: number;
   totalRatings: number;
   imageUrl: string | null;
-  media: MediaItem[];
+  colorFirstImageUrls?: Array<{ color: string; url: string | null }>;
   tags?: Array<{ _id: string; name: string; slug: string }>;
   variants?: Array<{ color?: string }>;
 }
@@ -107,11 +101,11 @@ function ProductGrid({ products }: { products: CatalogProduct[] }) {
             discountEndTime: product.discountEndTime,
             averageRating: product.averageRating,
             totalRatings: product.totalRatings,
-            media: product.media ?? [],
             tags: product.tags,
             variants: product.variants,
           }}
           imageUrl={product.imageUrl}
+          colorFirstImageUrls={product.colorFirstImageUrls}
         />
       ))}
     </div>

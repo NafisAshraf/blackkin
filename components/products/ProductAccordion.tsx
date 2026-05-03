@@ -1,5 +1,7 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Accordion,
   AccordionContent,
@@ -17,7 +19,9 @@ export default function ProductAccordion({ description }: ProductAccordionProps)
       <AccordionItem value="description">
         <AccordionTrigger>Description</AccordionTrigger>
         <AccordionContent>
-          <p className="whitespace-pre-wrap text-sm">{description}</p>
+          <div className="blog-richtext text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
+          </div>
         </AccordionContent>
       </AccordionItem>
     </Accordion>

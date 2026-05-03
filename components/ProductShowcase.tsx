@@ -5,6 +5,7 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import ProductCard from "@/components/products/ProductCard";
 import { Id } from "@/convex/_generated/dataModel";
+import Link from "next/link";
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface ShowcaseProduct {
@@ -16,6 +17,7 @@ export interface ShowcaseProduct {
   discountAmount: number;
   discountGroupName: string | null;
   imageUrl: string | null;
+  colorFirstImageUrls: Array<{ color: string; url: string | null }>;
   colors: string[];
   sortOrder: number;
 }
@@ -66,13 +68,19 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
   if (products.length === 0) return null;
 
   return (
-    <section className="w-full bg-white py-20 md:py-28 border-t border-border">
-      <div className="max-w-[1400px] mx-auto px-6 lg:px-10">
+    <section className="w-full bg-white py-20 md:py-28 ">
+      <div className="max-w-[1500px] mx-auto px-6 lg:px-10">
         {/* Section Header */}
-        <div className="mb-12 md:mb-16">
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-thin tracking-[0.22em] uppercase text-foreground leading-snug">
+        <div className="mb-12 md:mb-16 flex items-center justify-between">
+          <h2 className="text-2xl md:text-2xl lg:text-3xl uppercase ">
             {heading}
           </h2>
+          <Link
+            href="/products"
+            className="text-sm font-medium tracking-wide uppercase border-b border-foreground/30 hover:border-foreground transition-colors pb-0.5"
+          >
+            View all products
+          </Link>
         </div>
 
         {/* Carousel */}
@@ -95,11 +103,11 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
                     discountGroupName: product.discountGroupName,
                     averageRating: 0,
                     totalRatings: 0,
-                    media: [],
                     tags: [],
                     variants: product.colors.map((color) => ({ color })),
                   }}
                   imageUrl={product.imageUrl}
+                  colorFirstImageUrls={product.colorFirstImageUrls}
                 />
               </div>
             ))}

@@ -756,6 +756,18 @@ export default function CheckoutPage() {
                   <span>-৳{cart.discountAmount.toLocaleString()}</span>
                 </div>
               )}
+              {cart.bundleDiscountAmount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>
+                    Bundle Discount (
+                    {cart.bundleDiscountTier === "tier3"
+                      ? "3+ items"
+                      : "2+ items"}
+                    )
+                  </span>
+                  <span>-৳{cart.bundleDiscountAmount.toLocaleString()}</span>
+                </div>
+              )}
               {voucherDiscount > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span className="flex items-center gap-1">
@@ -763,6 +775,12 @@ export default function CheckoutPage() {
                     Voucher ({appliedVoucherCode})
                   </span>
                   <span>-৳{voucherDiscount.toLocaleString()}</span>
+                </div>
+              )}
+              {cart.bundleDiscountFreeDelivery && (
+                <div className="flex justify-between text-green-600">
+                  <span>Delivery</span>
+                  <span>Free</span>
                 </div>
               )}
               <Separator />

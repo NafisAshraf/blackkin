@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Montserrat } from "next/font/google";
+import { Geist, Geist_Mono, Montserrat, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,12 @@ import { Toaster } from "@/components/ui/sonner";
 import { MarketingScripts } from "@/components/MarketingScripts";
 
 const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-sans" });
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  variable: "--font-serif",
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -44,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("font-sans", montserrat.variable)}>
+    <html lang="en" className={cn("font-sans", montserrat.variable, cormorant.variable)}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

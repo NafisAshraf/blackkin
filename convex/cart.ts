@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireAuth } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
+import { computeBundleDiscount } from "./bundleDiscount";
 import { Id } from "./_generated/dataModel";
 import { r2 } from "./r2";
 
@@ -61,9 +62,8 @@ export const get = query({
         const { effectivePrice: discountedPrice, discountAmount } =
           await getEffectivePrice(ctx, product);
 
-        const firstImage = product.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
 
         return {
@@ -78,10 +78,15 @@ export const get = query({
           imageUrl,
           stock: variant.stock,
         };
-      })
+      }),
     );
 
-    return enriched.filter(Boolean) as typeof enriched extends (infer T | null)[] ? Exclude<T, null>[] : never;
+    return enriched.filter(Boolean) as typeof enriched extends (
+      | infer T
+      | null
+    )[]
+      ? Exclude<T, null>[]
+      : never;
   },
 });
 
@@ -97,7 +102,7 @@ export const getGuestCartItems = query({
         productId: v.string(),
         variantId: v.string(),
         quantity: v.number(),
-      })
+      }),
     ),
   },
   returns: v.array(guestCartItemFull),
@@ -121,9 +126,8 @@ export const getGuestCartItems = query({
         const { effectivePrice: discountedPrice, discountAmount } =
           await getEffectivePrice(ctx, product);
 
-        const firstImage = product.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
 
         return {
@@ -140,7 +144,7 @@ export const getGuestCartItems = query({
           imageUrl,
           stock: variant.stock,
         };
-      })
+      }),
     );
 
     return enriched.filter((x): x is NonNullable<typeof x> => x !== null);
@@ -160,19 +164,21 @@ export const add = mutation({
     if (args.quantity < 1) throw new ConvexError("Quantity must be at least 1");
 
     const product = await ctx.db.get(args.productId);
-    if (!product || !isProductVisible(product)) throw new ConvexError("Product not available");
+    if (!product || !isProductVisible(product))
+      throw new ConvexError("Product not available");
 
     const variant = await ctx.db.get(args.variantId);
     if (!variant || variant.productId !== args.productId) {
       throw new ConvexError("Variant not found");
     }
-    if (variant.stock < args.quantity) throw new ConvexError("Insufficient stock");
+    if (variant.stock < args.quantity)
+      throw new ConvexError("Insufficient stock");
 
     // If already in cart, increment
     const existing = await ctx.db
       .query("cartItems")
       .withIndex("by_userId_and_variantId", (q) =>
-        q.eq("userId", user._id).eq("variantId", args.variantId)
+        q.eq("userId", user._id).eq("variantId", args.variantId),
       )
       .unique();
 
@@ -204,7 +210,8 @@ export const updateQuantity = mutation({
     if (args.quantity < 1) throw new ConvexError("Quantity must be at least 1");
 
     const item = await ctx.db.get(args.cartItemId);
-    if (!item || item.userId !== user._id) throw new ConvexError("Cart item not found");
+    if (!item || item.userId !== user._id)
+      throw new ConvexError("Cart item not found");
 
     const variant = await ctx.db.get(item.variantId);
     if (!variant || variant.stock < args.quantity) {
@@ -222,7 +229,8 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
     const item = await ctx.db.get(args.cartItemId);
-    if (!item || item.userId !== user._id) throw new ConvexError("Cart item not found");
+    if (!item || item.userId !== user._id)
+      throw new ConvexError("Cart item not found");
     await ctx.db.delete(args.cartItemId);
     return null;
   },
@@ -260,7 +268,7 @@ export const mergeGuestCart = mutation({
         productId: v.string(),
         variantId: v.string(),
         quantity: v.number(),
-      })
+      }),
     ),
   },
   returns: v.null(),
@@ -272,7 +280,9 @@ export const mergeGuestCart = mutation({
       let product, variant;
       try {
         product = await ctx.db.get(guestItem.productId as Id<"products">);
-        variant = await ctx.db.get(guestItem.variantId as Id<"productVariants">);
+        variant = await ctx.db.get(
+          guestItem.variantId as Id<"productVariants">,
+        );
       } catch {
         continue; // Invalid ID format - skip
       }
@@ -286,7 +296,7 @@ export const mergeGuestCart = mutation({
       const existing = await ctx.db
         .query("cartItems")
         .withIndex("by_userId_and_variantId", (q) =>
-          q.eq("userId", user._id).eq("variantId", variant!._id)
+          q.eq("userId", user._id).eq("variantId", variant!._id),
         )
         .unique();
 
@@ -313,6 +323,13 @@ export const getCartWithPricing = query({
     items: v.array(cartItemFull),
     subtotal: v.number(),
     discountAmount: v.number(),
+    bundleDiscountAmount: v.number(),
+    bundleDiscountTier: v.union(
+      v.literal("tier2"),
+      v.literal("tier3"),
+      v.literal("none"),
+    ),
+    bundleDiscountFreeDelivery: v.boolean(),
     total: v.number(),
   }),
   handler: async (ctx) => {
@@ -338,9 +355,8 @@ export const getCartWithPricing = query({
         subtotal += itemSubtotal;
         discountAmount += itemDiscount;
 
-        const firstImage = product.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
 
         return {
@@ -355,16 +371,30 @@ export const getCartWithPricing = query({
           imageUrl,
           stock: variant.stock,
         };
-      })
+      }),
     );
 
-    const validItems = enriched.filter(Boolean) as NonNullable<typeof enriched[0]>[];
+    const validItems = enriched.filter(Boolean) as NonNullable<
+      (typeof enriched)[0]
+    >[];
+
+    const totalQuantity = validItems.reduce((sum, i) => sum + i.quantity, 0);
+    const effectiveCartTotal = subtotal - discountAmount;
+
+    const bundle = await computeBundleDiscount(
+      ctx,
+      totalQuantity,
+      effectiveCartTotal,
+    );
 
     return {
       items: validItems,
       subtotal,
       discountAmount,
-      total: subtotal - discountAmount,
+      bundleDiscountAmount: bundle.bundleDiscountAmount,
+      bundleDiscountTier: bundle.bundleDiscountTier,
+      bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
+      total: subtotal - discountAmount - bundle.bundleDiscountAmount,
     };
   },
 });

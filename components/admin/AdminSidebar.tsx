@@ -147,10 +147,10 @@ export function AdminSidebar({ user, onClose }: AdminSidebarProps) {
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
           onClick={onClose}
         >
-          <img src="/logo.svg" alt="Blackkin" className="h-7 w-auto" />
-          <span className="text-sm font-bold tracking-wider uppercase">
+          <img src="/assets/blackkin_footer.png" alt="Blackkin" className="h-7 w-auto brightness-0" />
+          {/* <span className="text-sm font-bold tracking-wider uppercase">
             Blackkin
-          </span>
+          </span> */}
         </Link>
       </div>
 

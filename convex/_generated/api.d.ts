@@ -11,8 +11,10 @@
 import type * as addresses from "../addresses.js";
 import type * as auth from "../auth.js";
 import type * as blog from "../blog.js";
+import type * as bundleDiscount from "../bundleDiscount.js";
 import type * as cart from "../cart.js";
 import type * as categories from "../categories.js";
+import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
 import type * as discountGroups from "../discountGroups.js";
 import type * as employeeActions from "../employeeActions.js";
@@ -22,6 +24,7 @@ import type * as http from "../http.js";
 import type * as landingPage from "../landingPage.js";
 import type * as lib_aggregates from "../lib/aggregates.js";
 import type * as lib_discounts from "../lib/discounts.js";
+import type * as lib_media from "../lib/media.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as marketing from "../marketing.js";
 import type * as marketingActions from "../marketingActions.js";
@@ -50,8 +53,10 @@ declare const fullApi: ApiFromModules<{
   addresses: typeof addresses;
   auth: typeof auth;
   blog: typeof blog;
+  bundleDiscount: typeof bundleDiscount;
   cart: typeof cart;
   categories: typeof categories;
+  crons: typeof crons;
   dashboard: typeof dashboard;
   discountGroups: typeof discountGroups;
   employeeActions: typeof employeeActions;
@@ -61,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   landingPage: typeof landingPage;
   "lib/aggregates": typeof lib_aggregates;
   "lib/discounts": typeof lib_discounts;
+  "lib/media": typeof lib_media;
   "lib/validators": typeof lib_validators;
   marketing: typeof marketing;
   marketingActions: typeof marketingActions;

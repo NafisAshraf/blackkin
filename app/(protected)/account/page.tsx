@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { format } from "date-fns";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
@@ -9,19 +10,26 @@ import { isSyntheticPhoneEmail, syntheticEmailToPhone } from "@/lib/auth-utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Home, Briefcase, Plus, Pencil, Trash2, Loader2, Check, X } from "lucide-react";
+import {
+  Home,
+  Briefcase,
+  Plus,
+  Pencil,
+  Trash2,
+  Loader2,
+  Check,
+  X,
+  Gift,
+  Copy,
+  Tag,
+} from "lucide-react";
 import { toast } from "sonner";
 
 type ProfileField = "name" | "phone" | "email";
@@ -47,14 +55,18 @@ export default function AccountPage() {
   const { data: session, isPending } = authClient.useSession();
   const currentUser = useQuery(
     api.users.getCurrentUserWithRole,
-    session ? {} : "skip"
+    session ? {} : "skip",
   );
   const savedAddresses = useQuery(
     api.addresses.getSavedAddresses,
-    session ? {} : "skip"
+    session ? {} : "skip",
   );
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
   const deleteAddressMutation = useMutation(api.addresses.deleteAddress);
+  const globalVouchers = useQuery(
+    api.vouchers.getGlobalVouchers,
+    session ? {} : "skip",
+  );
 
   const updateProfileMutation = useMutation(api.users.updateProfile);
 
@@ -90,7 +102,9 @@ export default function AccountPage() {
     try {
       if (field === "name") {
         // Update in Better Auth so session stays in sync; onUpdate trigger syncs to Convex
-        const { error } = await authClient.updateUser({ name: fieldValue.trim() });
+        const { error } = await authClient.updateUser({
+          name: fieldValue.trim(),
+        });
         if (error) throw new Error(error.message);
         // Also patch Convex immediately for instant UI feedback
         await updateProfileMutation({ name: fieldValue.trim() });
@@ -104,7 +118,9 @@ export default function AccountPage() {
       setEditingField(null);
       setFieldValue("");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update profile");
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update profile",
+      );
     } finally {
       setIsProfileSaving(false);
     }
@@ -159,7 +175,10 @@ export default function AccountPage() {
     }
   }
 
-  async function handleDelete(addressId: Id<"userAddresses">, type: AddressType) {
+  async function handleDelete(
+    addressId: Id<"userAddresses">,
+    type: AddressType,
+  ) {
     if (!confirm(`Delete your ${type} address?`)) return;
     try {
       await deleteAddressMutation({ addressId });
@@ -190,19 +209,24 @@ export default function AccountPage() {
               {(() => {
                 // Derive clean display values ─────────────────────────────────
                 // Name: prefer Convex (trigger-synced), fall back to session
-                const displayName = currentUser?.name ?? session.user.name ?? "";
+                const displayName =
+                  currentUser?.name ?? session.user.name ?? "";
 
                 // Mobile: prefer Convex phone field; for phone-auth users whose
                 // Convex record predates the phone field, extract from the
                 // synthetic email that was their auth identifier.
                 const displayPhone =
                   currentUser?.phone ??
-                  (isPhoneUser ? syntheticEmailToPhone(session.user.email!) : "");
+                  (isPhoneUser
+                    ? syntheticEmailToPhone(session.user.email!)
+                    : "");
 
                 // Email: show real email only — never expose the synthetic
                 // "@phone.blackkin.local" placeholder to the user.
                 const rawEmail = currentUser?.email ?? "";
-                const displayEmail = isSyntheticPhoneEmail(rawEmail) ? "" : rawEmail;
+                const displayEmail = isSyntheticPhoneEmail(rawEmail)
+                  ? ""
+                  : rawEmail;
 
                 return (
                   <>
@@ -273,9 +297,10 @@ export default function AccountPage() {
               {/* Role */}
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Role</span>
-                <Badge variant="secondary">{currentUser?.role ?? "customer"}</Badge>
+                <Badge variant="secondary">
+                  {currentUser?.role ?? "customer"}
+                </Badge>
               </div>
-
             </CardContent>
           </Card>
 
@@ -302,7 +327,12 @@ export default function AccountPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-base">Saved Addresses</CardTitle>
             {canAddMore && editingType === null && (
-              <Button variant="outline" size="sm" onClick={startAdd} className="gap-1.5 text-xs">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startAdd}
+                className="gap-1.5 text-xs"
+              >
                 <Plus className="h-3.5 w-3.5" />
                 Add Address
               </Button>
@@ -321,11 +351,18 @@ export default function AccountPage() {
                   const Icon = addr.type === "home" ? Home : Briefcase;
                   const label = addr.type === "home" ? "Home" : "Work";
                   return (
-                    <div key={addr._id} className="flex items-start gap-3 p-3 border border-border rounded-md">
+                    <div
+                      key={addr._id}
+                      className="flex items-start gap-3 p-3 border border-border rounded-md"
+                    >
                       <Icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                       <div className="flex-1 min-w-0 text-sm">
-                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
-                        <p>{addr.name} · {addr.phone}</p>
+                        <p className="font-medium text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                          {label}
+                        </p>
+                        <p>
+                          {addr.name} · {addr.phone}
+                        </p>
                         <p className="text-muted-foreground">{addr.address}</p>
                       </div>
                       <div className="flex gap-1 shrink-0">
@@ -355,7 +392,8 @@ export default function AccountPage() {
                 {/* Empty state */}
                 {savedAddresses.length === 0 && editingType === null && (
                   <p className="text-sm text-muted-foreground">
-                    No saved addresses yet. Add a home or work address to speed up checkout.
+                    No saved addresses yet. Add a home or work address to speed
+                    up checkout.
                   </p>
                 )}
 
@@ -367,23 +405,32 @@ export default function AccountPage() {
                       <Label className="text-xs">Address Type</Label>
                       <div className="flex gap-2">
                         {(["home", "work"] as AddressType[]).map((t) => {
-                          const existingOfType = savedAddresses.find((a) => a.type === t);
-                          const isDisabled = existingOfType !== undefined && t !== editingType;
+                          const existingOfType = savedAddresses.find(
+                            (a) => a.type === t,
+                          );
+                          const isDisabled =
+                            existingOfType !== undefined && t !== editingType;
                           return (
                             <button
                               key={t}
                               type="button"
                               disabled={isDisabled}
-                              onClick={() => setForm((f) => ({ ...f, type: t }))}
+                              onClick={() =>
+                                setForm((f) => ({ ...f, type: t }))
+                              }
                               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                                 form.type === t
                                   ? "bg-foreground text-background border-foreground"
                                   : isDisabled
-                                  ? "opacity-40 cursor-not-allowed border-border text-muted-foreground"
-                                  : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+                                    ? "opacity-40 cursor-not-allowed border-border text-muted-foreground"
+                                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
                               }`}
                             >
-                              {t === "home" ? <Home className="h-3 w-3" /> : <Briefcase className="h-3 w-3" />}
+                              {t === "home" ? (
+                                <Home className="h-3 w-3" />
+                              ) : (
+                                <Briefcase className="h-3 w-3" />
+                              )}
                               {t === "home" ? "Home" : "Work"}
                             </button>
                           );
@@ -393,21 +440,29 @@ export default function AccountPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <Label htmlFor="addr-name" className="text-xs">Full Name *</Label>
+                        <Label htmlFor="addr-name" className="text-xs">
+                          Full Name *
+                        </Label>
                         <Input
                           id="addr-name"
                           value={form.name}
-                          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, name: e.target.value }))
+                          }
                           placeholder="John Doe"
                           className="h-8 text-sm"
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label htmlFor="addr-phone" className="text-xs">Phone *</Label>
+                        <Label htmlFor="addr-phone" className="text-xs">
+                          Phone *
+                        </Label>
                         <Input
                           id="addr-phone"
                           value={form.phone}
-                          onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, phone: e.target.value }))
+                          }
                           placeholder="+880 1XXX XXXXXX"
                           className="h-8 text-sm"
                         />
@@ -415,11 +470,15 @@ export default function AccountPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label htmlFor="addr-address" className="text-xs">Delivery Address *</Label>
+                      <Label htmlFor="addr-address" className="text-xs">
+                        Delivery Address *
+                      </Label>
                       <Textarea
                         id="addr-address"
                         value={form.address}
-                        onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, address: e.target.value }))
+                        }
                         placeholder="Full delivery address"
                         rows={3}
                         className="text-sm"
@@ -427,17 +486,122 @@ export default function AccountPage() {
                     </div>
 
                     <div className="flex gap-2 pt-1">
-                      <Button size="sm" onClick={handleSave} disabled={isSaving} className="gap-1.5">
-                        {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      <Button
+                        size="sm"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="gap-1.5"
+                      >
+                        {isSaving && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        )}
                         Save Address
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={cancelEdit} disabled={isSaving}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={cancelEdit}
+                        disabled={isSaving}
+                      >
                         Cancel
                       </Button>
                     </div>
                   </div>
                 )}
               </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* My Vouchers Card */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Tag className="h-4 w-4" />
+              My Vouchers
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {globalVouchers === undefined ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : globalVouchers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No vouchers available right now.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {globalVouchers.map((voucher) => {
+                  const isUsed =
+                    voucher.maxUsesPerCustomer > 0 &&
+                    voucher.userUsageCount >= voucher.maxUsesPerCustomer;
+                  const discountLabel =
+                    voucher.discountType === "percentage"
+                      ? `${voucher.discountAmount}% off${voucher.maxDiscountAmount ? ` (max ৳${voucher.maxDiscountAmount.toLocaleString()})` : ""}`
+                      : `৳${voucher.discountAmount.toLocaleString()} off`;
+                  return (
+                    <div
+                      key={voucher._id}
+                      className={`flex items-start gap-3 p-4 border rounded-lg ${
+                        isUsed ? "opacity-50" : ""
+                      }`}
+                    >
+                      <Gift className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-semibold tracking-wider text-sm">
+                            {voucher.code}
+                          </span>
+                          {voucher.code === "WELCOME" && (
+                            <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium">
+                              Welcome Gift
+                            </span>
+                          )}
+                          {isUsed && (
+                            <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
+                              Already used
+                            </span>
+                          )}
+                        </div>
+                        {voucher.description && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {voucher.description}
+                          </p>
+                        )}
+                        <p className="text-sm font-medium mt-1">
+                          {discountLabel}
+                        </p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+                          {voucher.minSpend > 0 && (
+                            <span className="text-xs text-muted-foreground">
+                              Min spend ৳{voucher.minSpend.toLocaleString()}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            Expires{" "}
+                            {format(new Date(voucher.expiresAt), "dd MMM yyyy")}
+                          </span>
+                        </div>
+                      </div>
+                      {!isUsed && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(voucher.code);
+                            toast.success(
+                              `Copied "${voucher.code}" to clipboard`,
+                            );
+                          }}
+                          className="h-8 w-8 flex items-center justify-center rounded hover:bg-muted transition-colors shrink-0"
+                          title="Copy code"
+                        >
+                          <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -467,13 +631,13 @@ export default function AccountPage() {
 
 interface ProfileRowProps {
   label: string;
-  value: string;           // current saved value (empty string = not set)
-  placeholder: string;     // display text when not set (e.g. "Add your name")
+  value: string; // current saved value (empty string = not set)
+  placeholder: string; // display text when not set (e.g. "Add your name")
   inputPlaceholder?: string;
   isEditing: boolean;
   isSaving: boolean;
   fieldValue: string;
-  onEdit?: () => void;     // undefined = field is read-only
+  onEdit?: () => void; // undefined = field is read-only
   onCancel: () => void;
   onSave: () => void;
   onChangeValue: (v: string) => void;
@@ -493,15 +657,15 @@ function ProfileRow({
   onChangeValue,
 }: ProfileRowProps) {
   const displayValue = value || (
-    <span className="text-muted-foreground italic">
-      {placeholder || "—"}
-    </span>
+    <span className="text-muted-foreground italic">{placeholder || "—"}</span>
   );
 
   if (isEditing) {
     return (
       <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground uppercase tracking-wide">{label}</Label>
+        <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+          {label}
+        </Label>
         <div className="flex gap-2 items-center">
           <Input
             value={fieldValue}
@@ -522,7 +686,11 @@ function ProfileRow({
             disabled={isSaving}
             title="Save"
           >
-            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            {isSaving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
           </Button>
           <Button
             size="icon"
@@ -543,7 +711,10 @@ function ProfileRow({
   // regardless of whether an edit button is present.
   // col-1: label (fixed shrink-0), col-2: value (grows), col-3: button slot (fixed w-7)
   return (
-    <div className="grid items-center gap-x-3" style={{ gridTemplateColumns: "auto 1fr 1.75rem" }}>
+    <div
+      className="grid items-center gap-x-3"
+      style={{ gridTemplateColumns: "auto 1fr 1.75rem" }}
+    >
       <span className="text-muted-foreground">{label}</span>
       <span className="text-right truncate">{displayValue}</span>
       {/* Always render the slot so col-3 width is constant */}

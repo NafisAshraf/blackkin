@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Heart, Loader2, ShoppingCart, Info, Trash2, Zap } from "lucide-react";
+import { Heart, Loader2, ShoppingCart, Info, Trash2, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SizeSelector from "./SizeSelector";
@@ -63,6 +63,10 @@ interface ProductInfoProps {
     tags: Tag[];
   };
   platformSizes: PlatformSize[];
+  /** Controlled color — when provided, overrides internal state */
+  selectedColor?: string | null;
+  /** Called when the user picks a color — required when selectedColor is provided */
+  onColorChange?: (color: string) => void;
 }
 
 function SaleCountdownTimer({ endTime }: { endTime: number }) {
@@ -128,6 +132,8 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
 export default function ProductInfo({
   product,
   platformSizes,
+  selectedColor: controlledColor,
+  onColorChange,
 }: ProductInfoProps) {
   const router = useRouter();
   const platformColors = useQuery(api.platformConfig.listColors);
@@ -164,9 +170,16 @@ export default function ProductInfo({
   const [selectedSize, setSelectedSize] = useState<string | null>(
     initialVariant?.size || null,
   );
-  const [selectedColor, setSelectedColor] = useState<string | null>(
+  const [internalColor, setInternalColor] = useState<string | null>(
     initialVariant?.color || null,
   );
+  // Use controlled color if provided, otherwise fall back to internal state
+  const selectedColor =
+    controlledColor !== undefined ? controlledColor : internalColor;
+  function setSelectedColor(color: string | null) {
+    setInternalColor(color);
+    if (color && onColorChange) onColorChange(color);
+  }
   // Cart data and mutations
   const cartWithPricing = useQuery(
     api.cart.getCartWithPricing,
@@ -451,54 +464,56 @@ export default function ProductInfo({
           </div>
         </div>
 
-        {/* Buy Now / Checkout button */}
-        {!isInCart ? (
-          <button
-            type="button"
-            disabled={!selectedVariantId || isBuyingNow}
-            onClick={async () => {
-              if (!selectedVariantId) return;
-              setIsBuyingNow(true);
-              try {
-                if (session) {
-                  await addToCartMutation({
-                    productId: _id,
-                    variantId: selectedVariantId,
-                    quantity,
-                  });
-                } else {
-                  addToGuestCart(selectedVariantId, quantity);
-                }
-                router.push("/checkout");
-              } catch {
-                toast.error("Could not proceed to checkout");
-                setIsBuyingNow(false);
-              }
-            }}
-            className="w-full h-11 bg-foreground text-background text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40"
-          >
-            {isBuyingNow ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+        {/* Buy Now & Wishlist Buttons */}
+        <div className="flex gap-4">
+          <div className="flex-1">
+            {!isInCart ? (
+              <button
+                type="button"
+                disabled={!selectedVariantId || isBuyingNow}
+                onClick={async () => {
+                  if (!selectedVariantId) return;
+                  setIsBuyingNow(true);
+                  try {
+                    if (session) {
+                      await addToCartMutation({
+                        productId: _id,
+                        variantId: selectedVariantId,
+                        quantity,
+                      });
+                    } else {
+                      addToGuestCart(_id, selectedVariantId, quantity);
+                    }
+                    router.push("/checkout");
+                  } catch {
+                    toast.error("Could not proceed to checkout");
+                    setIsBuyingNow(false);
+                  }
+                }}
+                className="w-full h-11 border border-border bg-background text-foreground text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:bg-muted transition-colors disabled:opacity-40"
+              >
+                {isBuyingNow ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <ShoppingBag className="h-4 w-4" />
+                    Buy Now
+                  </>
+                )}
+              </button>
             ) : (
-              <>
-                <Zap className="h-4 w-4" />
-                Buy Now
-              </>
+              <Link
+                href="/checkout"
+                className="w-full h-11 border border-border bg-background text-foreground text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:bg-muted transition-colors"
+              >
+                <ShoppingBag className="h-4 w-4" />
+                Checkout
+              </Link>
             )}
-          </button>
-        ) : (
-          <Link
-            href="/checkout"
-            className="w-full h-11 bg-foreground text-background text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-          >
-            <Zap className="h-4 w-4" />
-            Checkout
-          </Link>
-        )}
-
-        {/* Save to Wishlist */}
-        <div className="flex justify-center mt-2">
-          <WishlistButton productId={_id} variant="full" />
+          </div>
+          <div className="flex-1">
+            <WishlistButton productId={_id} variant="full" />
+          </div>
         </div>
       </div>
 

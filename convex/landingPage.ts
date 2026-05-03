@@ -3,16 +3,11 @@ import { Id } from "./_generated/dataModel";
 import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
+import { resolveColorFirstImageUrls } from "./lib/media";
 import { r2 } from "./r2";
 
 // ─── Slot union (reused in args validators) ────────────────────────────────
-const slotValidator = v.union(
-  v.literal("hero"),
-  v.literal("splitImage"),
-  v.literal("tech1"),
-  v.literal("tech2"),
-  v.literal("tech3"),
-);
+const slotValidator = v.union(v.literal("hero"), v.literal("splitImage"));
 
 const landingPageSectionPosition = v.union(v.literal(1), v.literal(2));
 
@@ -33,11 +28,8 @@ async function resolveLandingSectionProducts(
         const product = await ctx.db.get(item.productId);
         if (!product) return null;
 
-        const firstMedia = [...product.media]
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .find((media) => media.type === "image");
-        const imageUrl = firstMedia
-          ? await r2.getUrl(firstMedia.storageId)
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
 
         return {
@@ -84,7 +76,7 @@ async function deleteLandingSectionItems(
 export const getContent = query({
   args: {},
   handler: async (ctx) => {
-    const slots = ["hero", "splitImage", "tech1", "tech2", "tech3"] as const;
+    const slots = ["hero", "splitImage"] as const;
 
     const imageEntries = await Promise.all(
       slots.map(async (slot) => {
@@ -93,19 +85,43 @@ export const getContent = query({
           .withIndex("by_slot", (q) => q.eq("slot", slot))
           .first();
         const url = row ? await r2.getUrl(row.storageId) : null;
-        return [slot, url] as const;
+        return [
+          slot,
+          { url, type: row?.type ?? "image" },
+        ] as const;
       }),
     );
 
     const images = Object.fromEntries(imageEntries) as Record<
       (typeof slots)[number],
-      string | null
+      { url: string | null; type: "image" | "video" }
     >;
 
     const quotes = await ctx.db
       .query("landingPageQuotes")
       .withIndex("by_isActive", (q) => q.eq("isActive", true))
       .collect();
+
+    const carouselItems = await ctx.db
+      .query("landingPageCarouselItems")
+      .withIndex("by_isActive", (q) => q.eq("isActive", true))
+      .collect();
+
+    carouselItems.sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const carousels = (
+      await Promise.all(
+        carouselItems.map(async (c) => {
+          const imageUrl = await r2.getUrl(c.storageId);
+          if (!imageUrl) return null;
+          return {
+            _id: c._id,
+            imageUrl,
+            text: c.text,
+          };
+        }),
+      )
+    ).filter((c): c is NonNullable<typeof c> => c !== null);
 
     // ── Product Showcase Sections ──────────────────────────────
     const activeSections = await ctx.db
@@ -135,11 +151,8 @@ export const getContent = query({
                 await getEffectivePrice(ctx, product);
 
               // Resolve first image URL
-              const firstMedia = [...product.media]
-                .sort((a, b) => a.sortOrder - b.sortOrder)
-                .find((m) => m.type === "image");
-              const imageUrl = firstMedia
-                ? await r2.getUrl(firstMedia.storageId)
+              const imageUrl = product.thumbnailStorageId
+                ? await r2.getUrl(product.thumbnailStorageId)
                 : null;
 
               // Get unique variant colors
@@ -164,6 +177,9 @@ export const getContent = query({
                 discountAmount,
                 discountGroupName,
                 imageUrl,
+                colorFirstImageUrls: await resolveColorFirstImageUrls(
+                  product.variantMedia ?? [],
+                ),
                 colors,
                 sortOrder: item.sortOrder,
               };
@@ -185,6 +201,7 @@ export const getContent = query({
     return {
       images,
       quotes,
+      carousels,
       productSections: productSections.filter(
         (section) => section.products.length > 0,
       ),
@@ -206,6 +223,7 @@ export const adminGetImages = query({
       rows.map(async (row) => ({
         slot: row.slot,
         storageId: row.storageId,
+        type: row.type,
         url: await r2.getUrl(row.storageId),
       })),
     );
@@ -234,8 +252,9 @@ export const updateImage = mutation({
   args: {
     slot: slotValidator,
     storageId: v.string(),
+    type: v.union(v.literal("image"), v.literal("video")),
   },
-  handler: async (ctx, { slot, storageId }) => {
+  handler: async (ctx, { slot, storageId, type }) => {
     await requireAdmin(ctx);
     const existing = await ctx.db
       .query("landingPageImages")
@@ -243,13 +262,13 @@ export const updateImage = mutation({
       .first();
     if (existing) {
       const oldKey = existing.storageId;
-      await ctx.db.patch(existing._id, { storageId });
+      await ctx.db.patch(existing._id, { storageId, type });
       // Delete the old R2 object now that it's been replaced
       if (oldKey !== storageId) {
         await r2.deleteObject(ctx, oldKey);
       }
     } else {
-      await ctx.db.insert("landingPageImages", { slot, storageId });
+      await ctx.db.insert("landingPageImages", { slot, storageId, type });
     }
   },
 });
@@ -498,5 +517,125 @@ export const clearSection = mutation({
     await ctx.db.patch(sectionId, { isActive: false });
     await deleteLandingSectionItems(ctx, sectionId);
     return null;
+  },
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ─── TECHNOLOGY CAROUSEL ──────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export const adminGetCarouselItems = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const items = await ctx.db.query("landingPageCarouselItems").collect();
+    items.sort((a, b) => a.sortOrder - b.sortOrder);
+
+    return await Promise.all(
+      items.map(async (item) => ({
+        _id: item._id,
+        storageId: item.storageId,
+        text: item.text,
+        sortOrder: item.sortOrder,
+        isActive: item.isActive,
+        imageUrl: await r2.getUrl(item.storageId),
+      })),
+    );
+  },
+});
+
+export const addCarouselItem = mutation({
+  args: {
+    storageId: v.string(),
+    text: v.string(),
+  },
+  handler: async (ctx, { storageId, text }) => {
+    await requireAdmin(ctx);
+
+    const existing = await ctx.db.query("landingPageCarouselItems").collect();
+    if (existing.length >= 10) {
+      throw new ConvexError("Maximum 10 carousel items allowed");
+    }
+
+    const maxSortOrder = existing.reduce(
+      (max, item) => Math.max(max, item.sortOrder),
+      -1,
+    );
+
+    await ctx.db.insert("landingPageCarouselItems", {
+      storageId,
+      text,
+      sortOrder: maxSortOrder + 1,
+      isActive: true,
+    });
+  },
+});
+
+export const updateCarouselItemText = mutation({
+  args: {
+    id: v.id("landingPageCarouselItems"),
+    text: v.string(),
+  },
+  handler: async (ctx, { id, text }) => {
+    await requireAdmin(ctx);
+    await ctx.db.patch(id, { text });
+  },
+});
+
+export const updateCarouselImage = mutation({
+  args: {
+    id: v.id("landingPageCarouselItems"),
+    storageId: v.string(),
+  },
+  handler: async (ctx, { id, storageId }) => {
+    await requireAdmin(ctx);
+    const item = await ctx.db.get(id);
+    if (!item) throw new ConvexError("Item not found");
+
+    const oldKey = item.storageId;
+    await ctx.db.patch(id, { storageId });
+
+    if (oldKey !== storageId) {
+      await r2.deleteObject(ctx, oldKey);
+    }
+  },
+});
+
+export const toggleCarouselItem = mutation({
+  args: { id: v.id("landingPageCarouselItems") },
+  handler: async (ctx, { id }) => {
+    await requireAdmin(ctx);
+    const item = await ctx.db.get(id);
+    if (!item) throw new ConvexError("Item not found");
+    await ctx.db.patch(id, { isActive: !item.isActive });
+  },
+});
+
+export const deleteCarouselItem = mutation({
+  args: { id: v.id("landingPageCarouselItems") },
+  handler: async (ctx, { id }) => {
+    await requireAdmin(ctx);
+    const item = await ctx.db.get(id);
+    if (!item) throw new ConvexError("Item not found");
+
+    await r2.deleteObject(ctx, item.storageId);
+    await ctx.db.delete(id);
+  },
+});
+
+export const reorderCarouselItems = mutation({
+  args: {
+    items: v.array(
+      v.object({
+        id: v.id("landingPageCarouselItems"),
+        sortOrder: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, { items }) => {
+    await requireAdmin(ctx);
+    await Promise.all(
+      items.map(({ id, sortOrder }) => ctx.db.patch(id, { sortOrder })),
+    );
   },
 });

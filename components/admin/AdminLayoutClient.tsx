@@ -25,8 +25,9 @@ export function AdminLayoutClient({
           <Menu className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-2">
-          <img src="/logo.svg" alt="Blackkin" className="h-6 w-auto" />
-          <span className="text-sm font-bold tracking-wider uppercase">Admin</span>
+          <img src="/assets/blackkin_footer.png" alt="Blackkin" className="h-7 w-auto brightness-0" />
+          {/* <img src="/logo.svg" alt="Blackkin" className="h-6 w-auto" />
+          <span className="text-sm font-bold tracking-wider uppercase">Admin</span> */}
         </div>
       </div>
 

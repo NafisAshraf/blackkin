@@ -962,7 +962,7 @@ function AdminProductsContent() {
                   items={items}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
-                  onReorder={onReorder ?? (() => {})}
+                  onReorder={onReorder ?? (() => { })}
                   onPublish={onPublish}
                   prefix={<AddProductCard href={addHref} />}
                 />
@@ -1120,7 +1120,7 @@ function AdminProductsContent() {
 
       {/* Tabs (URL-based) */}
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-        <TabsList className="flex w-full overflow-x-auto">
+        <TabsList className="flex w-full overflow-x-auto py-1">
           <TabsTrigger value="all" className="flex-1">
             All
           </TabsTrigger>
@@ -1635,9 +1635,9 @@ function AdminProductsContent() {
                                           };
                                         })
                                         .filter(Boolean) as {
-                                        productTagId: Id<"productTags">;
-                                        sortOrder: number;
-                                      }[];
+                                          productTagId: Id<"productTags">;
+                                          sortOrder: number;
+                                        }[];
                                       reorderTag({ items: reorderItems }).catch(
                                         () => toast.error("Failed to reorder"),
                                       );
@@ -1727,10 +1727,10 @@ function AdminProductsContent() {
                         };
                       })
                       .filter(Boolean) as Array<{
-                      membershipId: Id<"discountGroupProducts">;
-                      sortOrder: number;
-                      product: NonNullable<typeof products>[number];
-                    }>;
+                        membershipId: Id<"discountGroupProducts">;
+                        sortOrder: number;
+                        product: NonNullable<typeof products>[number];
+                      }>;
                     const groupProducts = groupProductMembers.map(
                       (member) => member.product,
                     );
@@ -1934,9 +1934,9 @@ function AdminProductsContent() {
                                       };
                                     })
                                     .filter(Boolean) as {
-                                    membershipId: Id<"discountGroupProducts">;
-                                    sortOrder: number;
-                                  }[];
+                                      membershipId: Id<"discountGroupProducts">;
+                                      sortOrder: number;
+                                    }[];
                                   reorderProductsInGroup({
                                     items: reorderItems,
                                   }).catch((e: Error) =>

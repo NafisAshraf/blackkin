@@ -18,11 +18,6 @@ interface ProductCardProps {
     discountEndTime?: number | null;
     averageRating: number;
     totalRatings: number;
-    media: Array<{
-      storageId: string;
-      type: "image" | "video" | "model3d";
-      sortOrder: number;
-    }>;
     tags?: Array<{
       _id: string;
       name: string;
@@ -33,6 +28,7 @@ interface ProductCardProps {
     }>;
   };
   imageUrl?: string | null;
+  colorFirstImageUrls?: Array<{ color: string; url: string | null }>;
   hideTags?: boolean;
 }
 
@@ -125,8 +121,9 @@ function TagBadge({ name }: { name: string }) {
   );
 }
 
-export default function ProductCard({ product, imageUrl, hideTags }: ProductCardProps) {
+export default function ProductCard({ product, imageUrl, colorFirstImageUrls, hideTags }: ProductCardProps) {
   const colorMap = useColorHexMap();
+  const [hoveredColor, setHoveredColor] = useState<string | null>(null);
   const {
     name,
     slug,
@@ -154,15 +151,21 @@ export default function ProductCard({ product, imageUrl, hideTags }: ProductCard
       ).slice(0, 5)
     : [];
 
+  // Image to display: use hovered color's first image if available
+  const displayImageUrl =
+    hoveredColor && colorFirstImageUrls
+      ? (colorFirstImageUrls.find((c) => c.color === hoveredColor)?.url ?? imageUrl)
+      : imageUrl;
+
   return (
     <Link href={`/products/${slug}`} className="block group">
       <div className="product-card-wrapper">
         {/* Image container */}
         <div className="aspect-[4/5] relative overflow-hidden bg-muted">
-          {imageUrl ? (
+          {displayImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={imageUrl}
+              src={displayImageUrl}
               alt={name}
               className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
             />
@@ -226,8 +229,10 @@ export default function ProductCard({ product, imageUrl, hideTags }: ProductCard
                   <span
                     key={color}
                     title={color}
-                    className="h-4 w-4 rounded-full border border-gray-300 flex-shrink-0"
+                    className="h-4 w-4 rounded-full border border-gray-300 flex-shrink-0 cursor-pointer"
                     style={{ backgroundColor: hex }}
+                    onMouseEnter={() => setHoveredColor(color)}
+                    onMouseLeave={() => setHoveredColor(null)}
                   />
                 );
               })}

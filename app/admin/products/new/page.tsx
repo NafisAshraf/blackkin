@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { useUploadFile } from "@convex-dev/r2/react";
@@ -23,30 +23,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ArrowLeft, Loader2, Upload, X, Box, Tag, Search } from "lucide-react";
+import { ArrowLeft, Loader2, Tag, Search } from "lucide-react";
 import {
   VariantMatrix,
   matrixToVariants,
   type StockMatrix,
 } from "@/components/admin/VariantMatrix";
 import {
-  SortableImageGrid,
-  type ImageMediaItem,
-} from "@/components/admin/SortableImageGrid";
+  ColorVariantMediaSection,
+  type ThumbnailItem,
+  type VariantMediaItem,
+} from "@/components/admin/ColorVariantMediaSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ProductStatus = "draft" | "active" | "scheduled" | "archived";
 type SaleDisplayMode = "percentage" | "amount";
-
-interface VideoMediaItem {
-  storageId: string;
-  previewUrl: string | null;
-}
-interface Model3DItem {
-  storageId: string;
-  fileName: string;
-}
 
 const SKU_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -229,15 +221,8 @@ function NewProductForm() {
   }, [sizes]);
 
   // ── Media ───────────────────────────────────────────────────
-  const [videoItem, setVideoItem] = useState<VideoMediaItem | null>(null);
-  const [model3dItem, setModel3dItem] = useState<Model3DItem | null>(null);
-  const [images, setImages] = useState<ImageMediaItem[]>([]);
-  const [uploadingVideo, setUploadingVideo] = useState(false);
-  const [uploadingModel3d, setUploadingModel3d] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const model3dInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(null);
+  const [variantMediaMap, setVariantMediaMap] = useState<Record<string, VariantMediaItem[]>>({});
 
   // ── Tags ─────────────────────────────────────────────────────
   const [selectedTagIds, setSelectedTagIds] = useState<Set<Id<"tags">>>(
@@ -271,83 +256,6 @@ function NewProductForm() {
     }
   }
 
-  async function handleVideoUpload(file: File) {
-    if (!file.type.startsWith("video/")) {
-      toast.error("Only video files are allowed");
-      return;
-    }
-    setUploadingVideo(true);
-    try {
-      const oldKey = videoItem?.storageId;
-      const storageId = await r2Upload(file);
-      if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
-      setVideoItem({ storageId, previewUrl: URL.createObjectURL(file) });
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploadingVideo(false);
-    }
-  }
-
-  function handleRemoveVideo() {
-    if (videoItem) {
-      r2Delete({ key: videoItem.storageId }).catch(() => {});
-      setVideoItem(null);
-    }
-  }
-
-  async function handleModel3DUpload(file: File) {
-    if (!file.name.toLowerCase().endsWith(".glb")) {
-      toast.error("Only .glb files are supported");
-      return;
-    }
-    setUploadingModel3d(true);
-    try {
-      const oldKey = model3dItem?.storageId;
-      const storageId = await r2Upload(file);
-      if (oldKey) r2Delete({ key: oldKey }).catch(() => {});
-      setModel3dItem({ storageId, fileName: file.name });
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploadingModel3d(false);
-    }
-  }
-
-  function handleRemoveModel3D() {
-    if (model3dItem) {
-      r2Delete({ key: model3dItem.storageId }).catch(() => {});
-      setModel3dItem(null);
-    }
-  }
-
-  async function handleImageUpload(file: File) {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Only image files are allowed");
-      return;
-    }
-    setUploadingImage(true);
-    try {
-      const storageId = await r2Upload(file);
-      setImages((prev) => [
-        ...prev,
-        { storageId, previewUrl: URL.createObjectURL(file) },
-      ]);
-    } catch {
-      toast.error("Upload failed");
-    } finally {
-      setUploadingImage(false);
-    }
-  }
-
-  const removeImage = useCallback(
-    (storageId: string) => {
-      setImages((prev) => prev.filter((img) => img.storageId !== storageId));
-      r2Delete({ key: storageId }).catch(() => {});
-    },
-    [r2Delete],
-  );
-
   function toggleTag(tagId: Id<"tags">) {
     setSelectedTagIds((prev) => {
       const next = new Set(prev);
@@ -360,7 +268,6 @@ function NewProductForm() {
   const hasNoConfig =
     (colors !== undefined && colors.length === 0) ||
     (sizes !== undefined && sizes.length === 0);
-  const isUploadingMedia = uploadingVideo || uploadingModel3d || uploadingImage;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -385,10 +292,6 @@ function NewProductForm() {
       toast.error("Configure colors and sizes first in Platform Configuration");
       return;
     }
-    if (isUploadingMedia) {
-      toast.error("Wait for uploads to finish before saving");
-      return;
-    }
     if (selectedColors.length === 0 || selectedSizes.length === 0) {
       toast.error("Select at least one color and one size");
       return;
@@ -409,6 +312,16 @@ function NewProductForm() {
         selectedColors,
         selectedSizes,
       );
+
+      // Build variantMedia from variantMediaMap
+      const variantMedia = selectedColors.map((color) => ({
+        color,
+        media: (variantMediaMap[color] ?? []).map((item, i) => ({
+          storageId: item.storageId,
+          type: item.type,
+          sortOrder: i,
+        })),
+      }));
 
       const productId = await createProduct({
         name: name.trim(),
@@ -436,31 +349,8 @@ function NewProductForm() {
             : undefined,
         metaTitle: metaTitle.trim() || undefined,
         metaDescription: metaDescription.trim() || undefined,
-        media: [
-          ...(videoItem
-            ? [
-                {
-                  storageId: videoItem.storageId,
-                  type: "video" as const,
-                  sortOrder: 0,
-                },
-              ]
-            : []),
-          ...(model3dItem
-            ? [
-                {
-                  storageId: model3dItem.storageId,
-                  type: "model3d" as const,
-                  sortOrder: 1,
-                },
-              ]
-            : []),
-          ...images.map((img, i) => ({
-            storageId: img.storageId,
-            type: "image" as const,
-            sortOrder: 2 + i,
-          })),
-        ],
+        thumbnailStorageId: thumbnailItem?.storageId,
+        variantMedia,
         variants: variants.map((v) => ({
           size: v.size,
           color: v.color,
@@ -620,191 +510,16 @@ function NewProductForm() {
               </CardContent>
             </Card>
 
-            {/* Images */}
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  Images{" "}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    (optional, multiple — drag to reorder)
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) await handleImageUpload(f);
-                    e.target.value = "";
-                  }}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={uploadingImage}
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  {uploadingImage ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading…
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="mr-2 h-4 w-4" />
-                      Upload Image
-                    </>
-                  )}
-                </Button>
-                {images.length > 0 && (
-                  <SortableImageGrid
-                    images={images}
-                    onReorder={setImages}
-                    onRemove={removeImage}
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Video */}
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  Video{" "}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    (optional)
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) await handleVideoUpload(f);
-                    e.target.value = "";
-                  }}
-                />
-                {videoItem ? (
-                  <div className="relative group w-48 h-28 rounded-md overflow-hidden border bg-muted">
-                    {videoItem.previewUrl ? (
-                      <video
-                        src={videoItem.previewUrl}
-                        className="w-full h-full object-cover"
-                        muted
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-                        video
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={handleRemoveVideo}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={uploadingVideo}
-                    onClick={() => videoInputRef.current?.click()}
-                  >
-                    {uploadingVideo ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading…
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Video
-                      </>
-                    )}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 3D Model */}
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  3D Model{" "}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    (optional — GLB format)
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <input
-                  ref={model3dInputRef}
-                  type="file"
-                  accept=".glb"
-                  className="hidden"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) await handleModel3DUpload(f);
-                    e.target.value = "";
-                  }}
-                />
-                {model3dItem ? (
-                  <div className="flex items-center gap-3 p-3 rounded-md border bg-muted">
-                    <Box className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <span className="text-sm truncate flex-1">
-                      {model3dItem.fileName}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={handleRemoveModel3D}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={uploadingModel3d}
-                      onClick={() => model3dInputRef.current?.click()}
-                    >
-                      {uploadingModel3d ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Uploading…
-                        </>
-                      ) : (
-                        <>
-                          <Upload className="mr-2 h-4 w-4" />
-                          Upload 3D Model
-                        </>
-                      )}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      Only .glb files are supported
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            {/* Media */}
+            <ColorVariantMediaSection
+              colors={selectedColors}
+              variantMediaMap={variantMediaMap}
+              onChange={setVariantMediaMap}
+              thumbnailItem={thumbnailItem}
+              onThumbnailChange={setThumbnailItem}
+              onUpload={(file) => r2Upload(file)}
+              onDelete={(key) => r2Delete({ key }).catch(() => {})}
+            />
           </div>
 
           {/* ── Right column (sidebar) ── */}
@@ -1133,7 +848,6 @@ function NewProductForm() {
                 type="submit"
                 disabled={
                   submitting ||
-                  isUploadingMedia ||
                   !!slugTaken ||
                   !!skuTaken ||
                   hasNoConfig
@@ -1145,8 +859,6 @@ function NewProductForm() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Creating…
                   </>
-                ) : isUploadingMedia ? (
-                  "Uploads in progress…"
                 ) : (
                   "Create Product"
                 )}

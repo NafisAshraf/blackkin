@@ -27,6 +27,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Pencil, Trash2, Plus, Check } from "lucide-react";
 import { SortableList } from "@/components/admin/SortableList";
 import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
@@ -332,7 +334,9 @@ function ColorDialog({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="color-hex">Hex Code <span className="text-destructive">*</span></Label>
+          <Label htmlFor="color-hex">
+            Hex Code <span className="text-destructive">*</span>
+          </Label>
           <div className="flex gap-2 items-center">
             <Input
               id="color-hex"
@@ -348,7 +352,9 @@ function ColorDialog({
               />
             )}
           </div>
-          <p className="text-xs text-muted-foreground">Required. Enter a valid hex color code.</p>
+          <p className="text-xs text-muted-foreground">
+            Required. Enter a valid hex color code.
+          </p>
         </div>
         <DialogFooter>
           <Button
@@ -878,14 +884,285 @@ function SearchQueriesTab() {
   );
 }
 
+// ─── BundleDiscountsTab ───────────────────────────────────────
+
+type DiscountType = "percentage" | "flat";
+
+type TierFormState = {
+  isActive: boolean;
+  discountType: DiscountType;
+  discountAmount: string;
+  freeDelivery: boolean;
+};
+
+const DEFAULT_TIER: TierFormState = {
+  isActive: false,
+  discountType: "percentage",
+  discountAmount: "0",
+  freeDelivery: false,
+};
+
+function BundleDiscountsTab() {
+  const config = useQuery(api.bundleDiscount.get);
+  const upsert = useMutation(api.bundleDiscount.upsert);
+  const [saving, setSaving] = useState(false);
+
+  const [globalActive, setGlobalActive] = useState<boolean>(
+    () => config?.isActive ?? false,
+  );
+
+  const [tier2, setTier2] = useState<TierFormState>(() => ({
+    isActive: config?.tier2.isActive ?? false,
+    discountType: config?.tier2.discountType ?? "percentage",
+    discountAmount: String(config?.tier2.discountAmount ?? "0"),
+    freeDelivery: config?.tier2.freeDelivery ?? false,
+  }));
+  const [tier3, setTier3] = useState<TierFormState>(() => ({
+    isActive: config?.tier3.isActive ?? false,
+    discountType: config?.tier3.discountType ?? "percentage",
+    discountAmount: String(config?.tier3.discountAmount ?? "0"),
+    freeDelivery: config?.tier3.freeDelivery ?? false,
+  }));
+
+  // Sync local state when Convex data first loads
+  const [synced, setSynced] = useState(false);
+  if (config !== undefined && !synced) {
+    setSynced(true);
+    if (config) {
+      setGlobalActive(config.isActive);
+      setTier2({
+        isActive: config.tier2.isActive,
+        discountType: config.tier2.discountType,
+        discountAmount: String(config.tier2.discountAmount),
+        freeDelivery: config.tier2.freeDelivery,
+      });
+      setTier3({
+        isActive: config.tier3.isActive,
+        discountType: config.tier3.discountType,
+        discountAmount: String(config.tier3.discountAmount),
+        freeDelivery: config.tier3.freeDelivery,
+      });
+    }
+  }
+
+  async function handleSave() {
+    const t2Amount = parseFloat(tier2.discountAmount);
+    const t3Amount = parseFloat(tier3.discountAmount);
+
+    if (isNaN(t2Amount) || t2Amount < 0) {
+      toast.error("Tier 2 discount amount must be a non-negative number");
+      return;
+    }
+    if (isNaN(t3Amount) || t3Amount < 0) {
+      toast.error("Tier 3 discount amount must be a non-negative number");
+      return;
+    }
+    if (tier2.discountType === "percentage" && t2Amount > 100) {
+      toast.error("Tier 2 percentage cannot exceed 100");
+      return;
+    }
+    if (tier3.discountType === "percentage" && t3Amount > 100) {
+      toast.error("Tier 3 percentage cannot exceed 100");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await upsert({
+        isActive: globalActive,
+        tier2: {
+          isActive: tier2.isActive,
+          discountType: tier2.discountType,
+          discountAmount: t2Amount,
+          freeDelivery: tier2.freeDelivery,
+        },
+        tier3: {
+          isActive: tier3.isActive,
+          discountType: tier3.discountType,
+          discountAmount: t3Amount,
+          freeDelivery: tier3.freeDelivery,
+        },
+      });
+      toast.success("Bundle discount settings saved");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (config === undefined) {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Loading…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 max-w-2xl">
+      {/* Global toggle */}
+      <div className="flex items-center justify-between rounded-lg border p-4">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2">
+            <p className="font-medium">Bundle Discounts</p>
+            <Badge variant={globalActive ? "default" : "secondary"}>
+              {globalActive ? "Active" : "Inactive"}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Automatically discount orders when customers buy 2 or more items.
+          </p>
+        </div>
+        <Switch checked={globalActive} onCheckedChange={setGlobalActive} />
+      </div>
+
+      {!globalActive && (
+        <p className="text-sm text-muted-foreground rounded-md bg-muted px-4 py-3">
+          Bundle discounts are currently disabled. Enable the master toggle
+          above to activate them.
+        </p>
+      )}
+
+      {/* Tier 2 */}
+      <TierSection
+        label="Tier 2 — 2 or more items"
+        description="Applied when the cart contains at least 2 total items (quantity)."
+        tier={tier2}
+        onChange={setTier2}
+        disabled={!globalActive}
+      />
+
+      {/* Tier 3 */}
+      <TierSection
+        label="Tier 3 — 3 or more items"
+        description="Applied when the cart contains at least 3 total items. Overrides Tier 2 when both are active."
+        tier={tier3}
+        onChange={setTier3}
+        disabled={!globalActive}
+      />
+
+      <Button onClick={handleSave} disabled={saving}>
+        {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Save Changes
+      </Button>
+    </div>
+  );
+}
+
+function TierSection({
+  label,
+  description,
+  tier,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  description: string;
+  tier: TierFormState;
+  onChange: (t: TierFormState) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-lg border p-5 space-y-5 ${disabled ? "opacity-50 pointer-events-none" : ""}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5">
+          <p className="font-medium">{label}</p>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+        <Switch
+          checked={tier.isActive}
+          onCheckedChange={(v) => onChange({ ...tier, isActive: v })}
+        />
+      </div>
+
+      <div
+        className={`space-y-4 ${!tier.isActive ? "opacity-50 pointer-events-none" : ""}`}
+      >
+        {/* Discount type */}
+        <div className="space-y-2">
+          <Label>Discount Type</Label>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`${label}-type`}
+                value="percentage"
+                checked={tier.discountType === "percentage"}
+                onChange={() =>
+                  onChange({ ...tier, discountType: "percentage" })
+                }
+              />
+              <span className="text-sm">Percentage (%)</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`${label}-type`}
+                value="flat"
+                checked={tier.discountType === "flat"}
+                onChange={() => onChange({ ...tier, discountType: "flat" })}
+              />
+              <span className="text-sm">Flat Rate (৳)</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Discount amount */}
+        <div className="space-y-1">
+          <Label htmlFor={`${label}-amount`}>
+            Discount Amount{" "}
+            <span className="text-muted-foreground font-normal">
+              {tier.discountType === "percentage" ? "(1–100)" : "(৳ BDT)"}
+            </span>
+          </Label>
+          <div className="relative w-48">
+            <Input
+              id={`${label}-amount`}
+              type="number"
+              min={0}
+              max={tier.discountType === "percentage" ? 100 : undefined}
+              step={tier.discountType === "percentage" ? 1 : 10}
+              value={tier.discountAmount}
+              onChange={(e) =>
+                onChange({ ...tier, discountAmount: e.target.value })
+              }
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
+              {tier.discountType === "percentage" ? "%" : "৳"}
+            </span>
+          </div>
+        </div>
+
+        {/* Free delivery */}
+        <div className="flex items-center justify-between rounded-md border px-4 py-3">
+          <div>
+            <p className="text-sm font-medium">Free Delivery</p>
+            <p className="text-xs text-muted-foreground">
+              Mark orders reaching this tier as eligible for free delivery.
+            </p>
+          </div>
+          <Switch
+            checked={tier.freeDelivery}
+            onCheckedChange={(v) => onChange({ ...tier, freeDelivery: v })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Manage sizes, colors, navbar categories, and predefined search
-          queries.
+          Manage sizes, colors, navbar categories, predefined search queries,
+          and bundle discounts.
         </p>
       </div>
       <Tabs defaultValue="sizes">
@@ -894,6 +1171,7 @@ export default function SettingsPage() {
           <TabsTrigger value="colors">Colors</TabsTrigger>
           <TabsTrigger value="navbar">Navbar</TabsTrigger>
           <TabsTrigger value="search">Search Queries</TabsTrigger>
+          <TabsTrigger value="bundle">Bundle Discounts</TabsTrigger>
         </TabsList>
         <TabsContent value="sizes" className="mt-4">
           <SizesTab />
@@ -906,6 +1184,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="search" className="mt-4">
           <SearchQueriesTab />
+        </TabsContent>
+        <TabsContent value="bundle" className="mt-4">
+          <BundleDiscountsTab />
         </TabsContent>
       </Tabs>
     </div>

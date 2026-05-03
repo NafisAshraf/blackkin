@@ -36,10 +36,12 @@ export const get = query({
         const product = await ctx.db.get(item.productId);
         if (!product) return null;
 
-        const { effectivePrice: discountedPrice } = await getEffectivePrice(ctx, product);
-        const firstImage = product.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const { effectivePrice: discountedPrice } = await getEffectivePrice(
+          ctx,
+          product,
+        );
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
 
         return {
@@ -53,7 +55,7 @@ export const get = query({
           averageRating: product.averageRating,
           totalRatings: product.totalRatings,
         };
-      })
+      }),
     );
 
     return enriched.filter(Boolean) as NonNullable<(typeof enriched)[0]>[];
@@ -69,7 +71,7 @@ export const check = query({
     const item = await ctx.db
       .query("wishlistItems")
       .withIndex("by_userId_and_productId", (q) =>
-        q.eq("userId", user._id).eq("productId", args.productId)
+        q.eq("userId", user._id).eq("productId", args.productId),
       )
       .unique();
     return !!item;
@@ -86,7 +88,7 @@ export const toggle = mutation({
     const existing = await ctx.db
       .query("wishlistItems")
       .withIndex("by_userId_and_productId", (q) =>
-        q.eq("userId", user._id).eq("productId", args.productId)
+        q.eq("userId", user._id).eq("productId", args.productId),
       )
       .unique();
 

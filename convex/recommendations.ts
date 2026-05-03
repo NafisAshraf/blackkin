@@ -3,6 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { requireAdmin } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
+import { resolveColorFirstImageUrls } from "./lib/media";
 import { r2 } from "./r2";
 
 // ─── Validators ─────────────────────────────────────────────
@@ -20,6 +21,9 @@ const recommendedProductCard = v.object({
   averageRating: v.number(),
   totalRatings: v.number(),
   imageUrl: v.union(v.string(), v.null()),
+  colorFirstImageUrls: v.array(
+    v.object({ color: v.string(), url: v.union(v.string(), v.null()) }),
+  ),
   variants: v.optional(v.array(v.object({ color: v.optional(v.string()) }))),
 });
 
@@ -77,9 +81,8 @@ export const getAlsoLike = query({
 
         const { effectivePrice, discountAmount, discountGroupName } =
           await getEffectivePrice(ctx, product);
-        const firstImage = product.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
 
         // Fetch variants for color swatches
@@ -99,6 +102,9 @@ export const getAlsoLike = query({
           averageRating: product.averageRating,
           totalRatings: product.totalRatings,
           imageUrl,
+          colorFirstImageUrls: await resolveColorFirstImageUrls(
+            product.variantMedia ?? [],
+          ),
           variants: variants.map((v) => ({ color: v.color })),
         };
       }),
@@ -166,9 +172,8 @@ export const getAlsoBought = query({
         ctx,
         product,
       );
-      const firstImage = product.media.find((m) => m.type === "image");
-      const imageUrl = firstImage
-        ? await r2.getUrl(firstImage.storageId)
+      const imageUrl = product.thumbnailStorageId
+        ? await r2.getUrl(product.thumbnailStorageId)
         : null;
 
       cards.push({
@@ -285,9 +290,8 @@ export const listAlsoBoughtBySize = query({
           if (!variant) return null;
           const product = await ctx.db.get(variant.productId);
           if (!product) return null;
-          const firstImage = product.media.find((m) => m.type === "image");
-          const imageUrl = firstImage
-            ? await r2.getUrl(firstImage.storageId)
+          const imageUrl = product.thumbnailStorageId
+            ? await r2.getUrl(product.thumbnailStorageId)
             : null;
           return {
             _id: row._id,

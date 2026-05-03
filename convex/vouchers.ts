@@ -11,6 +11,7 @@ import { paginationOptsValidator } from "convex/server";
 import { requireAuth, requirePermission } from "./lib/auth.helpers";
 import { Id } from "./_generated/dataModel";
 import { getEffectivePrice } from "./lib/discounts";
+import { internal } from "./_generated/api";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,13 @@ const voucherPublicReturn = v.object({
   // echo back the voucher meta so the UI can show helpful info
   voucherDescription: v.optional(v.string()),
   expiresAt: v.optional(v.number()),
+  discountType: v.optional(v.union(v.literal("flat"), v.literal("percentage"))),
+  discountPercent: v.optional(v.number()),
+  maxDiscountAmount: v.optional(v.number()),
 });
+
+// 100 years in ms — effectively never expires
+const FAR_FUTURE_MS = Date.now() + 100 * 365 * 24 * 60 * 60 * 1000;
 
 // ─── INTERNAL HELPER: re-usable validation logic ─────────────────────────────
 
@@ -41,6 +48,9 @@ export async function validateVoucherLogic(
   discountAmount: number;
   description: string | undefined;
   expiresAt: number;
+  discountType: "flat" | "percentage";
+  discountPercent: number | undefined;
+  maxDiscountAmount: number | undefined;
 }> {
   const now = Date.now();
 
@@ -98,14 +108,30 @@ export async function validateVoucherLogic(
     }
   }
 
-  // Cap discount to prevent negative cart total
-  const discountAmount = Math.min(voucher.discountAmount, effectiveCartTotal);
+  // Calculate discount amount based on type
+  let discountAmount: number;
+  if (voucher.discountType === "percentage") {
+    // discountAmount field holds the percentage value (1–100)
+    const raw = Math.floor((effectiveCartTotal * voucher.discountAmount) / 100);
+    // Cap at maxDiscountAmount (required for percentage) and cart total
+    const cap = voucher.maxDiscountAmount ?? Infinity;
+    discountAmount = Math.min(raw, cap, effectiveCartTotal);
+  } else {
+    // flat: discountAmount is a fixed BDT amount, capped at cart total
+    discountAmount = Math.min(voucher.discountAmount, effectiveCartTotal);
+  }
 
   return {
     voucherId: voucher._id,
     discountAmount,
     description: voucher.description,
     expiresAt: voucher.expiresAt,
+    discountType: voucher.discountType,
+    discountPercent:
+      voucher.discountType === "percentage"
+        ? voucher.discountAmount
+        : undefined,
+    maxDiscountAmount: voucher.maxDiscountAmount,
   };
 }
 
@@ -174,6 +200,9 @@ export const validateVoucher = query({
         discountAmount: result.discountAmount,
         voucherDescription: result.description,
         expiresAt: result.expiresAt,
+        discountType: result.discountType,
+        discountPercent: result.discountPercent,
+        maxDiscountAmount: result.maxDiscountAmount,
       };
     } catch (e) {
       const msg =
@@ -317,7 +346,10 @@ const voucherAdminObject = v.object({
   _creationTime: v.number(),
   code: v.string(),
   description: v.optional(v.string()),
+  discountType: v.union(v.literal("flat"), v.literal("percentage")),
   discountAmount: v.number(),
+  maxDiscountAmount: v.optional(v.number()),
+  isGlobal: v.boolean(),
   minSpend: v.number(),
   expiresAt: v.number(),
   maxUses: v.number(),
@@ -388,7 +420,10 @@ export const adminCreate = mutation({
   args: {
     code: v.string(),
     description: v.optional(v.string()),
+    discountType: v.union(v.literal("flat"), v.literal("percentage")),
     discountAmount: v.number(),
+    maxDiscountAmount: v.optional(v.number()),
+    isGlobal: v.boolean(),
     minSpend: v.number(),
     expiresAt: v.number(),
     maxUses: v.number(),
@@ -401,8 +436,25 @@ export const adminCreate = mutation({
 
     const code = args.code.toUpperCase().trim();
     if (!code) throw new ConvexError("Voucher code cannot be empty.");
-    if (args.discountAmount <= 0)
-      throw new ConvexError("Discount amount must be positive.");
+
+    // WELCOME is a reserved system voucher — cannot be created manually
+    if (code === "WELCOME")
+      throw new ConvexError(
+        "WELCOME is a reserved system voucher. Configure it from the Welcome Voucher settings card.",
+      );
+
+    if (args.discountType === "flat") {
+      if (args.discountAmount <= 0)
+        throw new ConvexError("Discount amount must be positive.");
+    } else {
+      // percentage
+      if (args.discountAmount <= 0 || args.discountAmount > 100)
+        throw new ConvexError("Percentage discount must be between 1 and 100.");
+      if (!args.maxDiscountAmount || args.maxDiscountAmount <= 0)
+        throw new ConvexError(
+          "A maximum discount amount (BDT cap) is required for percentage vouchers.",
+        );
+    }
     if (args.minSpend < 0)
       throw new ConvexError("Minimum spend cannot be negative.");
     if (args.maxUses < 0) throw new ConvexError("Max uses cannot be negative.");
@@ -420,7 +472,11 @@ export const adminCreate = mutation({
     return await ctx.db.insert("vouchers", {
       code,
       description: args.description,
+      discountType: args.discountType,
       discountAmount: args.discountAmount,
+      maxDiscountAmount:
+        args.discountType === "percentage" ? args.maxDiscountAmount : undefined,
+      isGlobal: args.isGlobal,
       minSpend: args.minSpend,
       expiresAt: args.expiresAt,
       maxUses: args.maxUses,
@@ -435,7 +491,10 @@ export const adminUpdate = mutation({
   args: {
     voucherId: v.id("vouchers"),
     description: v.optional(v.string()),
+    discountType: v.union(v.literal("flat"), v.literal("percentage")),
     discountAmount: v.number(),
+    maxDiscountAmount: v.optional(v.number()),
+    isGlobal: v.boolean(),
     minSpend: v.number(),
     expiresAt: v.number(),
     maxUses: v.number(),
@@ -447,14 +506,35 @@ export const adminUpdate = mutation({
 
     const voucher = await ctx.db.get(args.voucherId);
     if (!voucher) throw new ConvexError("Voucher not found.");
-    if (args.discountAmount <= 0)
-      throw new ConvexError("Discount amount must be positive.");
+
+    // WELCOME: lock discountType=percentage, isGlobal=true, maxUsesPerCustomer=1
+    if (voucher.code === "WELCOME") {
+      throw new ConvexError(
+        "Use the Welcome Voucher settings to configure the WELCOME voucher.",
+      );
+    }
+
+    if (args.discountType === "flat") {
+      if (args.discountAmount <= 0)
+        throw new ConvexError("Discount amount must be positive.");
+    } else {
+      if (args.discountAmount <= 0 || args.discountAmount > 100)
+        throw new ConvexError("Percentage discount must be between 1 and 100.");
+      if (!args.maxDiscountAmount || args.maxDiscountAmount <= 0)
+        throw new ConvexError(
+          "A maximum discount amount (BDT cap) is required for percentage vouchers.",
+        );
+    }
     if (args.minSpend < 0)
       throw new ConvexError("Minimum spend cannot be negative.");
 
     await ctx.db.patch(args.voucherId, {
       description: args.description,
+      discountType: args.discountType,
       discountAmount: args.discountAmount,
+      maxDiscountAmount:
+        args.discountType === "percentage" ? args.maxDiscountAmount : undefined,
+      isGlobal: args.isGlobal,
       minSpend: args.minSpend,
       expiresAt: args.expiresAt,
       maxUses: args.maxUses,
@@ -483,6 +563,10 @@ export const adminDelete = mutation({
     await requirePermission(ctx, "vouchers");
     const voucher = await ctx.db.get(args.voucherId);
     if (!voucher) throw new ConvexError("Voucher not found.");
+    if (voucher.code === "WELCOME")
+      throw new ConvexError(
+        "The WELCOME system voucher cannot be deleted. You can deactivate it instead.",
+      );
     if (voucher.usedCount > 0) {
       throw new ConvexError(
         "Cannot delete a voucher that has been used. Deactivate it instead.",
@@ -490,5 +574,165 @@ export const adminDelete = mutation({
     }
     await ctx.db.delete(args.voucherId);
     return null;
+  },
+});
+
+// ─── INTERNAL: seed the WELCOME voucher if it doesn't exist ──────────────────
+
+export const ensureWelcomeVoucher = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const existing = await ctx.db
+      .query("vouchers")
+      .withIndex("by_code", (q) => q.eq("code", "WELCOME"))
+      .unique();
+    if (existing) return null; // already exists, nothing to do
+
+    await ctx.db.insert("vouchers", {
+      code: "WELCOME",
+      description: "Welcome gift for new customers — use it once!",
+      discountType: "percentage",
+      discountAmount: 10, // 10%
+      maxDiscountAmount: 100, // max ৳100 off
+      isGlobal: true,
+      minSpend: 0,
+      expiresAt: FAR_FUTURE_MS,
+      maxUses: 0, // unlimited global uses
+      usedCount: 0,
+      maxUsesPerCustomer: 1, // each user can use it once
+      isActive: true,
+    });
+    return null;
+  },
+});
+
+// ─── ADMIN: update WELCOME voucher config ────────────────────────────────────
+
+export const adminUpdateWelcomeConfig = mutation({
+  args: {
+    discountAmount: v.number(), // percentage value 1–100
+    maxDiscountAmount: v.number(), // BDT cap
+    minSpend: v.number(),
+    isActive: v.boolean(),
+    description: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requirePermission(ctx, "vouchers");
+
+    if (args.discountAmount <= 0 || args.discountAmount > 100)
+      throw new ConvexError("Percentage must be between 1 and 100.");
+    if (args.maxDiscountAmount <= 0)
+      throw new ConvexError("Max discount amount must be positive.");
+    if (args.minSpend < 0)
+      throw new ConvexError("Minimum spend cannot be negative.");
+
+    let existing = await ctx.db
+      .query("vouchers")
+      .withIndex("by_code", (q) => q.eq("code", "WELCOME"))
+      .unique();
+
+    if (!existing) {
+      // Seed it first, then patch
+      await ctx.db.insert("vouchers", {
+        code: "WELCOME",
+        description:
+          args.description ?? "Welcome gift for new customers — use it once!",
+        discountType: "percentage",
+        discountAmount: args.discountAmount,
+        maxDiscountAmount: args.maxDiscountAmount,
+        isGlobal: true,
+        minSpend: args.minSpend,
+        expiresAt: FAR_FUTURE_MS,
+        maxUses: 0,
+        usedCount: 0,
+        maxUsesPerCustomer: 1,
+        isActive: args.isActive,
+      });
+      return null;
+    }
+
+    await ctx.db.patch(existing._id, {
+      discountAmount: args.discountAmount,
+      maxDiscountAmount: args.maxDiscountAmount,
+      minSpend: args.minSpend,
+      isActive: args.isActive,
+      description: args.description,
+      // locked fields — never changed:
+      discountType: "percentage",
+      isGlobal: true,
+      maxUsesPerCustomer: 1,
+    });
+    return null;
+  },
+});
+
+// ─── PUBLIC: get global vouchers for customer profile ────────────────────────
+
+export const getGlobalVouchers = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("vouchers"),
+      code: v.string(),
+      description: v.optional(v.string()),
+      discountType: v.union(v.literal("flat"), v.literal("percentage")),
+      discountAmount: v.number(),
+      maxDiscountAmount: v.optional(v.number()),
+      minSpend: v.number(),
+      expiresAt: v.number(),
+      maxUsesPerCustomer: v.number(),
+      userUsageCount: v.number(), // how many times THIS user has used it (non-cancelled)
+    }),
+  ),
+  handler: async (ctx) => {
+    let userId: Id<"users"> | null = null;
+    try {
+      const user = await requireAuth(ctx);
+      userId = user._id;
+    } catch {
+      // Not authenticated — still show vouchers but no usage count
+    }
+
+    const now = Date.now();
+    const vouchers = await ctx.db
+      .query("vouchers")
+      .withIndex("by_isActive", (q) => q.eq("isActive", true))
+      .collect();
+
+    const globalVouchers = vouchers.filter(
+      (v) => v.isGlobal && v.expiresAt > now,
+    );
+
+    const result = await Promise.all(
+      globalVouchers.map(async (voucher) => {
+        let userUsageCount = 0;
+        if (userId) {
+          const usages = await ctx.db
+            .query("voucherUsages")
+            .withIndex("by_voucherId_and_userId", (q) =>
+              q.eq("voucherId", voucher._id).eq("userId", userId!),
+            )
+            .filter((q) => q.neq(q.field("status"), "cancelled"))
+            .collect();
+          userUsageCount = usages.length;
+        }
+        return {
+          _id: voucher._id,
+          code: voucher.code,
+          description: voucher.description,
+          discountType: voucher.discountType,
+          discountAmount: voucher.discountAmount,
+          maxDiscountAmount: voucher.maxDiscountAmount,
+          minSpend: voucher.minSpend,
+          expiresAt: voucher.expiresAt,
+          maxUsesPerCustomer: voucher.maxUsesPerCustomer,
+          userUsageCount,
+        };
+      }),
+    );
+
+    return result;
   },
 });

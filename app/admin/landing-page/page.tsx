@@ -45,9 +45,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SortableList } from "@/components/admin/SortableList";
+import { CarouselEditor } from "./CarouselEditor";
 
 // ─── Image slot metadata ────────────────────────────────────────────────────
-type ImageSlot = "hero" | "splitImage" | "tech1" | "tech2" | "tech3";
+type ImageSlot = "hero" | "splitImage";
 
 const IMAGE_SLOTS: { slot: ImageSlot; label: string; description: string }[] = [
   {
@@ -59,21 +60,6 @@ const IMAGE_SLOTS: { slot: ImageSlot; label: string; description: string }[] = [
     slot: "splitImage",
     label: "Split Section Image",
     description: "Right side of the dark/image split section",
-  },
-  {
-    slot: "tech1",
-    label: "Technology Image 1",
-    description: "Graphene Antibacterial Inner Crotch",
-  },
-  {
-    slot: "tech2",
-    label: "Technology Image 2",
-    description: "Dynamic Stretch",
-  },
-  {
-    slot: "tech3",
-    label: "Technology Image 3",
-    description: "Wormwood Essential Oil Care",
   },
 ];
 
@@ -657,17 +643,24 @@ export default function LandingPageCmsPage() {
     null,
   );
 
-  // Build a map of slot → current URL for easy lookup
+  // Build a map of slot → current URL and type for easy lookup
   const imageMap = Object.fromEntries(
-    (imageRows ?? []).map((r) => [r.slot, r.url]),
-  ) as Partial<Record<ImageSlot, string | null>>;
+    (imageRows ?? []).map((r) => [r.slot, { url: r.url, type: r.type }]),
+  ) as Partial<
+    Record<ImageSlot, { url: string | null; type: "image" | "video" }>
+  >;
 
   // ── Image upload handler ──────────────────────────────────────────────────
   async function handleFileChange(slot: ImageSlot, file: File) {
     setUploading((prev) => ({ ...prev, [slot]: true }));
     try {
+      const isVideo = file.type.startsWith("video/");
       const key = await r2Upload(file);
-      await updateImage({ slot, storageId: key });
+      await updateImage({
+        slot,
+        storageId: key,
+        type: isVideo ? "video" : "image",
+      });
       toast.success(
         `${IMAGE_SLOTS.find((s) => s.slot === slot)?.label} updated`,
       );
@@ -753,16 +746,27 @@ export default function LandingPageCmsPage() {
               </p>
               {(() => {
                 const { slot, label } = IMAGE_SLOTS[0];
-                const currentUrl = imageMap[slot];
+                const currentUrl = imageMap[slot]?.url;
                 const isUploading = uploading[slot] ?? false;
                 return (
                   <div className="relative w-full aspect-video overflow-hidden bg-black">
-                    {currentUrl ? (
-                      <img
-                        src={currentUrl}
-                        alt={label}
-                        className="w-full h-full object-cover object-center"
-                      />
+                    {imageMap[slot]?.url ? (
+                      imageMap[slot]?.type === "video" ? (
+                        <video
+                          src={imageMap[slot]?.url ?? ""}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover object-center"
+                        />
+                      ) : (
+                        <img
+                          src={imageMap[slot]?.url ?? ""}
+                          alt={label}
+                          className="w-full h-full object-cover object-center"
+                        />
+                      )
                     ) : (
                       <div className="w-full h-full bg-neutral-900 flex items-center justify-center">
                         <Upload className="h-8 w-8 text-white/20" />
@@ -806,7 +810,7 @@ export default function LandingPageCmsPage() {
                     </div>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/*,video/*"
                       className="hidden"
                       ref={(el) => {
                         fileInputRefs.current[slot] = el;
@@ -828,7 +832,7 @@ export default function LandingPageCmsPage() {
               </p>
               {(() => {
                 const { slot, label } = IMAGE_SLOTS[1];
-                const currentUrl = imageMap[slot];
+                const currentUrl = imageMap[slot]?.url;
                 const isUploading = uploading[slot] ?? false;
                 return (
                   <div className="grid grid-cols-2 w-full h-48 md:h-64">
@@ -845,12 +849,23 @@ export default function LandingPageCmsPage() {
                     </div>
                     {/* Right: portrait image upload */}
                     <div className="relative overflow-hidden bg-neutral-800">
-                      {currentUrl ? (
-                        <img
-                          src={currentUrl}
-                          alt={label}
-                          className="w-full h-full object-cover object-center"
-                        />
+                      {imageMap[slot]?.url ? (
+                        imageMap[slot]?.type === "video" ? (
+                          <video
+                            src={imageMap[slot]?.url ?? ""}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover object-center"
+                          />
+                        ) : (
+                          <img
+                            src={imageMap[slot]?.url ?? ""}
+                            alt={label}
+                            className="w-full h-full object-cover object-center"
+                          />
+                        )
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Upload className="h-8 w-8 text-white/20" />
@@ -880,7 +895,7 @@ export default function LandingPageCmsPage() {
                       </div>
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/*,video/*"
                         className="hidden"
                         ref={(el) => {
                           fileInputRefs.current[slot] = el;
@@ -896,84 +911,12 @@ export default function LandingPageCmsPage() {
               })()}
             </div>
 
-            {/* ── Row D: Technology Section (3-col, 3:4 portrait grid) ── */}
+            {/* ── Row D: Technology Carousel ── */}
             <div className="space-y-2">
               <p className="text-[10px] tracking-[0.3em] uppercase text-muted-foreground">
-                Premium Comfort Technology — 3 Images
+                Premium Comfort Technology Carousel
               </p>
-              <div className="grid grid-cols-3 gap-0 border border-border">
-                {IMAGE_SLOTS.slice(2).map(({ slot, label, description }) => {
-                  const currentUrl = imageMap[slot];
-                  const isUploading = uploading[slot] ?? false;
-                  return (
-                    <div
-                      key={slot}
-                      className="flex flex-col border-r border-border last:border-r-0"
-                    >
-                      {/* Portrait 3:4 image — matches actual tech section grid */}
-                      <div className="relative aspect-3/4 overflow-hidden bg-neutral-100">
-                        {currentUrl ? (
-                          <img
-                            src={currentUrl}
-                            alt={label}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-neutral-100">
-                            <Upload className="h-6 w-6 text-muted-foreground/30" />
-                          </div>
-                        )}
-                        {/* Icon-only upload badge */}
-                        <button
-                          className="absolute top-2 right-2 z-10 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white w-6 h-6 transition-colors disabled:opacity-50"
-                          disabled={isUploading}
-                          onClick={() => fileInputRefs.current[slot]?.click()}
-                          title={currentUrl ? "Replace image" : "Upload image"}
-                        >
-                          {isUploading ? (
-                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                          ) : (
-                            <Upload className="h-2.5 w-2.5" />
-                          )}
-                        </button>
-                        {isUploading && (
-                          <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                          </div>
-                        )}
-                      </div>
-                      {/* Text below — mirrors actual tech section card layout */}
-                      <div className="py-3 px-3 bg-background text-center">
-                        <p className="text-xs text-foreground tracking-wide leading-snug">
-                          {label}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                          {description}
-                        </p>
-                        <button
-                          className="mt-2 text-[9px] tracking-[0.15em] uppercase text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                          disabled={isUploading}
-                          onClick={() => fileInputRefs.current[slot]?.click()}
-                        >
-                          {currentUrl ? "Replace Image" : "Upload Image"}
-                        </button>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        ref={(el) => {
-                          fileInputRefs.current[slot] = el;
-                        }}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleFileChange(slot, file);
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+              <CarouselEditor />
             </div>
           </div>
         )}

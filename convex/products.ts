@@ -6,6 +6,7 @@ import { aggregateProducts } from "./lib/aggregates";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { Doc, Id } from "./_generated/dataModel";
 import { r2 } from "./r2";
+import { resolveColorFirstImageUrls } from "./lib/media";
 
 // ─── SKU HELPERS ───────────────────────────────────────────
 
@@ -55,10 +56,15 @@ async function generateUniqueSku(
 
 // ─── SHARED VALIDATORS ─────────────────────────────────────
 
-const mediaItemValidator = v.object({
+const variantMediaSingleItemValidator = v.object({
   storageId: v.string(),
   type: v.union(v.literal("image"), v.literal("video"), v.literal("model3d")),
   sortOrder: v.number(),
+});
+
+const variantMediaEntryValidator = v.object({
+  color: v.string(),
+  media: v.array(variantMediaSingleItemValidator),
 });
 
 const variantValidator = v.object({
@@ -116,7 +122,11 @@ const productWithPricingValidator = v.object({
   discountEndTime: v.union(v.number(), v.null()),
   totalRatings: v.number(),
   averageRating: v.number(),
-  media: v.array(mediaItemValidator),
+  thumbnailStorageId: v.optional(v.string()),
+  variantMedia: v.array(variantMediaEntryValidator),
+  colorFirstImageUrls: v.array(
+    v.object({ color: v.string(), url: v.union(v.string(), v.null()) }),
+  ),
   tags: v.array(
     v.object({ _id: v.id("tags"), name: v.string(), slug: v.string() }),
   ),
@@ -159,6 +169,10 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
     discountEndTime,
     tags,
     variants,
+    // colorFirstImageUrls is added by listing queries that resolve URLs;
+    // enrichProduct itself doesn't do R2 calls — populate as empty here for
+    // queries that don't need it (getBySlug, getById, etc.)
+    colorFirstImageUrls: [] as Array<{ color: string; url: string | null }>,
   };
 }
 
@@ -169,6 +183,7 @@ function normalizeVariantValue(value?: string) {
 function variantCombinationKey(variant: { size: string; color?: string }) {
   return `${normalizeVariantValue(variant.size)}::${normalizeVariantValue(variant.color)}`;
 }
+
 
 function assertUniqueVariantCombinations(
   variants: Array<{ size: string; color?: string }>,
@@ -493,9 +508,8 @@ export const listAllAdminFlat = query({
           .withIndex("by_productId", (q) => q.eq("productId", p._id))
           .take(50);
 
-        const firstImage = p.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = p.thumbnailStorageId
+          ? await r2.getUrl(p.thumbnailStorageId)
           : null;
 
         return {
@@ -567,7 +581,8 @@ export const create = mutation({
     metaTitle: v.optional(v.string()),
     metaDescription: v.optional(v.string()),
     // Media & Variants
-    media: v.array(mediaItemValidator),
+    thumbnailStorageId: v.optional(v.string()),
+    variantMedia: v.array(variantMediaEntryValidator),
     variants: v.array(
       v.object({
         size: v.string(),
@@ -632,6 +647,8 @@ export const create = mutation({
     }
 
     const { variants, sku: _skuArg, ...productData } = args;
+    // Ensure variantMedia defaults to empty array if not provided
+    if (!productData.variantMedia) (productData as any).variantMedia = [];
 
     const productId = await ctx.db.insert("products", {
       ...productData,
@@ -690,7 +707,8 @@ export const update = mutation({
     metaTitle: v.optional(v.string()),
     metaDescription: v.optional(v.string()),
     // Media
-    media: v.optional(v.array(mediaItemValidator)),
+    thumbnailStorageId: v.optional(v.union(v.string(), v.null())),
+    variantMedia: v.optional(v.array(variantMediaEntryValidator)),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -710,14 +728,35 @@ export const update = mutation({
         throw new ConvexError("Slug already in use");
     }
 
-    // Delete R2 objects for any media items that were removed
-    if (updates.media !== undefined) {
+    // Delete R2 objects for any media that were removed
+    const isMediaUpdate =
+      updates.thumbnailStorageId !== undefined ||
+      updates.variantMedia !== undefined;
+    if (isMediaUpdate) {
       const product = await ctx.db.get(id);
       if (product) {
-        const newKeys = new Set(updates.media.map((m) => m.storageId));
-        const removedKeys = product.media
-          .map((m) => m.storageId)
-          .filter((key) => !newKeys.has(key));
+        // Collect all old storageIds
+        const oldKeys = new Set<string>();
+        if (product.thumbnailStorageId) oldKeys.add(product.thumbnailStorageId);
+        for (const entry of product.variantMedia ?? []) {
+          for (const item of entry.media) oldKeys.add(item.storageId);
+        }
+        // Collect all new storageIds
+        const newKeys = new Set<string>();
+        if (updates.thumbnailStorageId && updates.thumbnailStorageId !== null) {
+          newKeys.add(updates.thumbnailStorageId);
+        }
+        if (updates.variantMedia !== undefined) {
+          for (const entry of updates.variantMedia) {
+            for (const item of entry.media) newKeys.add(item.storageId);
+          }
+        } else {
+          // variantMedia not being updated — preserve all existing
+          for (const entry of product.variantMedia ?? []) {
+            for (const item of entry.media) newKeys.add(item.storageId);
+          }
+        }
+        const removedKeys = [...oldKeys].filter((k) => !newKeys.has(k));
         await Promise.all(removedKeys.map((key) => r2.deleteObject(ctx, key)));
       }
     }
@@ -753,10 +792,19 @@ export const update = mutation({
         topCategory.length > 0 ? topCategory[0].categorySortOrder - 1 : 0;
     }
 
+    // Convert null thumbnailStorageId to undefined (explicit removal)
+    let explicitRemoveThumbnail = false;
+    if (updates.thumbnailStorageId === null) {
+      (updates as any).thumbnailStorageId = undefined;
+      explicitRemoveThumbnail = true;
+    }
+
     const clean = Object.fromEntries(
       Object.entries(updates).filter(
         ([k, v]) =>
-          v !== undefined || (k === "categoryId" && explicitRemoveCategory),
+          v !== undefined ||
+          (k === "categoryId" && explicitRemoveCategory) ||
+          (k === "thumbnailStorageId" && explicitRemoveThumbnail),
       ),
     );
 
@@ -1152,9 +1200,8 @@ export const searchSuggestions = query({
           ctx,
           product,
         );
-        const firstImage = product.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
           : null;
         return {
           _id: product._id,
@@ -1220,11 +1267,13 @@ export const searchSSR = query({
     const enriched = await Promise.all(
       page.map(async (p) => {
         const ep = await enrichProduct(ctx, p);
-        const firstImage = p.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = p.thumbnailStorageId
+          ? await r2.getUrl(p.thumbnailStorageId)
           : null;
-        return { ...ep, imageUrl };
+        const colorFirstImageUrls = await resolveColorFirstImageUrls(
+          p.variantMedia ?? [],
+        );
+        return { ...ep, imageUrl, colorFirstImageUrls };
       }),
     );
 
@@ -1314,11 +1363,13 @@ export const listFilteredSSR = query({
     const enriched = await Promise.all(
       products.map(async (p) => {
         const ep = await enrichProduct(ctx, p);
-        const firstImage = p.media.find((m) => m.type === "image");
-        const imageUrl = firstImage
-          ? await r2.getUrl(firstImage.storageId)
+        const imageUrl = p.thumbnailStorageId
+          ? await r2.getUrl(p.thumbnailStorageId)
           : null;
-        return { ...ep, imageUrl };
+        const colorFirstImageUrls = await resolveColorFirstImageUrls(
+          p.variantMedia ?? [],
+        );
+        return { ...ep, imageUrl, colorFirstImageUrls };
       }),
     );
 
@@ -1351,10 +1402,14 @@ export const remove = mutation({
     if (!product) return null;
 
     // Delete all R2 media objects for this product
-    if (product.media.length > 0) {
-      await Promise.all(
-        product.media.map((m) => r2.deleteObject(ctx, m.storageId)),
-      );
+    const allStorageIds: string[] = [];
+    if (product.thumbnailStorageId)
+      allStorageIds.push(product.thumbnailStorageId);
+    for (const entry of product.variantMedia ?? []) {
+      for (const item of entry.media) allStorageIds.push(item.storageId);
+    }
+    if (allStorageIds.length > 0) {
+      await Promise.all(allStorageIds.map((key) => r2.deleteObject(ctx, key)));
     }
 
     // Collect variant IDs before deletion (needed for rec cleanup)

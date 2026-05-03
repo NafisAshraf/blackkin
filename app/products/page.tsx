@@ -61,13 +61,13 @@ export default async function ProductsPage({ searchParams }: PageProps) {
       ...(maxPrice !== undefined && !isNaN(maxPrice) ? { maxPrice } : {}),
       ...(sortBy
         ? {
-            sortBy: sortBy as
-              | "recommended"
-              | "price_asc"
-              | "price_desc"
-              | "newest"
-              | "best_selling",
-          }
+          sortBy: sortBy as
+            | "recommended"
+            | "price_asc"
+            | "price_desc"
+            | "newest"
+            | "best_selling",
+        }
         : {}),
       limit: LIMIT,
     });
@@ -85,7 +85,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="w-full px-6 lg:px-10 py-8">
+      <main className="w-full max-w-[1500px] mx-auto px-6 lg:px-10 pt-12 pb-48">
         <Suspense
           fallback={
             <div className="flex items-center justify-center py-32">

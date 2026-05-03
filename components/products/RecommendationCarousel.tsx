@@ -18,6 +18,7 @@ interface RecProduct {
   averageRating: number;
   totalRatings: number;
   imageUrl: string | null;
+  colorFirstImageUrls: Array<{ color: string; url: string | null }>;
   tags?: Array<{ _id: string; name: string; slug: string }>;
   variants?: Array<{ color?: string }>;
 }
@@ -90,11 +91,11 @@ export default function RecommendationCarousel({
                   discountEndTime: product.discountEndTime ?? null,
                   averageRating: product.averageRating,
                   totalRatings: product.totalRatings,
-                  media: [],
                   tags: product.tags,
                   variants: product.variants,
                 }}
                 imageUrl={product.imageUrl}
+                colorFirstImageUrls={product.colorFirstImageUrls}
               />
             </div>
           ))}
