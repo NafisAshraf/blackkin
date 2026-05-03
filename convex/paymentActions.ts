@@ -140,7 +140,7 @@ export const initiate = action({
       });
       throw new ConvexError(
         apiResponse?.failedreason ??
-          "Payment gateway unavailable. Please try again.",
+        "Payment gateway unavailable. Please try again.",
       );
     }
 
@@ -223,7 +223,7 @@ export const retryPayment = action({
     if (apiResponse?.status !== "SUCCESS" || !apiResponse?.GatewayPageURL) {
       throw new ConvexError(
         apiResponse?.failedreason ??
-          "Payment gateway unavailable. Please try again.",
+        "Payment gateway unavailable. Please try again.",
       );
     }
 
@@ -319,7 +319,7 @@ export const generateAdminPaymentLink = action({
     if (apiResponse?.status !== "SUCCESS" || !apiResponse?.GatewayPageURL) {
       throw new ConvexError(
         apiResponse?.failedreason ??
-          "Payment gateway unavailable. Please try again.",
+        "Payment gateway unavailable. Please try again.",
       );
     }
 
