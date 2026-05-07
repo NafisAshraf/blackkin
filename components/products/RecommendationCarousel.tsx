@@ -18,6 +18,7 @@ interface RecProduct {
   averageRating: number;
   totalRatings: number;
   imageUrl: string | null;
+  hoverImageUrl?: string | null;
   colorFirstImageUrls: Array<{ color: string; url: string | null }>;
   tags?: Array<{ _id: string; name: string; slug: string }>;
   variants?: Array<{ color?: string }>;
@@ -95,6 +96,7 @@ export default function RecommendationCarousel({
                   variants: product.variants,
                 }}
                 imageUrl={product.imageUrl}
+                hoverImageUrl={product.hoverImageUrl}
                 colorFirstImageUrls={product.colorFirstImageUrls}
               />
             </div>

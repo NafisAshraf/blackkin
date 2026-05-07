@@ -62,6 +62,10 @@ import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
 import { ProductPicker } from "@/components/admin/ProductPicker";
 import { SortableList } from "@/components/admin/SortableList";
 import {
+  ProductPickerDialog,
+  VariantPickerDialog,
+} from "@/components/admin/ProductPickerDialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -141,129 +145,7 @@ function TableSkeleton() {
   );
 }
 
-// ─── VariantPickerDialog ──────────────────────────────────────────────────────
-
-interface VariantPickerDialogProps {
-  open: boolean;
-  onClose: () => void;
-  forSize: string;
-  onAdd: (variantId: Id<"productVariants">) => Promise<void>;
-}
-
-function VariantPickerDialog({
-  open,
-  onClose,
-  forSize,
-  onAdd,
-}: VariantPickerDialogProps) {
-  const [selectedProduct, setSelectedProduct] = useState<{
-    id: Id<"products">;
-    name: string;
-  } | null>(null);
-  const [adding, setAdding] = useState<string | null>(null);
-
-  const variants = useQuery(
-    api.recommendations.getVariantsForPicker,
-    selectedProduct ? { productId: selectedProduct.id, size: forSize } : "skip",
-  );
-
-  async function handleAdd(variantId: Id<"productVariants">) {
-    setAdding(variantId);
-    try {
-      await onAdd(variantId);
-      toast.success("Variant added");
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to add");
-    } finally {
-      setAdding(null);
-    }
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) {
-          onClose();
-          setSelectedProduct(null);
-        }
-      }}
-    >
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Add Variant — Size {forSize}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          {!selectedProduct ? (
-            <div className="space-y-2">
-              <Label className="text-sm">Search Product</Label>
-              <ProductPicker
-                onSelect={(p) => setSelectedProduct(p)}
-                placeholder="Search products…"
-              />
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{selectedProduct.name}</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedProduct(null)}
-                  className="h-7 text-xs"
-                >
-                  Change
-                </Button>
-              </div>
-              {variants === undefined ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
-              ) : variants.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  No {forSize} variants for this product.
-                </p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {variants.map((v) => (
-                    <div
-                      key={v._id}
-                      className="flex items-center justify-between p-2.5 border rounded-md"
-                    >
-                      <div>
-                        <p className="text-sm">{v.color ?? "No color"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {v.stock} in stock
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={
-                          adding === v._id || v.stock === 0 || v.alreadyAdded
-                        }
-                        onClick={() => handleAdd(v._id)}
-                        className="h-7 text-xs"
-                      >
-                        {adding === v._id ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : v.alreadyAdded ? (
-                          "Added"
-                        ) : (
-                          "Add"
-                        )}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
+// ─── VariantPickerDialog is now in components/admin/ProductPickerDialog.tsx ───
 
 // ─── AlsoBoughtAdminSection ───────────────────────────────────────────────────
 
@@ -409,8 +291,11 @@ function AlsoBoughtAdminSection() {
         <VariantPickerDialog
           open={true}
           forSize={pickerSize}
-          onClose={() => setPickerSize(null)}
-          onAdd={(variantId) => handleAddVariant(variantId, pickerSize)}
+          onOpenChange={(v) => { if (!v) setPickerSize(null); }}
+          onAddVariant={async (variantId) => {
+            await handleAddVariant(variantId, pickerSize);
+            toast.success("Variant added");
+          }}
         />
       )}
     </div>
@@ -433,50 +318,37 @@ function RecSection({
   const addRec = useMutation(api.recommendations.add);
   const removeRec = useMutation(api.recommendations.remove);
   const reorder = useMutation(api.recommendations.reorder);
-  const [selectedProduct, setSelectedProduct] = useState<{
-    id: Id<"products">;
-    name: string;
-  } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [forSize, setForSize] = useState("_all");
-  const [adding, setAdding] = useState(false);
 
-  async function handleAdd() {
-    if (!selectedProduct) {
-      toast.error("Select a product first");
-      return;
-    }
-    setAdding(true);
+  const alreadySelectedIds = new Set(
+    (recs ?? [])
+      .map((r) => r.recommendedProductId)
+      .filter(Boolean) as string[],
+  );
+
+  async function handleSelectProduct(product: { _id: Id<"products">; name: string }) {
     try {
       await addRec({
         type,
-        recommendedProductId: selectedProduct.id,
+        recommendedProductId: product._id,
         forSize: showForSize && forSize !== "_all" ? forSize : undefined,
       });
-      toast.success(`Added "${selectedProduct.name}"`);
-      setSelectedProduct(null);
+      toast.success(`Added "${product.name}"`);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to add");
-    } finally {
-      setAdding(false);
     }
   }
 
   return (
     <div className="space-y-3">
-      {/* Add form */}
-      <div className="flex gap-2 items-end flex-wrap p-3 rounded-md border bg-muted/30">
-        <div className="flex-1 min-w-48">
-          <Label className="text-xs mb-1 block">Add Product</Label>
-          <ProductPicker
-            onSelect={setSelectedProduct}
-            placeholder="Search products…"
-          />
-        </div>
+      {/* Controls row */}
+      <div className="flex gap-2 items-center flex-wrap">
         {showForSize && (
-          <div>
-            <Label className="text-xs mb-1 block">For Size</Label>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">For Size</Label>
             <Select value={forSize} onValueChange={setForSize}>
-              <SelectTrigger className="w-28 h-9 text-xs">
+              <SelectTrigger className="w-28 h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -492,13 +364,24 @@ function RecSection({
         )}
         <Button
           size="sm"
-          onClick={handleAdd}
-          disabled={adding || !selectedProduct}
+          variant="outline"
+          onClick={() => setPickerOpen(true)}
+          className="gap-1.5"
         >
-          <Plus className="h-4 w-4 mr-1" />
-          Add
+          <Plus className="h-3.5 w-3.5" />
+          Browse Products
         </Button>
       </div>
+
+      {/* Product picker dialog */}
+      <ProductPickerDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        title="Add Recommendation"
+        description="Select a product to add to the recommendation list."
+        alreadySelectedIds={alreadySelectedIds}
+        onSelect={handleSelectProduct}
+      />
 
       {/* List */}
       {recs === undefined ? (
@@ -520,8 +403,21 @@ function RecSection({
               }).catch(() => toast.error("Failed to reorder"))
             }
             renderItem={(rec, dragHandle) => (
-              <div className="flex items-center gap-3 px-4 py-3 bg-background">
+              <div className="flex items-center gap-3 px-3 py-2.5 bg-background">
                 {dragHandle}
+                <div className="h-10 w-10 overflow-hidden rounded bg-muted shrink-0">
+                  {rec.imageUrl ? (
+                    <img
+                      src={rec.imageUrl}
+                      alt={rec.productName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[9px] text-muted-foreground">
+                      No img
+                    </div>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
                     {rec.productName}
@@ -553,6 +449,7 @@ function RecSection({
     </div>
   );
 }
+
 
 // ─── Main inner component ─────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@ export default defineSchema({
   // ─── USERS (extended from existing) ────────────────────────
   users: defineTable({
     authUserId: v.string(),
-    name: v.optional(v.string()),
+    name: v.string(),
     email: v.optional(v.string()), // undefined for phone-only users
     phone: v.optional(v.string()), // set for users who signed up with mobile number
     role: v.union(
@@ -139,8 +139,41 @@ export default defineSchema({
     // Search field: concatenated name + description for full-text search
     searchText: v.optional(v.string()),
 
-    // Product thumbnail (shown on listing cards, hover fallback)
+    // Product thumbnail (shown on listing cards, default image)
     thumbnailStorageId: v.optional(v.string()),
+
+    // Second thumbnail — shown when a product card is hovered (swaps with thumbnailStorageId)
+    hoverThumbnailStorageId: v.optional(v.string()),
+
+    // Common media shown above every color variant's media on the product detail page
+    commonMediaTop: v.optional(
+      v.array(
+        v.object({
+          storageId: v.string(),
+          type: v.union(
+            v.literal("image"),
+            v.literal("video"),
+            v.literal("model3d"),
+          ),
+          sortOrder: v.number(),
+        }),
+      ),
+    ),
+
+    // Common media shown below every color variant's media on the product detail page
+    commonMediaBottom: v.optional(
+      v.array(
+        v.object({
+          storageId: v.string(),
+          type: v.union(
+            v.literal("image"),
+            v.literal("video"),
+            v.literal("model3d"),
+          ),
+          sortOrder: v.number(),
+        }),
+      ),
+    ),
 
     // Per-colour variant media — unified ordered array of images/video/3D model
     variantMedia: v.array(

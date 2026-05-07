@@ -34,15 +34,34 @@ export default async function ProductDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Collect all storageIds: thumbnail + all variantMedia items
+  // Collect all storageIds: thumbnail + hoverThumbnail + commonMediaTop + commonMediaBottom + all variantMedia items
   const allStorageIds: string[] = [];
   if (product.thumbnailStorageId) {
     allStorageIds.push(product.thumbnailStorageId);
   }
+  if (product.hoverThumbnailStorageId) {
+    allStorageIds.push(product.hoverThumbnailStorageId);
+  }
   const variantMedia: Array<{
     color: string;
-    media: Array<{ storageId: string; type: "image" | "video" | "model3d"; sortOrder: number }>;
+    media: Array<{
+      storageId: string;
+      type: "image" | "video" | "model3d";
+      sortOrder: number;
+    }>;
   }> = product.variantMedia ?? [];
+  const commonMediaTop: Array<{
+    storageId: string;
+    type: "image" | "video" | "model3d";
+    sortOrder: number;
+  }> = (product.commonMediaTop as typeof commonMediaTop) ?? [];
+  const commonMediaBottom: Array<{
+    storageId: string;
+    type: "image" | "video" | "model3d";
+    sortOrder: number;
+  }> = (product.commonMediaBottom as typeof commonMediaBottom) ?? [];
+  for (const item of commonMediaTop) allStorageIds.push(item.storageId);
+  for (const item of commonMediaBottom) allStorageIds.push(item.storageId);
   for (const entry of variantMedia) {
     for (const item of entry.media) {
       allStorageIds.push(item.storageId);
@@ -71,6 +90,14 @@ export default async function ProductDetailPage({ params }: PageProps) {
       .sort((a, b) => a.sortOrder - b.sortOrder),
   }));
 
+  const commonMediaTopResolved = [...commonMediaTop]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item) => ({ ...item, url: urlMap[item.storageId] ?? null }));
+
+  const commonMediaBottomResolved = [...commonMediaBottom]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item) => ({ ...item, url: urlMap[item.storageId] ?? null }));
+
   type Recommendation = {
     _id: Id<"products">;
     name: string;
@@ -98,6 +125,8 @@ export default async function ProductDetailPage({ params }: PageProps) {
         product={product}
         thumbnailUrl={thumbnailUrl}
         variantMediaResolved={variantMediaResolved}
+        commonMediaTopResolved={commonMediaTopResolved}
+        commonMediaBottomResolved={commonMediaBottomResolved}
         platformSizes={platformSizes ?? []}
         recommendations={typedRecommendations}
       />

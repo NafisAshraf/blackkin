@@ -53,7 +53,7 @@ export function Footer() {
     <footer className="w-full bg-black pt-12 ">
       <div className="w-full bg-black pt-12 max-w-[1500px] mx-auto">
         {/* Newsletter Section */}
-        <div className="anim-on-scroll text-white pt-10 pb-18 px-6 text-center">
+        <div className="anim-on-scroll text-white pt-10 pb-18 px-4 sm:px-6 text-center">
           <h3 className="text-lg font-semibold tracking-[0.15em] uppercase mb-1">
             Stay Comfortable. Stay Updated.
           </h3>
@@ -75,10 +75,10 @@ export function Footer() {
         </div>
 
         {/* Main Footer */}
-        <div className="bg-black text-white py-12 px-6 lg:px-10">
-          <div className="w-full grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
+        <div className="bg-black text-white py-12 px-4 sm:px-6 lg:px-10">
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
             {/* Logo */}
-            <div className="anim-on-scroll col-span-2 md:col-span-1 flex flex-col gap-6 items-center text-center pe-28">
+            <div className="anim-on-scroll sm:col-span-2 lg:col-span-1 flex flex-col gap-6 items-center text-center">
               <Link href="/">
                 <img
                   src="/assets/blackkin_logo_text_black_trimmed.svg"
@@ -120,11 +120,11 @@ export function Footer() {
             </div>
 
             {/* Shopping Links */}
-            <div className="anim-on-scroll anim-d1">
+            <div className="anim-on-scroll anim-d1 text-center lg:text-left">
               <h4 className="text-xs font-semibold tracking-wider uppercase text-white/50 mb-4">
                 Shopping
               </h4>
-              <nav className="flex flex-col gap-2.5">
+              <nav className="flex flex-col gap-2.5 items-center lg:items-start">
                 <Link
                   href="/products"
                   className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
@@ -153,11 +153,11 @@ export function Footer() {
             </div>
 
             {/* Contact */}
-            <div className="anim-on-scroll anim-d2">
+            <div className="anim-on-scroll anim-d2 text-center lg:text-left">
               <h4 className="text-xs font-semibold tracking-wider uppercase text-white/50 mb-4">
                 Contact Us
               </h4>
-              <div className="flex flex-col gap-2.5 text-sm text-white/70">
+              <div className="flex flex-col gap-2.5 text-sm text-white/70 items-center lg:items-start">
                 <a
                   href="tel:+8801234567890"
                   className="group relative inline-block hover:text-white transition-colors pb-0.5"
@@ -174,11 +174,11 @@ export function Footer() {
             </div>
 
             {/* Find Us */}
-            <div className="anim-on-scroll anim-d3">
+            <div className="anim-on-scroll anim-d3 text-center lg:text-left">
               <h4 className="text-xs font-semibold tracking-wider uppercase text-white/50 mb-4">
                 Find Us
               </h4>
-              <div className="flex flex-col gap-2.5 text-sm text-white/70">
+              <div className="flex flex-col gap-2.5 text-sm text-white/70 items-center lg:items-start">
                 <span>Dhaka, Bangladesh</span>
                 <span className="text-xs text-white/50">
                   Everyday 10am to 9pm
@@ -188,7 +188,7 @@ export function Footer() {
           </div>
 
           {/* Bottom bar */}
-          <div className="anim-on-scroll pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="anim-on-scroll pt-6 flex flex-row items-center justify-between gap-3">
             <p className="text-xs text-white/40">© 2026 Blackkin</p>
             <div className="flex items-center gap-4 text-xs text-white/40">
               <p>Privacy Policy</p>

@@ -221,8 +221,18 @@ function NewProductForm() {
   }, [sizes]);
 
   // ── Media ───────────────────────────────────────────────────
-  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(null);
-  const [variantMediaMap, setVariantMediaMap] = useState<Record<string, VariantMediaItem[]>>({});
+  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(
+    null,
+  );
+  const [hoverThumbnailItem, setHoverThumbnailItem] =
+    useState<ThumbnailItem | null>(null);
+  const [variantMediaMap, setVariantMediaMap] = useState<
+    Record<string, VariantMediaItem[]>
+  >({});
+  const [commonMediaTop, setCommonMediaTop] = useState<VariantMediaItem[]>([]);
+  const [commonMediaBottom, setCommonMediaBottom] = useState<
+    VariantMediaItem[]
+  >([]);
 
   // ── Tags ─────────────────────────────────────────────────────
   const [selectedTagIds, setSelectedTagIds] = useState<Set<Id<"tags">>>(
@@ -350,6 +360,17 @@ function NewProductForm() {
         metaTitle: metaTitle.trim() || undefined,
         metaDescription: metaDescription.trim() || undefined,
         thumbnailStorageId: thumbnailItem?.storageId,
+        hoverThumbnailStorageId: hoverThumbnailItem?.storageId,
+        commonMediaTop: commonMediaTop.map((item, i) => ({
+          storageId: item.storageId,
+          type: item.type,
+          sortOrder: i,
+        })),
+        commonMediaBottom: commonMediaBottom.map((item, i) => ({
+          storageId: item.storageId,
+          type: item.type,
+          sortOrder: i,
+        })),
         variantMedia,
         variants: variants.map((v) => ({
           size: v.size,
@@ -517,6 +538,12 @@ function NewProductForm() {
               onChange={setVariantMediaMap}
               thumbnailItem={thumbnailItem}
               onThumbnailChange={setThumbnailItem}
+              hoverThumbnailItem={hoverThumbnailItem}
+              onHoverThumbnailChange={setHoverThumbnailItem}
+              commonMediaTop={commonMediaTop}
+              onCommonMediaTopChange={setCommonMediaTop}
+              commonMediaBottom={commonMediaBottom}
+              onCommonMediaBottomChange={setCommonMediaBottom}
               onUpload={(file) => r2Upload(file)}
               onDelete={(key) => r2Delete({ key }).catch(() => {})}
             />
@@ -847,10 +874,7 @@ function NewProductForm() {
               <Button
                 type="submit"
                 disabled={
-                  submitting ||
-                  !!slugTaken ||
-                  !!skuTaken ||
-                  hasNoConfig
+                  submitting || !!slugTaken || !!skuTaken || hasNoConfig
                 }
                 className="flex-1"
               >

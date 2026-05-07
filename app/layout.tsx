@@ -4,6 +4,7 @@ import {
   Geist_Mono,
   Montserrat,
   Cormorant_Garamond,
+  Anton,
 } from "next/font/google";
 import "./globals.css";
 import Script from "next/script";
@@ -33,6 +34,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const anton = Anton({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-anton",
+});
+
 export const metadata: Metadata = {
   title: {
     template: "%s | Blackkin",
@@ -58,7 +65,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("font-sans", montserrat.variable, cormorant.variable)}
+      className={cn(
+        "font-sans",
+        montserrat.variable,
+        cormorant.variable,
+        anton.variable,
+      )}
     >
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -75,23 +87,45 @@ export default function RootLayout({
         </ConvexClientProvider>
         <Script id="scroll-anim" strategy="afterInteractive">{`
           (function() {
-            var observer = new IntersectionObserver(function(entries) {
+            var io = new IntersectionObserver(function(entries) {
               entries.forEach(function(e) {
                 if (e.isIntersecting) {
                   e.target.classList.add('is-visible');
-                  observer.unobserve(e.target);
+                  io.unobserve(e.target);
                 }
               });
             }, { threshold: 0.12 });
-            function observe() {
-              document.querySelectorAll('.anim-on-scroll').forEach(function(el) {
-                observer.observe(el);
+
+            function observeAll() {
+              document.querySelectorAll('.anim-on-scroll:not(.is-visible)').forEach(function(el) {
+                io.observe(el);
               });
             }
+
+            // Watch for newly-added .anim-on-scroll nodes (SPA navigation / dynamic content)
+            var mo = new MutationObserver(function(mutations) {
+              mutations.forEach(function(m) {
+                m.addedNodes.forEach(function(node) {
+                  if (node.nodeType !== 1) return;
+                  if (node.classList && node.classList.contains('anim-on-scroll') && !node.classList.contains('is-visible')) {
+                    io.observe(node);
+                  }
+                  node.querySelectorAll && node.querySelectorAll('.anim-on-scroll:not(.is-visible)').forEach(function(el) {
+                    io.observe(el);
+                  });
+                });
+              });
+            });
+
+            function init() {
+              observeAll();
+              mo.observe(document.body, { childList: true, subtree: true });
+            }
+
             if (document.readyState === 'loading') {
-              document.addEventListener('DOMContentLoaded', observe);
+              document.addEventListener('DOMContentLoaded', init);
             } else {
-              observe();
+              init();
             }
           })();
         `}</Script>

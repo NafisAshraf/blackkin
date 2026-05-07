@@ -31,7 +31,7 @@ import {
 import {
   Loader2,
   Pencil,
-  Search,
+  Plus,
   Trash2,
   Upload,
   ToggleLeft,
@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SortableList } from "@/components/admin/SortableList";
+import { ProductPickerDialog } from "@/components/admin/ProductPickerDialog";
 import { CarouselEditor } from "./CarouselEditor";
 
 // ─── Image slot metadata ────────────────────────────────────────────────────
@@ -200,14 +201,10 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
   };
 
   const [heading, setHeading] = useState(section.heading);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [addingProductId, setAddingProductId] = useState<Id<"products"> | null>(
-    null,
-  );
   const [removingItemId, setRemovingItemId] =
     useState<Id<"landingPageProductSectionItems"> | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -220,24 +217,10 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
   );
   const clearSectionMutation = useMutation(api.landingPage.clearSection);
   const reorderProducts = useMutation(api.landingPage.reorderSectionProducts);
-  const searchResults = useQuery(
-    api.products.searchForPicker,
-    section._id && debouncedSearchQuery
-      ? { query: debouncedSearchQuery }
-      : "skip",
-  );
 
   useEffect(() => {
     setHeading(section.heading);
   }, [section.heading]);
-
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery.trim());
-    }, 300);
-
-    return () => window.clearTimeout(timeout);
-  }, [searchQuery]);
 
   const existingProductIds = new Set(
     section.products.map((product) => product.productId),
@@ -283,8 +266,6 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
       return;
     }
     if (existingProductIds.has(productId)) return;
-
-    setAddingProductId(productId);
     try {
       await addProductToSection({
         sectionId: section._id,
@@ -293,8 +274,6 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
       toast.success("Product added");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add product");
-    } finally {
-      setAddingProductId(null);
     }
   }
 
@@ -347,8 +326,6 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
   );
 
   const canClear = !!(section._id && section.products.length > 0);
-  const hasSearchTerm = debouncedSearchQuery.length > 0;
-  const isSearching = hasSearchTerm && searchResults === undefined;
 
   return (
     <div className="border border-border overflow-hidden">
@@ -439,82 +416,32 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
           </Button>
         </div>
 
-        {/* Product search */}
+        {/* Browse Products button + dialog */}
         {section._id && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label className="text-xs text-muted-foreground">
-                Search and Add Products
-              </Label>
-              <p className="text-[10px] text-muted-foreground">
-                {section.products.length} selected
-              </p>
-            </div>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products by name"
-                className="pl-9"
-              />
-            </div>
-            <div className="border border-border bg-muted/20">
-              {!searchQuery.trim() ? (
-                <p className="px-3 py-4 text-xs text-muted-foreground">
-                  Type to search products and add them to this section.
-                </p>
-              ) : isSearching ? (
-                <div className="flex items-center gap-2 px-3 py-4 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching
-                  products…
-                </div>
-              ) : (searchResults?.length ?? 0) === 0 ? (
-                <p className="px-3 py-4 text-xs text-muted-foreground">
-                  No products matched this search.
-                </p>
-              ) : (
-                <div className="divide-y divide-border">
-                  {(searchResults ?? []).map((product) => {
-                    const alreadyAdded = existingProductIds.has(product._id);
-                    const isAdding = addingProductId === product._id;
-
-                    return (
-                      <div
-                        key={product._id}
-                        className="flex items-center justify-between gap-3 px-3 py-2.5"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">
-                            {product.name}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            /{product.slug}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant={alreadyAdded ? "secondary" : "outline"}
-                          disabled={alreadyAdded || isAdding}
-                          onClick={() => handleAddProduct(product._id)}
-                          className="h-7 min-w-16 text-xs"
-                        >
-                          {isAdding ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : alreadyAdded ? (
-                            "Added"
-                          ) : (
-                            "Add"
-                          )}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          <div className="flex items-center justify-between">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPickerOpen(true)}
+              className="gap-1.5"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Browse Products
+            </Button>
+            <span className="text-[11px] text-muted-foreground">
+              {section.products.length} selected
+            </span>
           </div>
         )}
+
+        <ProductPickerDialog
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          title="Add Product to Section"
+          description="Select a product to add to this showcase section."
+          alreadySelectedIds={existingProductIds}
+          onSelect={(product) => handleAddProduct(product._id)}
+        />
 
         {/* Sortable product list */}
         {section.products.length > 0 && (
@@ -569,13 +496,11 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
             Save a heading to start configuring this section.
           </p>
         )}
-        {section._id &&
-          section.products.length === 0 &&
-          !searchQuery.trim() && (
-            <p className="text-xs text-muted-foreground py-2">
-              Search above to start adding products to this section.
-            </p>
-          )}
+        {section._id && section.products.length === 0 && (
+          <p className="text-xs text-muted-foreground py-2">
+            Click Browse Products to start adding products to this section.
+          </p>
+        )}
       </div>
 
       {/* Clear Section Confirmation */}

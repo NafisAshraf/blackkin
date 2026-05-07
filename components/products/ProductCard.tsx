@@ -28,6 +28,7 @@ interface ProductCardProps {
     }>;
   };
   imageUrl?: string | null;
+  hoverImageUrl?: string | null;
   colorFirstImageUrls?: Array<{ color: string; url: string | null }>;
   hideTags?: boolean;
 }
@@ -121,9 +122,16 @@ function TagBadge({ name }: { name: string }) {
   );
 }
 
-export default function ProductCard({ product, imageUrl, colorFirstImageUrls, hideTags }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  imageUrl,
+  hoverImageUrl,
+  colorFirstImageUrls,
+  hideTags,
+}: ProductCardProps) {
   const colorMap = useColorHexMap();
-  const [hoveredColor, setHoveredColor] = useState<string | null>(null);
+  const [clickedColor, setClickedColor] = useState<string | null>(null);
+  const [isCardHovered, setIsCardHovered] = useState(false);
   const {
     name,
     slug,
@@ -142,7 +150,8 @@ export default function ProductCard({ product, imageUrl, colorFirstImageUrls, hi
     : 0;
 
   // Show last 2 tags (end of array = most recently added)
-  const displayTags = !hideTags && tags && tags.length > 0 ? tags.slice(-2) : [];
+  const displayTags =
+    !hideTags && tags && tags.length > 0 ? tags.slice(-2) : [];
 
   // Unique colors from variants (up to 5)
   const uniqueColors = variants
@@ -151,14 +160,22 @@ export default function ProductCard({ product, imageUrl, colorFirstImageUrls, hi
       ).slice(0, 5)
     : [];
 
-  // Image to display: use hovered color's first image if available
+  // Image to display priority: clicked color > hover thumbnail (when hovered) > default thumbnail
+  const clickedColorUrl =
+    clickedColor && colorFirstImageUrls
+      ? (colorFirstImageUrls.find((c) => c.color === clickedColor)?.url ?? null)
+      : null;
   const displayImageUrl =
-    hoveredColor && colorFirstImageUrls
-      ? (colorFirstImageUrls.find((c) => c.color === hoveredColor)?.url ?? imageUrl)
-      : imageUrl;
+    clickedColorUrl ??
+    (isCardHovered && hoverImageUrl ? hoverImageUrl : imageUrl);
 
   return (
-    <Link href={`/products/${slug}`} className="block group">
+    <Link
+      href={`/products/${slug}`}
+      className="block group"
+      onMouseEnter={() => setIsCardHovered(true)}
+      onMouseLeave={() => setIsCardHovered(false)}
+    >
       <div className="product-card-wrapper">
         {/* Image container */}
         <div className="aspect-[4/5] relative overflow-hidden bg-muted">
@@ -229,10 +246,17 @@ export default function ProductCard({ product, imageUrl, colorFirstImageUrls, hi
                   <span
                     key={color}
                     title={color}
-                    className="h-4 w-4 rounded-full border border-gray-300 flex-shrink-0 cursor-pointer"
+                    className={`h-4 w-4 rounded-full border flex-shrink-0 cursor-pointer transition-all ${
+                      clickedColor === color
+                        ? "border-foreground scale-110"
+                        : "border-gray-300 hover:border-foreground/40"
+                    }`}
                     style={{ backgroundColor: hex }}
-                    onMouseEnter={() => setHoveredColor(color)}
-                    onMouseLeave={() => setHoveredColor(null)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setClickedColor(clickedColor === color ? null : color);
+                    }}
                   />
                 );
               })}

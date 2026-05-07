@@ -67,6 +67,10 @@ const variantMediaEntryValidator = v.object({
   media: v.array(variantMediaSingleItemValidator),
 });
 
+const commonMediaArrayValidator = v.optional(
+  v.array(variantMediaSingleItemValidator),
+);
+
 const variantValidator = v.object({
   _id: v.id("productVariants"),
   _creationTime: v.number(),
@@ -123,6 +127,9 @@ const productWithPricingValidator = v.object({
   totalRatings: v.number(),
   averageRating: v.number(),
   thumbnailStorageId: v.optional(v.string()),
+  hoverThumbnailStorageId: v.optional(v.string()),
+  commonMediaTop: commonMediaArrayValidator,
+  commonMediaBottom: commonMediaArrayValidator,
   variantMedia: v.array(variantMediaEntryValidator),
   colorFirstImageUrls: v.array(
     v.object({ color: v.string(), url: v.union(v.string(), v.null()) }),
@@ -183,7 +190,6 @@ function normalizeVariantValue(value?: string) {
 function variantCombinationKey(variant: { size: string; color?: string }) {
   return `${normalizeVariantValue(variant.size)}::${normalizeVariantValue(variant.color)}`;
 }
-
 
 function assertUniqueVariantCombinations(
   variants: Array<{ size: string; color?: string }>,
@@ -527,6 +533,90 @@ export const listAllAdminFlat = query({
   },
 });
 
+/**
+ * Admin: fetch ALL products for picker dialogs.
+ * Returns lightweight enriched data — image, price, stock, variants.
+ * Client-side filtering is applied in the UI (no server-side search).
+ */
+export const listAllForPicker = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      _id: v.id("products"),
+      name: v.string(),
+      slug: v.string(),
+      basePrice: v.number(),
+      effectivePrice: v.number(),
+      discountAmount: v.number(),
+      status: v.union(
+        v.literal("draft"),
+        v.literal("active"),
+        v.literal("scheduled"),
+        v.literal("archived"),
+      ),
+      imageUrl: v.union(v.string(), v.null()),
+      totalStock: v.number(),
+      categoryName: v.union(v.string(), v.null()),
+      variants: v.array(
+        v.object({
+          _id: v.id("productVariants"),
+          size: v.string(),
+          color: v.optional(v.string()),
+          stock: v.number(),
+          priceOverride: v.optional(v.number()),
+        }),
+      ),
+    }),
+  ),
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const products = await ctx.db.query("products").order("asc").take(500);
+
+    return await Promise.all(
+      products.map(async (p) => {
+        const pricing = await getEffectivePrice(ctx, p);
+
+        const variants = await ctx.db
+          .query("productVariants")
+          .withIndex("by_productId", (q) => q.eq("productId", p._id))
+          .take(50);
+
+        const totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
+
+        const imageUrl = p.thumbnailStorageId
+          ? await r2.getUrl(p.thumbnailStorageId)
+          : null;
+
+        let categoryName: string | null = null;
+        if (p.categoryId) {
+          const cat = await ctx.db.get(p.categoryId);
+          categoryName = cat?.name ?? null;
+        }
+
+        return {
+          _id: p._id,
+          name: p.name,
+          slug: p.slug,
+          basePrice: p.basePrice,
+          effectivePrice: pricing.effectivePrice,
+          discountAmount: pricing.discountAmount,
+          status: p.status,
+          imageUrl,
+          totalStock,
+          categoryName,
+          variants: variants.map((v) => ({
+            _id: v._id,
+            size: v.size,
+            color: v.color,
+            stock: v.stock,
+            priceOverride: v.priceOverride,
+          })),
+        };
+      }),
+    );
+  },
+});
+
 /** Legacy paginated admin list — kept for backwards compat with other pages */
 export const listAllAdmin = query({
   args: {
@@ -582,6 +672,9 @@ export const create = mutation({
     metaDescription: v.optional(v.string()),
     // Media & Variants
     thumbnailStorageId: v.optional(v.string()),
+    hoverThumbnailStorageId: v.optional(v.string()),
+    commonMediaTop: commonMediaArrayValidator,
+    commonMediaBottom: commonMediaArrayValidator,
     variantMedia: v.array(variantMediaEntryValidator),
     variants: v.array(
       v.object({
@@ -708,6 +801,13 @@ export const update = mutation({
     metaDescription: v.optional(v.string()),
     // Media
     thumbnailStorageId: v.optional(v.union(v.string(), v.null())),
+    hoverThumbnailStorageId: v.optional(v.union(v.string(), v.null())),
+    commonMediaTop: v.optional(
+      v.union(v.array(variantMediaSingleItemValidator), v.null()),
+    ),
+    commonMediaBottom: v.optional(
+      v.union(v.array(variantMediaSingleItemValidator), v.null()),
+    ),
     variantMedia: v.optional(v.array(variantMediaEntryValidator)),
   },
   returns: v.null(),
@@ -731,13 +831,22 @@ export const update = mutation({
     // Delete R2 objects for any media that were removed
     const isMediaUpdate =
       updates.thumbnailStorageId !== undefined ||
-      updates.variantMedia !== undefined;
+      updates.hoverThumbnailStorageId !== undefined ||
+      updates.variantMedia !== undefined ||
+      updates.commonMediaTop !== undefined ||
+      updates.commonMediaBottom !== undefined;
     if (isMediaUpdate) {
       const product = await ctx.db.get(id);
       if (product) {
         // Collect all old storageIds
         const oldKeys = new Set<string>();
         if (product.thumbnailStorageId) oldKeys.add(product.thumbnailStorageId);
+        if (product.hoverThumbnailStorageId)
+          oldKeys.add(product.hoverThumbnailStorageId);
+        for (const item of product.commonMediaTop ?? [])
+          oldKeys.add(item.storageId);
+        for (const item of product.commonMediaBottom ?? [])
+          oldKeys.add(item.storageId);
         for (const entry of product.variantMedia ?? []) {
           for (const item of entry.media) oldKeys.add(item.storageId);
         }
@@ -745,7 +854,33 @@ export const update = mutation({
         const newKeys = new Set<string>();
         if (updates.thumbnailStorageId && updates.thumbnailStorageId !== null) {
           newKeys.add(updates.thumbnailStorageId);
+        } else if (
+          updates.thumbnailStorageId === undefined &&
+          product.thumbnailStorageId
+        ) {
+          newKeys.add(product.thumbnailStorageId);
         }
+        if (
+          updates.hoverThumbnailStorageId &&
+          updates.hoverThumbnailStorageId !== null
+        ) {
+          newKeys.add(updates.hoverThumbnailStorageId);
+        } else if (
+          updates.hoverThumbnailStorageId === undefined &&
+          product.hoverThumbnailStorageId
+        ) {
+          newKeys.add(product.hoverThumbnailStorageId);
+        }
+        const topItems =
+          updates.commonMediaTop !== undefined
+            ? (updates.commonMediaTop ?? [])
+            : (product.commonMediaTop ?? []);
+        for (const item of topItems) newKeys.add(item.storageId);
+        const bottomItems =
+          updates.commonMediaBottom !== undefined
+            ? (updates.commonMediaBottom ?? [])
+            : (product.commonMediaBottom ?? []);
+        for (const item of bottomItems) newKeys.add(item.storageId);
         if (updates.variantMedia !== undefined) {
           for (const entry of updates.variantMedia) {
             for (const item of entry.media) newKeys.add(item.storageId);
@@ -799,12 +934,28 @@ export const update = mutation({
       explicitRemoveThumbnail = true;
     }
 
+    // Convert null hoverThumbnailStorageId to undefined (explicit removal)
+    let explicitRemoveHoverThumbnail = false;
+    if (updates.hoverThumbnailStorageId === null) {
+      (updates as any).hoverThumbnailStorageId = undefined;
+      explicitRemoveHoverThumbnail = true;
+    }
+
+    // Convert null commonMediaTop/Bottom to empty array (explicit clear)
+    if (updates.commonMediaTop === null) {
+      (updates as any).commonMediaTop = [];
+    }
+    if (updates.commonMediaBottom === null) {
+      (updates as any).commonMediaBottom = [];
+    }
+
     const clean = Object.fromEntries(
       Object.entries(updates).filter(
         ([k, v]) =>
           v !== undefined ||
           (k === "categoryId" && explicitRemoveCategory) ||
-          (k === "thumbnailStorageId" && explicitRemoveThumbnail),
+          (k === "thumbnailStorageId" && explicitRemoveThumbnail) ||
+          (k === "hoverThumbnailStorageId" && explicitRemoveHoverThumbnail),
       ),
     );
 
@@ -1270,10 +1421,14 @@ export const searchSSR = query({
         const imageUrl = p.thumbnailStorageId
           ? await r2.getUrl(p.thumbnailStorageId)
           : null;
+        const hoverImageUrl = p.hoverThumbnailStorageId
+          ? await r2.getUrl(p.hoverThumbnailStorageId)
+          : null;
         const colorFirstImageUrls = await resolveColorFirstImageUrls(
           p.variantMedia ?? [],
+          p.commonMediaTop ?? [],
         );
-        return { ...ep, imageUrl, colorFirstImageUrls };
+        return { ...ep, imageUrl, hoverImageUrl, colorFirstImageUrls };
       }),
     );
 
@@ -1366,10 +1521,14 @@ export const listFilteredSSR = query({
         const imageUrl = p.thumbnailStorageId
           ? await r2.getUrl(p.thumbnailStorageId)
           : null;
+        const hoverImageUrl = p.hoverThumbnailStorageId
+          ? await r2.getUrl(p.hoverThumbnailStorageId)
+          : null;
         const colorFirstImageUrls = await resolveColorFirstImageUrls(
           p.variantMedia ?? [],
+          p.commonMediaTop ?? [],
         );
-        return { ...ep, imageUrl, colorFirstImageUrls };
+        return { ...ep, imageUrl, hoverImageUrl, colorFirstImageUrls };
       }),
     );
 

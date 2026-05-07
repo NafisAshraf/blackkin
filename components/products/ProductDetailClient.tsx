@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import MediaGallery from "@/components/products/MediaGallery";
 import ProductInfo from "@/components/products/ProductInfo";
 import ProductAccordion from "@/components/products/ProductAccordion";
 import RecommendationCarousel from "@/components/products/RecommendationCarousel";
 import ReviewList from "@/components/reviews/ReviewList";
+import StickyAddToCartBar from "@/components/products/StickyAddToCartBar";
 import { Id } from "@/convex/_generated/dataModel";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -76,6 +77,8 @@ interface ProductDetailClientProps {
   };
   thumbnailUrl: string | null;
   variantMediaResolved: ResolvedVariantMediaEntry[];
+  commonMediaTopResolved: ResolvedMediaItem[];
+  commonMediaBottomResolved: ResolvedMediaItem[];
   platformSizes: PlatformSize[];
   recommendations: Recommendation[];
 }
@@ -86,6 +89,8 @@ export default function ProductDetailClient({
   product,
   thumbnailUrl,
   variantMediaResolved,
+  commonMediaTopResolved,
+  commonMediaBottomResolved,
   platformSizes,
   recommendations,
 }: ProductDetailClientProps) {
@@ -94,34 +99,81 @@ export default function ProductDetailClient({
     product.variants.find((v) => v.stock > 0)?.color ??
     product.variants[0]?.color ??
     null;
+  const initialSize =
+    product.variants.find((v) => v.stock > 0)?.size ??
+    product.variants[0]?.size ??
+    null;
 
   const [selectedColor, setSelectedColor] = useState<string | null>(
     initialColor,
   );
+  const [selectedSize, setSelectedSize] = useState<string | null>(initialSize);
 
-  // Compute active media for the selected color
+  // Ref attached to the Quantity+AddToCart section inside ProductInfo
+  const addToCartRef = useRef<HTMLDivElement>(null);
+  const productInfoRef = useRef<HTMLElement>(null);
+  const [showStickyBar, setShowStickyBar] = useState(false);
+
+  useEffect(() => {
+    const target = addToCartRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowStickyBar(!entry.isIntersecting),
+      { threshold: 0 },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+
+  const scrollToProductInfo = useCallback(() => {
+    productInfoRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+
+  // Compute active media for the selected color: commonTop + colorSpecific + commonBottom
   const activeVariantEntry = variantMediaResolved.find(
     (e) => e.color === selectedColor,
   );
-  const activeMedia: ResolvedMediaItem[] = activeVariantEntry?.media.length
-    ? activeVariantEntry.media
-    : thumbnailUrl
-      ? [{ storageId: "__thumbnail__", type: "image", sortOrder: 0, url: thumbnailUrl }]
-      : [];
+  const colorMedia: ResolvedMediaItem[] = activeVariantEntry?.media ?? [];
+
+  const allMediaCombined = [
+    ...commonMediaTopResolved,
+    ...colorMedia,
+    ...commonMediaBottomResolved,
+  ];
+
+  const activeMedia: ResolvedMediaItem[] =
+    allMediaCombined.length > 0
+      ? allMediaCombined
+      : thumbnailUrl
+        ? [
+            {
+              storageId: "__thumbnail__",
+              type: "image",
+              sortOrder: 0,
+              url: thumbnailUrl,
+            },
+          ]
+        : [];
 
   return (
     <>
       {/* ── MOBILE layout: stacked ─────────────────────────── */}
       <div className="lg:hidden">
         <section className="w-full">
-          <MediaGallery media={activeMedia} />
+          <MediaGallery key={selectedColor ?? "none"} media={activeMedia} />
         </section>
-        <section className="px-5 py-6 space-y-6">
+        <section ref={productInfoRef} className="px-5 py-6 space-y-6">
           <ProductInfo
             product={product}
             platformSizes={platformSizes}
             selectedColor={selectedColor}
             onColorChange={setSelectedColor}
+            selectedSize={selectedSize}
+            onSizeChange={setSelectedSize}
+            addToCartRef={addToCartRef}
           />
           <ProductAccordion description={product.description ?? ""} />
 
@@ -137,7 +189,7 @@ export default function ProductDetailClient({
       <div className="hidden lg:flex w-full">
         {/* Left: media stack */}
         <div className="w-1/2 flex-shrink-0">
-          <MediaGallery media={activeMedia} />
+          <MediaGallery key={selectedColor ?? "none"} media={activeMedia} />
         </div>
 
         {/* Right: sticky info column */}
@@ -145,7 +197,10 @@ export default function ProductDetailClient({
           <div className="sticky top-[70px]">
             {/* Breadcrumb */}
             <nav className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mb-6">
-              <Link href="/" className="hover:text-foreground transition-colors">
+              <Link
+                href="/"
+                className="hover:text-foreground transition-colors"
+              >
                 Home
               </Link>
               <span>/</span>
@@ -164,16 +219,13 @@ export default function ProductDetailClient({
               platformSizes={platformSizes}
               selectedColor={selectedColor}
               onColorChange={setSelectedColor}
+              selectedSize={selectedSize}
+              onSizeChange={setSelectedSize}
+              addToCartRef={addToCartRef}
             />
             <div className="mt-6">
               <ProductAccordion description={product.description ?? ""} />
             </div>
-
-            {/* Desktop reviews */}
-            {/* <section className="mt-8">
-              <h2 className="text-base font-semibold mb-4">Customer Reviews</h2>
-              <ReviewList productId={product._id} />
-            </section> */}
           </div>
         </div>
       </div>
@@ -195,6 +247,21 @@ export default function ProductDetailClient({
           <RecommendationCarousel products={recommendations} />
         </section>
       )}
+
+      {/* ── STICKY ADD-TO-CART BAR ──────────────────────────── */}
+      <StickyAddToCartBar
+        product={{
+          _id: product._id,
+          name: product.name,
+          effectivePrice: product.effectivePrice,
+          variants: product.variants,
+        }}
+        thumbnailUrl={thumbnailUrl}
+        selectedColor={selectedColor}
+        selectedSize={selectedSize}
+        visible={showStickyBar}
+        onScrollToOptions={scrollToProductInfo}
+      />
     </>
   );
 }

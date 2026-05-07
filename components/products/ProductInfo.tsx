@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Heart, Loader2, ShoppingCart, Info, Trash2, ShoppingBag } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  Heart,
+  Loader2,
+  ShoppingCart,
+  Info,
+  Trash2,
+  ShoppingBag,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SizeSelector from "./SizeSelector";
@@ -67,6 +74,12 @@ interface ProductInfoProps {
   selectedColor?: string | null;
   /** Called when the user picks a color — required when selectedColor is provided */
   onColorChange?: (color: string) => void;
+  /** Controlled size — when provided, overrides internal state */
+  selectedSize?: string | null;
+  /** Called when the user picks a size */
+  onSizeChange?: (size: string) => void;
+  /** Ref attached to the Quantity + Add to Cart section (used for sticky bar visibility) */
+  addToCartRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 function SaleCountdownTimer({ endTime }: { endTime: number }) {
@@ -134,6 +147,9 @@ export default function ProductInfo({
   platformSizes,
   selectedColor: controlledColor,
   onColorChange,
+  selectedSize: controlledSize,
+  onSizeChange,
+  addToCartRef,
 }: ProductInfoProps) {
   const router = useRouter();
   const platformColors = useQuery(api.platformConfig.listColors);
@@ -167,9 +183,16 @@ export default function ProductInfo({
   // Pre-select first available variant
   const initialVariant = variants.find((v) => v.stock > 0) || variants[0];
 
-  const [selectedSize, setSelectedSize] = useState<string | null>(
+  const [internalSize, setInternalSize] = useState<string | null>(
     initialVariant?.size || null,
   );
+  // Use controlled size if provided, otherwise fall back to internal state
+  const selectedSize =
+    controlledSize !== undefined ? controlledSize : internalSize;
+  function setSelectedSize(size: string | null) {
+    setInternalSize(size);
+    if (size && onSizeChange) onSizeChange(size);
+  }
   const [internalColor, setInternalColor] = useState<string | null>(
     initialVariant?.color || null,
   );
@@ -368,7 +391,7 @@ export default function ProductInfo({
       )}
 
       {/* Quantity & Actions */}
-      <div className="space-y-4 pt-1">
+      <div ref={addToCartRef} className="space-y-4 pt-1">
         <p className="text-sm font-medium">Quantity</p>
         <div className="flex gap-4 items-stretch">
           <div className="flex items-center gap-0 border border-border w-fit shrink-0">

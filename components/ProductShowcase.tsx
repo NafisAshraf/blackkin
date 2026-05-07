@@ -17,6 +17,7 @@ export interface ShowcaseProduct {
   discountAmount: number;
   discountGroupName: string | null;
   imageUrl: string | null;
+  hoverImageUrl?: string | null;
   colorFirstImageUrls: Array<{ color: string; url: string | null }>;
   colors: string[];
   sortOrder: number;
@@ -71,13 +72,14 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
     <section className="w-full bg-white py-20 md:py-28 ">
       <div className="max-w-[1500px] mx-auto px-6 lg:px-10">
         {/* Section Header */}
-        <div className="anim-on-scroll mb-12 md:mb-16 flex items-center justify-between">
-          <h2 className="text-2xl md:text-2xl lg:text-3xl uppercase ">
+        <div className="anim-on-scroll mb-12 md:mb-16 flex flex-col items-center gap-3 md:flex-row md:items-center md:justify-between">
+          <h2 className="text-2xl md:text-2xl lg:text-3xl uppercase text-center md:text-left">
             {heading}
           </h2>
+          {/* Desktop: View all products inline */}
           <Link
             href="/products"
-            className="group relative text-sm font-medium tracking-wide uppercase pb-0.5 hover:opacity-70 transition-opacity"
+            className="hidden md:block group relative text-sm font-medium tracking-wide uppercase pb-0.5 hover:opacity-70 transition-opacity"
           >
             View all products
             <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-foreground/50" />
@@ -108,6 +110,7 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
                     variants: product.colors.map((color) => ({ color })),
                   }}
                   imageUrl={product.imageUrl}
+                  hoverImageUrl={product.hoverImageUrl}
                   colorFirstImageUrls={product.colorFirstImageUrls}
                 />
               </div>
@@ -149,6 +152,17 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
             </div>
           </div>
         )}
+
+        {/* Mobile: View all products — centered below slider */}
+        <div className="flex justify-center mt-8 md:hidden">
+          <Link
+            href="/products"
+            className="group relative text-sm font-medium tracking-wide uppercase pb-0.5 hover:opacity-70 transition-opacity"
+          >
+            View all products
+            <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-foreground/50" />
+          </Link>
+        </div>
       </div>
     </section>
   );

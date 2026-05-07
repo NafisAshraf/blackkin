@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -21,20 +21,35 @@ export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  const isHoveredRef = useRef(false);
 
-  const next = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % carousels.length);
-  }, [carousels.length]);
-
-  const prev = useCallback(() => {
+  const next = () => setCurrentIndex((prev) => (prev + 1) % carousels.length);
+  const prev = () =>
     setCurrentIndex((prev) => (prev - 1 + carousels.length) % carousels.length);
-  }, [carousels.length]);
 
+  // Keep ref in sync so the interval callback always reads the latest hover state
   useEffect(() => {
-    if (carousels.length <= 1 || isHovered) return;
-    const interval = setInterval(next, 3000);
-    return () => clearInterval(interval);
-  }, [next, carousels.length, isHovered]);
+    isHoveredRef.current = isHovered;
+  }, [isHovered]);
+
+  // Restart a fresh 3-second interval whenever currentIndex changes (click or auto-advance).
+  // This guarantees the timer is never killed by a manual click.
+  useEffect(() => {
+    if (carousels.length <= 1) return;
+    const id = setInterval(() => {
+      if (!isHoveredRef.current) {
+        setCurrentIndex((prev) => (prev + 1) % carousels.length);
+      }
+    }, 3000);
+    const handleVisibility = () => {
+      // interval cleanup is handled by the effect cleanup; nothing extra needed
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [currentIndex, carousels.length]);
 
   if (!carousels || carousels.length === 0) return null;
 
@@ -112,7 +127,7 @@ export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
   };
 
   return (
-    <section className="w-full bg-white overflow-hidden relative pb-40 pt-60">
+    <section className="w-full bg-white overflow-hidden relative pb-40 pt-20 md:pt-60">
       <div
         className="relative w-full h-[75vh] flex items-end justify-center "
         onMouseEnter={() => setIsHovered(true)}

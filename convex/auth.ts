@@ -30,7 +30,7 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           authUserId: doc._id,
           email: isPhone ? undefined : doc.email,
           phone: isPhone ? syntheticEmailToPhone(doc.email) : undefined,
-          name: isPhone ? undefined : doc.name,
+          name: doc.name,
           role: "customer",
         });
       },
@@ -49,8 +49,8 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           await ctx.db.patch(user._id, {
             name: newDoc.name ?? user.name,
             ...(isPhone
-              ? { phone: syntheticEmailToPhone(newDoc.email) }   // keep user.email intact
-              : { email: newDoc.email }),                         // keep user.phone intact
+              ? { phone: syntheticEmailToPhone(newDoc.email) } // keep user.email intact
+              : { email: newDoc.email }), // keep user.phone intact
           });
         }
       },
@@ -89,8 +89,8 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       // The Convex plugin is required for Convex compatibility
       convex({ authConfig }),
     ],
-  })
-}
+  });
+};
 
 // Example function for getting the current user
 export const getCurrentUser = query({

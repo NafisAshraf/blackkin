@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, usePaginatedQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
@@ -17,6 +17,7 @@ import {
   X,
   Copy,
   ChevronUp,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -545,12 +546,15 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
 
   // ── Section B: Products ──
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [productSearch, setProductSearch] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<Id<"products"> | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<Id<"productVariants"> | null>(null);
   const [addQty, setAddQty] = useState(1);
   const [addingProduct, setAddingProduct] = useState(false);
   const [removeItemId, setRemoveItemId] = useState<Id<"orderItems"> | null>(null);
+
+  // Load all products for picker
+  const allPickerProducts = useQuery(api.products.listAllForPicker);
 
   // ── Section C: Pricing ──
   const [deliveryCost, setDeliveryCost] = useState<number>(order.deliveryCost ?? 0);
@@ -572,10 +576,16 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   const advancePaid = useQuery(api.orders.getAdvancePaid, open ? { orderId: order._id } : "skip");
 
   // Product search
-  const searchResults = useQuery(
-    api.products.searchForAdmin,
-    showAddProduct && searchTerm.trim() ? { query: searchTerm } : "skip"
-  );
+  const filteredPickerProducts = useMemo(() => {
+    if (!allPickerProducts) return [];
+    const q = productSearch.trim().toLowerCase();
+    if (!q) return allPickerProducts;
+    return allPickerProducts.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.slug.toLowerCase().includes(q),
+    );
+  }, [allPickerProducts, productSearch]);
 
   // Sync delivery cost + discount when live data loads
   const liveOrder = orderData?.order;
@@ -649,7 +659,7 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
       });
       toast.success("Product added");
       setShowAddProduct(false);
-      setSearchTerm("");
+      setProductSearch("");
       setSelectedProductId(null);
       setSelectedVariantId(null);
       setAddQty(1);
@@ -826,74 +836,130 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
             {/* Add product inline panel */}
             {showAddProduct && (
               <div className="border rounded-md p-3 space-y-3 bg-muted/10">
-                <Input
-                  placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setSelectedProductId(null);
-                    setSelectedVariantId(null);
-                  }}
-                  className="h-8 text-sm"
-                />
-                {searchTerm.trim() && searchResults === undefined && (
-                  <div className="flex justify-center py-2">
+                {/* Search bar */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    placeholder="Search products…"
+                    value={productSearch}
+                    onChange={(e) => {
+                      setProductSearch(e.target.value);
+                      setSelectedProductId(null);
+                      setSelectedVariantId(null);
+                    }}
+                    className="h-8 text-sm pl-8"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Product list */}
+                {allPickerProducts === undefined ? (
+                  <div className="flex justify-center py-3">
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   </div>
-                )}
-                {searchResults && searchResults.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">No products found</p>
-                )}
-                {searchResults && searchResults.length > 0 && (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {searchResults.map((product) => (
-                      <div
-                        key={product._id}
-                        className={`p-2 border rounded cursor-pointer transition-colors ${
-                          selectedProductId === product._id
-                            ? "border-primary bg-primary/5"
-                            : "hover:bg-muted/40"
-                        }`}
-                        onClick={() => {
-                          setSelectedProductId(product._id);
-                          setSelectedVariantId(null);
-                        }}
-                      >
-                        <p className="text-sm font-medium">{product.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatAmount(product.basePrice)}</p>
-                        {/* Variant chips */}
-                        {selectedProductId === product._id && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {product.variants.map((variant) => (
-                              <button
-                                key={variant._id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedVariantId(variant._id);
-                                }}
-                                className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
-                                  selectedVariantId === variant._id
-                                    ? "bg-primary text-primary-foreground border-primary"
-                                    : variant.stock <= 0
-                                    ? "border-gray-200 text-gray-400 cursor-not-allowed"
-                                    : "border-gray-300 hover:border-primary"
-                                }`}
-                                disabled={variant.stock <= 0}
-                                title={variant.stock <= 0 ? "Out of stock" : `Stock: ${variant.stock}`}
-                              >
-                                {variant.color ? `${variant.color} / ` : ""}{variant.size}
-                                {variant.stock <= 0 && " (OOS)"}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                ) : filteredPickerProducts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2">
+                    {productSearch ? "No products match your search" : "No products found"}
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-52 overflow-y-auto">
+                    {filteredPickerProducts.map((product) => {
+                      const isSelected = selectedProductId === product._id;
+                      const hasDiscount = product.discountAmount > 0;
+                      return (
+                        <div key={product._id}>
+                          <button
+                            type="button"
+                            className={`w-full flex items-center gap-2.5 p-2 border rounded transition-colors text-left ${
+                              isSelected
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:bg-muted/40"
+                            }`}
+                            onClick={() => {
+                              setSelectedProductId(product._id);
+                              setSelectedVariantId(null);
+                            }}
+                          >
+                            {/* Thumbnail */}
+                            <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                              {product.imageUrl ? (
+                                <img
+                                  src={product.imageUrl}
+                                  alt={product.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center">
+                                  <Package className="h-4 w-4 text-muted-foreground/40" />
+                                </div>
+                              )}
+                            </div>
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{product.name}</p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-xs text-muted-foreground">
+                                  Tk {product.effectivePrice.toLocaleString("en-BD")}
+                                </span>
+                                {hasDiscount && (
+                                  <span className="text-[10px] text-muted-foreground line-through">
+                                    Tk {product.basePrice.toLocaleString("en-BD")}
+                                  </span>
+                                )}
+                                {product.totalStock === 0 ? (
+                                  <span className="text-[10px] text-red-500">Out of stock</span>
+                                ) : product.totalStock <= 5 ? (
+                                  <span className="text-[10px] text-amber-500">{product.totalStock} left</span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </button>
+
+                          {/* Variant chips — only shown for selected product */}
+                          {isSelected && (
+                            <div className="mt-1.5 ml-12 flex flex-wrap gap-1">
+                              {product.variants.map((variant) => {
+                                const isOOS = variant.stock === 0;
+                                const isVariantSelected = selectedVariantId === variant._id;
+                                const effectiveVariantPrice = variant.priceOverride ?? product.effectivePrice;
+                                return (
+                                  <button
+                                    key={variant._id}
+                                    type="button"
+                                    disabled={isOOS}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedVariantId(variant._id);
+                                    }}
+                                    title={isOOS ? "Out of stock" : `Stock: ${variant.stock} · Tk ${effectiveVariantPrice.toLocaleString("en-BD")}`}
+                                    className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
+                                      isVariantSelected
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : isOOS
+                                        ? "border-border text-muted-foreground/50 cursor-not-allowed"
+                                        : "border-border hover:border-primary"
+                                    }`}
+                                  >
+                                    {variant.color ? `${variant.color} / ` : ""}{variant.size}
+                                    {isOOS && " (OOS)"}
+                                  </button>
+                                );
+                              })}
+                              {product.variants.length === 0 && (
+                                <p className="text-xs text-muted-foreground">No variants available</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
+
+                {/* Qty + Add */}
                 {selectedProductId && selectedVariantId && (
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs">Qty:</Label>
+                  <div className="flex items-center gap-2 pt-1 border-t">
+                    <Label className="text-xs shrink-0">Qty:</Label>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="outline"
@@ -920,7 +986,7 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                       disabled={addingProduct}
                     >
                       {addingProduct ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-                      Add
+                      Add to Order
                     </Button>
                   </div>
                 )}

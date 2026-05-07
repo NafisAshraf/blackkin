@@ -132,14 +132,15 @@ function NavbarInner() {
 
         {/* Main Navbar */}
         <header
-          className={`transition-colors duration-300 ${
-            atTop
-              ? "bg-transparent border-transparent"
-              : "bg-white border-b border-border"
-          }`}
+          className={`transition-colors duration-300 bg-white border-b border-border
+            ${
+              atTop
+                ? "bg-transparent border-transparent"
+                : "bg-white border-b border-border"
+            }`}
         >
           <div className="w-full max-w-[1500px] mx-auto px-6 lg:px-10 h-20 flex items-center justify-between relative">
-            {/* Left: Hamburger (mobile) / Nav links (desktop) */}
+            {/* Left: Hamburger + Search (mobile) / Nav links (desktop) */}
             <div className="flex items-center">
               {/* Hamburger */}
               <button
@@ -148,6 +149,14 @@ function NavbarInner() {
                 aria-label="Toggle menu"
               >
                 <Menu className="h-5 w-5" />
+              </button>
+              {/* Search icon — mobile only, in left group */}
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="md:hidden icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
+                aria-label="Search"
+              >
+                <Search className="h-5 w-5" />
               </button>
 
               {/* Desktop nav */}
@@ -194,15 +203,16 @@ function NavbarInner() {
               <img
                 src="/assets/blackkin_logo_text_black_trimmed.svg"
                 alt="Blackkin"
-                className="h-16 w-auto"
+                className="h-10 md:h-16 w-auto"
               />
             </Link>
 
-            {/* Right: Search, Cart, Wishlist, Account */}
+            {/* Right: Cart, Wishlist, Account (Search only on desktop) */}
             <div className="flex items-center gap-0.5">
+              {/* Search — desktop only */}
               <button
                 onClick={() => setSearchOpen(true)}
-                className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
+                className="hidden md:inline-flex icon-btn-hover items-center justify-center h-9 w-9 rounded hover:bg-accent"
                 aria-label="Search"
               >
                 <Search className="h-5 w-5" />

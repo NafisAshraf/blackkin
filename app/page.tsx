@@ -74,10 +74,13 @@ export default async function HomePage() {
         >
           <div className="flex flex-col items-center gap-8 md:gap-10 max-w-7xl">
             <div className="space-y-3 md:space-y-5">
-              <h1 className="hero-anim-1 text-white text-4xl md:text-6xl font-extrabold scale-y-125 tracking-tighter uppercase">
+              <h1
+                className="hero-anim-1 text-white text-4xl md:text-6xl uppercase tracking-wider"
+                style={{ fontFamily: "var(--font-anton)" }}
+              >
                 Bangladesh&apos;s Best Underwear
               </h1>
-              <p className="hero-anim-2 text-white text-lg md:text-5xl font-serif tracking-[0.15em] uppercase opacity-90">
+              <p className="hero-anim-2 text-white text-lg md:text-5xl font-serif uppercase opacity-90">
                 With World Class Technology
               </p>
             </div>
@@ -100,7 +103,7 @@ export default async function HomePage() {
       )}
 
       {/* Crafted for the Modern Man */}
-      <section className="w-full py-24 md:py-32 px-6 text-center font-light h-screen flex flex-col justify-center items-center">
+      <section className="w-full py-24 md:py-32 px-6 text-center font-light h-[75vh] flex flex-col justify-center items-center">
         <div className="">
           <h2 className="text-3xl md:text-4xl lg:text-6xl">
             <span className="anim-on-scroll block text-[#111111] mb-5">
@@ -117,57 +120,64 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Product Showcase Section 2 — below the split section */}
-      {productSection2 && productSection2.products.length > 0 && (
-        <ProductShowcase
-          heading={productSection2.heading}
-          products={productSection2.products}
-        />
-      )}
-
-      {/* Split: Text Left / Image Right */}
-      <section className="w-full min-h-screen lg:h-screen grid grid-cols-1 lg:grid-cols-2 items-stretch">
-        <div className="bg-[#111111] flex flex-col justify-center items-center px-12 lg:px-20 py-16 h-full text-center">
-          <h2 className="anim-on-scroll text-3xl md:text-4xl lg:text-5xl font-normal uppercase tracking-[0.1em] leading-[1.4] text-white">
-            UPGRADE THE WAY
-            <br />
-            YOU FEEL, STARTING
-            <br />
-            WITH WHAT&apos;S
-            <br />
-            <span className="text-[#737373]">UNDERNEATH.</span>
-          </h2>
-          <Link
-            href="/products"
-            className="anim-on-scroll anim-d3 group mt-12 inline-block relative text-xs font-light tracking-[0.2em] uppercase text-white hover:text-white/60 transition-colors pb-1"
-          >
-            DISCOVER MORE
-            <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-white" />
-          </Link>
-        </div>
-        <div className="relative h-full min-h-[50vh] lg:min-h-0">
-          {splitImageType === "video" ? (
-            <video
-              src={splitImageUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-              disablePictureInPicture
-              preload="auto"
-              className="w-full h-full object-cover object-center"
-            />
-          ) : (
-            <img
-              src={splitImageUrl}
-              alt="Upgrade the way you feel"
-              className="w-full h-full object-cover object-center"
+      {/* Sticky-parallax wrapper: Product Section 2 sticks while Split Section scrolls up over it */}
+      <div className="relative ">
+        {/* Product Showcase Section 2 — sticky so split section slides up over it */}
+        <div className="sticky -top-15 z-0 mb-24">
+          {productSection2 && productSection2.products.length > 0 && (
+            <ProductShowcase
+              heading={productSection2.heading}
+              products={productSection2.products}
             />
           )}
-          {/* Transparent overlay to block video interaction/context menu */}
-          <div className="absolute inset-0 z-10" />
         </div>
-      </section>
+
+        {/* Split: Text Left / Image Right — slides up over the sticky product section */}
+        <div className="relative z-10">
+          <section className="w-full min-h-screen lg:h-screen grid grid-cols-1 lg:grid-cols-2 items-stretch">
+            <div className="order-2 lg:order-1 bg-[#111111] flex flex-col justify-center items-center px-12 lg:px-20 py-16 h-full text-center">
+              <h2 className="anim-on-scroll text-3xl md:text-4xl lg:text-5xl font-normal uppercase tracking-[0.1em] leading-[1.4] text-white">
+                UPGRADE THE WAY
+                <br />
+                YOU FEEL, STARTING
+                <br />
+                WITH WHAT&apos;S
+                <br />
+                <span className="text-[#737373]">UNDERNEATH.</span>
+              </h2>
+              <Link
+                href="/products"
+                className="anim-on-scroll anim-d3 group mt-12 inline-block relative text-xs font-light tracking-[0.2em] uppercase text-white hover:text-white/60 transition-colors pb-1"
+              >
+                DISCOVER MORE
+                <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-white" />
+              </Link>
+            </div>
+            <div className="order-1 lg:order-2 relative h-full min-h-[50vh] lg:min-h-0">
+              {splitImageType === "video" ? (
+                <video
+                  src={splitImageUrl}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  disablePictureInPicture
+                  preload="auto"
+                  className="w-full h-full object-cover object-center"
+                />
+              ) : (
+                <img
+                  src={splitImageUrl}
+                  alt="Upgrade the way you feel"
+                  className="w-full h-full object-cover object-center"
+                />
+              )}
+              {/* Transparent overlay to block video interaction/context menu */}
+              <div className="absolute inset-0 z-10" />
+            </div>
+          </section>
+        </div>
+      </div>
 
       {/* Premium Comfort Technology Carousel */}
       <TechnologyCarousel carousels={content?.carousels ?? []} />

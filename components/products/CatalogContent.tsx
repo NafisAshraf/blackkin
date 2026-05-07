@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { Loader2, Tag } from "lucide-react";
+import { Loader2, Tag, LayoutGrid, Square } from "lucide-react";
 import ProductCard from "@/components/products/ProductCard";
 import ProductFilters from "@/components/products/ProductFilters";
 import SortDropdown from "@/components/products/SortDropdown";
@@ -23,6 +23,7 @@ interface CatalogProduct {
   averageRating: number;
   totalRatings: number;
   imageUrl: string | null;
+  hoverImageUrl?: string | null;
   colorFirstImageUrls?: Array<{ color: string; url: string | null }>;
   tags?: Array<{ _id: string; name: string; slug: string }>;
   variants?: Array<{ color?: string }>;
@@ -84,9 +85,19 @@ interface CatalogContentProps {
   searchQuery?: string;
 }
 
-function ProductGrid({ products }: { products: CatalogProduct[] }) {
+function ProductGrid({
+  products,
+  viewMode = "grid",
+}: {
+  products: CatalogProduct[];
+  viewMode?: "grid" | "single";
+}) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+    <div
+      className={`grid ${
+        viewMode === "single" ? "grid-cols-1" : "grid-cols-2"
+      } md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6`}
+    >
       {products.map((product) => (
         <ProductCard
           key={product._id}
@@ -105,6 +116,7 @@ function ProductGrid({ products }: { products: CatalogProduct[] }) {
             variants: product.variants,
           }}
           imageUrl={product.imageUrl}
+          hoverImageUrl={product.hoverImageUrl}
           colorFirstImageUrls={product.colorFirstImageUrls}
         />
       ))}
@@ -122,6 +134,7 @@ export default function CatalogContent({
   searchQuery,
 }: CatalogContentProps) {
   const [limit, setLimit] = useState(INITIAL_LIMIT);
+  const [viewMode, setViewMode] = useState<"grid" | "single">("grid");
 
   // Only activate client query when loading more in filtered/search mode
   const shouldFetchMore = mode === "filtered" && limit > INITIAL_LIMIT;
@@ -215,6 +228,31 @@ export default function CatalogContent({
               colors={colors}
             />
           </Suspense>
+          {/* Grid / single-column toggle — visible only below md */}
+          <div className="md:hidden flex items-center border border-border rounded overflow-hidden">
+            <button
+              onClick={() => setViewMode("grid")}
+              aria-label="Grid view"
+              className={`p-1.5 transition-colors ${
+                viewMode === "grid"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("single")}
+              aria-label="Single column view"
+              className={`p-1.5 transition-colors ${
+                viewMode === "single"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Square className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -252,7 +290,7 @@ export default function CatalogContent({
                     No available products in this group.
                   </p>
                 ) : (
-                  <ProductGrid products={group.products} />
+                  <ProductGrid products={group.products} viewMode={viewMode} />
                 )}
               </div>
             ))}
@@ -267,7 +305,10 @@ export default function CatalogContent({
                     </h2>
                   </div>
                 )}
-                <ProductGrid products={saleData?.individualProducts ?? []} />
+                <ProductGrid
+                  products={saleData?.individualProducts ?? []}
+                  viewMode={viewMode}
+                />
               </div>
             )}
           </div>
@@ -283,7 +324,7 @@ export default function CatalogContent({
             </p>
           ) : (
             <>
-              <ProductGrid products={products} />
+              <ProductGrid products={products} viewMode={viewMode} />
 
               {/* Load more */}
               {hasMore && (

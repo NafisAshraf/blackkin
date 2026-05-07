@@ -211,6 +211,7 @@ export const listByType = query({
       forSize: v.optional(v.string()),
       sortOrder: v.number(),
       productName: v.string(),
+      imageUrl: v.union(v.string(), v.null()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -225,13 +226,18 @@ export const listByType = query({
     return await Promise.all(
       sorted.map(async (row) => {
         let productName = "(deleted)";
+        let imageUrl: string | null = null;
         if (row.recommendedProductId) {
           const product = await ctx.db.get(row.recommendedProductId);
           productName = product?.name ?? "(deleted)";
+          if (product?.thumbnailStorageId) {
+            imageUrl = await r2.getUrl(product.thumbnailStorageId);
+          }
         }
         return {
           ...row,
           productName,
+          imageUrl,
         };
       }),
     );

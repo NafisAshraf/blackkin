@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useId } from "react";
+import { useState, useCallback, useEffect, useRef, useId } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,9 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const baseId = useId();
 
+  // Refs for each desktop media item
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   // Mobile carousel state
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: false });
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -41,56 +44,65 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
 
   useEffect(() => {
     if (!emblaApi) return;
-    
-    // Initial state check
     onSelect();
-    
     emblaApi.on("reInit", onSelect);
     emblaApi.on("select", onSelect);
-    
     return () => {
       emblaApi.off("select", onSelect);
       emblaApi.off("reInit", onSelect);
     };
   }, [emblaApi, onSelect]);
 
-  // Track active media item on scroll
+  // Desktop: track active media item via scroll position
+  // Use window scroll + element getBoundingClientRect for accurate tracking
   useEffect(() => {
-    const observerOptions = {
-      root: null,
-      rootMargin: "-70px 0px -50% 0px", // Includes the 80px scroll point
-      threshold: [0, 0.5],
-    };
+    if (sorted.length === 0) return;
 
-    const observerCallback = (entries: IntersectionObserverEntry[]) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          const idParts = entry.target.id.split("-");
-          const index = parseInt(idParts[idParts.length - 1]);
-          if (!isNaN(index)) {
-            setActiveIndex(index);
-          }
+    let rafId: number | null = null;
+
+    function computeActiveIndex() {
+      const viewportMidpoint = window.innerHeight * 0.5;
+      let bestIndex = 0;
+      let bestTop = -Infinity;
+
+      for (let i = 0; i < sorted.length; i++) {
+        const el = itemRefs.current[i];
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        // Consider an item "active" once its top edge has crossed the upper half
+        // of the viewport. We want the last such item (highest top that is <= midpoint).
+        if (rect.top <= viewportMidpoint && rect.top > bestTop) {
+          bestTop = rect.top;
+          bestIndex = i;
         }
+      }
+
+      setActiveIndex(bestIndex);
+    }
+
+    function onScroll() {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        computeActiveIndex();
       });
+    }
+
+    // Run immediately on mount and whenever sorted changes
+    computeActiveIndex();
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
-
-    const observer = new IntersectionObserver(observerCallback, observerOptions);
-    sorted.forEach((_, i) => {
-      const el = document.getElementById(`${baseId}-media-${i}`);
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, [sorted]);
+  }, [sorted.length]); // re-run when number of items changes (color switch remounts via key)
 
   const scrollToMedia = (index: number) => {
     setActiveIndex(index);
-    const element = document.getElementById(`${baseId}-media-${index}`);
-    if (element) {
-      element.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
+    const el = itemRefs.current[index];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -106,7 +118,7 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
 
   return (
     <>
-      {/* ── MOBILE: Horizontal Embla slider (images only) ─── */}
+      {/* â”€â”€ MOBILE: Horizontal Embla slider (images only) â”€â”€â”€ */}
       <div className="lg:hidden group relative">
         {imagesOnly.length === 0 ? (
           <div className="w-full aspect-[3/4] bg-muted" />
@@ -142,7 +154,18 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
                     disabled={!canScrollPrev}
                     aria-label="Previous image"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m15 18-6-6 6-6" />
+                    </svg>
                   </button>
                   <button
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-white/80 hover:bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 disabled:pointer-events-none text-black shadow-sm z-10"
@@ -150,13 +173,24 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
                     disabled={!canScrollNext}
                     aria-label="Next image"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
                   </button>
                 </>
               )}
             </div>
 
-            {/* Counter & Progress bar — below image */}
+            {/* Counter & Progress bar â€” below image */}
             {total > 1 && (
               <div className="px-5 pt-3 pb-2 flex flex-col gap-2">
                 <div className="text-sm font-medium text-foreground tracking-wide">
@@ -177,13 +211,13 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
         )}
       </div>
 
-      {/* ── DESKTOP: Vertical stack of all media ─────────── */}
+      {/* â”€â”€ DESKTOP: Vertical stack of all media â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div
         className="hidden lg:block relative"
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Navigation thumbnails — only show if more than 1 item */}
+        {/* Navigation thumbnails â€” only show if more than 1 item */}
         {sorted.length > 1 && (
           <div
             className={cn(
@@ -233,7 +267,7 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
             {/* Vertical Indicator Line */}
             <div className="w-[1px] bg-foreground/10 relative">
               <div
-                className="absolute w-full bg-foreground/60 transition-all duration-500 ease-in-out"
+                className="absolute w-full bg-foreground/60 transition-all duration-300 ease-in-out"
                 style={{
                   height: `${100 / sorted.length}%`,
                   top: `${(activeIndex * 100) / sorted.length}%`,
@@ -246,7 +280,9 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
         {sorted.map((item, i) => (
           <div
             key={item.storageId}
-            id={`${baseId}-media-${i}`}
+            ref={(el) => {
+              itemRefs.current[i] = el;
+            }}
             className="w-full aspect-[3/4] bg-muted overflow-hidden scroll-mt-20"
           >
             {!item.url ? null : item.type === "image" ? (
@@ -259,10 +295,11 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
             ) : item.type === "video" ? (
               <video
                 src={item.url}
-                controls
-                controlsList="nodownload nofullscreen noremoteplayback"
-                disablePictureInPicture
+                autoPlay
+                loop
+                muted
                 playsInline
+                disablePictureInPicture
                 className="w-full h-full object-cover"
               />
             ) : (

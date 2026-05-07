@@ -8,7 +8,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -22,15 +22,21 @@ import {
 
 interface CartContextValue {
   guestItemCount: number;
+  isMerging: boolean;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-  addGuestItem: (productId: string, variantId: string, quantity: number) => void;
+  addGuestItem: (
+    productId: string,
+    variantId: string,
+    quantity: number,
+  ) => void;
   removeGuestItem: (variantId: string) => void;
   updateGuestQuantity: (variantId: string, quantity: number) => void;
 }
 
 const CartContext = createContext<CartContextValue>({
   guestItemCount: 0,
+  isMerging: false,
   isOpen: false,
   setIsOpen: () => {},
   addGuestItem: () => {},
@@ -40,9 +46,11 @@ const CartContext = createContext<CartContextValue>({
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = authClient.useSession();
+  const { isAuthenticated: isConvexAuth } = useConvexAuth();
   const mergeGuestCart = useMutation(api.cart.mergeGuestCart);
   const mergedRef = useRef(false);
   const [guestItemCount, setGuestItemCount] = useState(0);
+  const [isMerging, setIsMerging] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   // Sync guest item count from localStorage
@@ -54,13 +62,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     syncCount();
   }, [syncCount]);
 
-  // Merge guest cart on login
+  // Merge guest cart on login — gated on Convex JWT being ready
   useEffect(() => {
     if (!session) {
       mergedRef.current = false;
+      setIsMerging(false);
       syncCount();
       return;
     }
+
+    // Wait for the Convex client-side JWT before calling any authenticated mutation
+    if (!isConvexAuth) return;
 
     if (mergedRef.current) return;
     mergedRef.current = true;
@@ -68,20 +80,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const guestItems = getGuestCart();
     if (guestItems.length === 0) return;
 
+    setIsMerging(true);
     mergeGuestCart({ items: guestItems })
       .then(() => {
         clearGuestCart();
         setGuestItemCount(0);
       })
-      .catch(console.error);
-  }, [session, mergeGuestCart, syncCount]);
+      .catch(console.error)
+      .finally(() => setIsMerging(false));
+  }, [session, isConvexAuth, mergeGuestCart, syncCount]);
 
   const addGuestItem = useCallback(
     (productId: string, variantId: string, quantity: number) => {
       addToGuestCart(productId, variantId, quantity);
       syncCount();
     },
-    [syncCount]
+    [syncCount],
   );
 
   const removeGuestItem = useCallback(
@@ -89,7 +103,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       removeFromGuestCart(variantId);
       syncCount();
     },
-    [syncCount]
+    [syncCount],
   );
 
   const updateGuestQuantity = useCallback(
@@ -97,13 +111,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       updateGuestCartQuantity(variantId, quantity);
       syncCount();
     },
-    [syncCount]
+    [syncCount],
   );
 
   return (
     <CartContext.Provider
       value={{
         guestItemCount,
+        isMerging,
         isOpen,
         setIsOpen,
         addGuestItem,

@@ -85,10 +85,7 @@ export const getContent = query({
           .withIndex("by_slot", (q) => q.eq("slot", slot))
           .first();
         const url = row ? await r2.getUrl(row.storageId) : null;
-        return [
-          slot,
-          { url, type: row?.type ?? "image" },
-        ] as const;
+        return [slot, { url, type: row?.type ?? "image" }] as const;
       }),
     );
 
@@ -156,6 +153,10 @@ export const getContent = query({
                 ? await r2.getUrl(product.thumbnailStorageId)
                 : null;
 
+              const hoverImageUrl = product.hoverThumbnailStorageId
+                ? await r2.getUrl(product.hoverThumbnailStorageId)
+                : null;
+
               // Get unique variant colors
               const variants = await ctx.db
                 .query("productVariants")
@@ -178,8 +179,10 @@ export const getContent = query({
                 discountAmount,
                 discountGroupName,
                 imageUrl,
+                hoverImageUrl,
                 colorFirstImageUrls: await resolveColorFirstImageUrls(
                   product.variantMedia ?? [],
+                  product.commonMediaTop ?? [],
                 ),
                 colors,
                 sortOrder: item.sortOrder,

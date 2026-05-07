@@ -16,7 +16,11 @@ export default async function RegisterPage({
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
-      <h1 className="text-2xl font-semibold mb-8">Blackkin</h1>
+      <img
+        src="/assets/blackkin_footer.png"
+        alt="Blackkin"
+        className="h-7 w-auto brightness-0 mb-8"
+      />
       <RegisterForm />
     </div>
   );

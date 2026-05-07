@@ -149,7 +149,14 @@ export default function EditProductPage() {
 
   // Collect all storageIds for batch URL resolution
   const allStorageIds: string[] = [];
-  if (product?.thumbnailStorageId) allStorageIds.push(product.thumbnailStorageId);
+  if (product?.thumbnailStorageId)
+    allStorageIds.push(product.thumbnailStorageId);
+  if (product?.hoverThumbnailStorageId)
+    allStorageIds.push(product.hoverThumbnailStorageId);
+  for (const item of product?.commonMediaTop ?? [])
+    allStorageIds.push(item.storageId);
+  for (const item of product?.commonMediaBottom ?? [])
+    allStorageIds.push(item.storageId);
   for (const entry of product?.variantMedia ?? []) {
     for (const item of entry.media) allStorageIds.push(item.storageId);
   }
@@ -176,8 +183,18 @@ export default function EditProductPage() {
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [selectedTags, setSelectedTags] = useState<Set<Id<"tags">>>(new Set());
-  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(null);
-  const [variantMediaMap, setVariantMediaMap] = useState<Record<string, VariantMediaItem[]>>({});
+  const [thumbnailItem, setThumbnailItem] = useState<ThumbnailItem | null>(
+    null,
+  );
+  const [hoverThumbnailItem, setHoverThumbnailItem] =
+    useState<ThumbnailItem | null>(null);
+  const [variantMediaMap, setVariantMediaMap] = useState<
+    Record<string, VariantMediaItem[]>
+  >({});
+  const [commonMediaTop, setCommonMediaTop] = useState<VariantMediaItem[]>([]);
+  const [commonMediaBottom, setCommonMediaBottom] = useState<
+    VariantMediaItem[]
+  >([]);
   const [existingVariantIds, setExistingVariantIds] = useState<
     Id<"productVariants">[]
   >([]);
@@ -313,8 +330,43 @@ export default function EditProductPage() {
     // Thumbnail
     setThumbnailItem(
       product.thumbnailStorageId
-        ? { storageId: product.thumbnailStorageId, previewUrl: urlMap[product.thumbnailStorageId] ?? null }
+        ? {
+            storageId: product.thumbnailStorageId,
+            previewUrl: urlMap[product.thumbnailStorageId] ?? null,
+          }
         : null,
+    );
+
+    // Hover thumbnail
+    setHoverThumbnailItem(
+      product.hoverThumbnailStorageId
+        ? {
+            storageId: product.hoverThumbnailStorageId,
+            previewUrl: urlMap[product.hoverThumbnailStorageId] ?? null,
+          }
+        : null,
+    );
+
+    // Common media top
+    setCommonMediaTop(
+      [...(product.commonMediaTop ?? [])]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((item) => ({
+          storageId: item.storageId,
+          type: item.type as VariantMediaItem["type"],
+          previewUrl: urlMap[item.storageId] ?? null,
+        })),
+    );
+
+    // Common media bottom
+    setCommonMediaBottom(
+      [...(product.commonMediaBottom ?? [])]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((item) => ({
+          storageId: item.storageId,
+          type: item.type as VariantMediaItem["type"],
+          previewUrl: urlMap[item.storageId] ?? null,
+        })),
     );
 
     // Per-color variant media
@@ -405,6 +457,17 @@ export default function EditProductPage() {
         metaTitle: metaTitle.trim() || undefined,
         metaDescription: metaDescription.trim() || undefined,
         thumbnailStorageId: thumbnailItem?.storageId ?? null,
+        hoverThumbnailStorageId: hoverThumbnailItem?.storageId ?? null,
+        commonMediaTop: commonMediaTop.map((item, i) => ({
+          storageId: item.storageId,
+          type: item.type,
+          sortOrder: i,
+        })),
+        commonMediaBottom: commonMediaBottom.map((item, i) => ({
+          storageId: item.storageId,
+          type: item.type,
+          sortOrder: i,
+        })),
         variantMedia,
       });
 
@@ -653,6 +716,12 @@ export default function EditProductPage() {
             onChange={setVariantMediaMap}
             thumbnailItem={thumbnailItem}
             onThumbnailChange={setThumbnailItem}
+            hoverThumbnailItem={hoverThumbnailItem}
+            onHoverThumbnailChange={setHoverThumbnailItem}
+            commonMediaTop={commonMediaTop}
+            onCommonMediaTopChange={setCommonMediaTop}
+            commonMediaBottom={commonMediaBottom}
+            onCommonMediaBottomChange={setCommonMediaBottom}
             onUpload={(file) => r2Upload(file)}
             onDelete={(key) => r2Delete({ key }).catch(() => {})}
           />
@@ -984,12 +1053,7 @@ export default function EditProductPage() {
           <div className="flex items-center gap-3">
             <Button
               onClick={handleSave}
-              disabled={
-                saving ||
-                !!slugTaken ||
-                !!skuTaken ||
-                hasNoConfig
-              }
+              disabled={saving || !!slugTaken || !!skuTaken || hasNoConfig}
               className="flex-1"
             >
               {saving ? (

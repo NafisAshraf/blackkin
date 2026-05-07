@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import useEmblaCarousel from "embla-carousel-react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useQuery, useMutation, useAction, useConvexAuth } from "convex/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/convex/_generated/api";
@@ -49,6 +49,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useCart } from "@/components/cart/CartProvider";
 
 type AddressMode = "home" | "work" | "custom";
 type SaveAs = "home" | "work" | "none";
@@ -57,8 +58,16 @@ type PaymentMethod = "cod" | "sslcommerz";
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const cart = useQuery(api.cart.getCartWithPricing, {});
-  const savedAddresses = useQuery(api.addresses.getSavedAddresses, {});
+  const { isAuthenticated: isConvexAuth } = useConvexAuth();
+  const { isMerging } = useCart();
+  const cart = useQuery(
+    api.cart.getCartWithPricing,
+    isConvexAuth ? {} : "skip",
+  );
+  const savedAddresses = useQuery(
+    api.addresses.getSavedAddresses,
+    isConvexAuth ? {} : "skip",
+  );
   const cartSizes = cart
     ? Array.from(new Set(cart.items.map((i) => i.size)))
     : [];
@@ -69,7 +78,10 @@ export default function CheckoutPage() {
   const createOrder = useMutation(api.orders.create);
   const saveAddressMutation = useMutation(api.addresses.saveAddress);
   const initiatePayment = useAction(api.paymentActions.initiate);
-  const userProfile = useQuery(api.users.getCurrentUserWithRole, {});
+  const userProfile = useQuery(
+    api.users.getCurrentUserWithRole,
+    isConvexAuth ? {} : "skip",
+  );
   const updateProfile = useMutation(api.users.updateProfile);
   const addToCart = useMutation(api.cart.add);
   const updateCartQty = useMutation(api.cart.updateQuantity);
@@ -184,31 +196,21 @@ export default function CheckoutPage() {
       setPhone(workAddress.phone);
       setAddress(workAddress.address);
     } else if (addressMode === "custom") {
-      setName(userProfile?.name ?? "");
-      setPhone(userProfile?.phone ?? "");
+      setName((prev) => prev || userProfile?.name || "");
+      setPhone((prev) => prev || userProfile?.phone || "");
       setAddress("");
       setSaveAs("none");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addressMode]);
+  }, [addressMode, homeAddress, workAddress, userProfile]);
 
-  // When userProfile first loads (async), prefill phone if still in custom mode and empty
+  // When userProfile first loads (async), prefill indicators if still in custom mode
   useEffect(() => {
-    if (!userProfile?.phone) return;
-    if (addressMode !== "custom") return;
-    if (phone) return; // don't override manual input
-    setPhone(userProfile.phone);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile]);
-
-  // When userProfile first loads (async), prefill name if still in custom mode and empty
-  useEffect(() => {
-    if (!userProfile?.name) return;
-    if (addressMode !== "custom") return;
-    if (name) return; // don't override manual input
-    setName(userProfile.name);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userProfile]);
+    if (addressMode === "custom") {
+      if (userProfile?.name && !name) setName(userProfile.name);
+      if (userProfile?.phone && !phone) setPhone(userProfile.phone);
+    }
+  }, [userProfile, addressMode, name, phone]);
 
   // If selected saved address gets deleted externally, fall back gracefully
   useEffect(() => {
@@ -295,7 +297,7 @@ export default function CheckoutPage() {
     // Note: for sslcommerz we don't setIsSubmitting(false) — page navigates away
   };
 
-  if (cart === undefined || savedAddresses === undefined) {
+  if (isMerging || cart === undefined || savedAddresses === undefined) {
     return (
       <>
         <Navbar />
