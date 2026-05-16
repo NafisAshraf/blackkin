@@ -137,7 +137,7 @@ export default function StickyAddToCartBar({
         </div>
 
         {/* CTA */}
-        <div className="flex-shrink-0 w-32 sm:w-40">
+        <div className="flex-shrink-0 w-36 sm:w-40">
           {needsSelection ? (
             <button
               type="button"
@@ -167,6 +167,7 @@ export default function StickyAddToCartBar({
               variantId={selectedVariantId}
               disabled={!selectedVariantId}
               quantity={1}
+              className="h-10 tracking-wider"
             />
           )}
         </div>

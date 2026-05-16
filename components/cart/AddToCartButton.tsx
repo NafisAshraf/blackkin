@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { useCart } from "./CartProvider";
+import { cn } from "@/lib/utils";
 
 interface AddToCartButtonProps {
   productId: Id<"products">;
@@ -15,6 +16,7 @@ interface AddToCartButtonProps {
   disabled?: boolean;
   quantity?: number;
   onSuccess?: () => void;
+  className?: string;
 }
 
 export default function AddToCartButton({
@@ -23,6 +25,7 @@ export default function AddToCartButton({
   disabled,
   quantity = 1,
   onSuccess,
+  className,
 }: AddToCartButtonProps) {
   const { data: session } = authClient.useSession();
   const addMutation = useMutation(api.cart.add);
@@ -38,7 +41,9 @@ export default function AddToCartButton({
       setLoading(true);
       try {
         await addMutation({ productId, variantId: variantId!, quantity });
-        toast.success(quantity > 1 ? `${quantity} items added to cart` : "Added to cart");
+        toast.success(
+          quantity > 1 ? `${quantity} items added to cart` : "Added to cart",
+        );
         onSuccess?.();
       } catch {
         toast.error("Failed to add to cart");
@@ -47,7 +52,9 @@ export default function AddToCartButton({
       }
     } else {
       addGuestItem(productId as string, variantId as string, quantity);
-      toast.success(quantity > 1 ? `${quantity} items added to cart` : "Added to cart");
+      toast.success(
+        quantity > 1 ? `${quantity} items added to cart` : "Added to cart",
+      );
       onSuccess?.();
     }
   }
@@ -56,7 +63,10 @@ export default function AddToCartButton({
     <button
       onClick={handleClick}
       disabled={isDisabled || loading}
-      className="w-full h-11 bg-foreground text-background text-xs font-semibold tracking-[0.15em] uppercase hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+      className={cn(
+        "w-full h-11 bg-foreground text-background text-xs font-semibold tracking-[0.15em] uppercase hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
+        className,
+      )}
     >
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" />

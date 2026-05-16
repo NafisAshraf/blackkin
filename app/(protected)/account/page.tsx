@@ -6,7 +6,6 @@ import { format } from "date-fns";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
-import { isSyntheticPhoneEmail, syntheticEmailToPhone } from "@/lib/auth-utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
@@ -85,7 +84,8 @@ export default function AccountPage() {
     router.push("/");
   };
 
-  const isPhoneUser = isSyntheticPhoneEmail(session?.user?.email);
+  // All users now auth via phone OTP — treat everyone as a phone user
+  const isPhoneUser = true;
 
   function startEditField(field: ProfileField, currentValue: string) {
     setEditingField(field);
@@ -212,21 +212,11 @@ export default function AccountPage() {
                 const displayName =
                   currentUser?.name ?? session.user.name ?? "";
 
-                // Mobile: prefer Convex phone field; for phone-auth users whose
-                // Convex record predates the phone field, extract from the
-                // synthetic email that was their auth identifier.
-                const displayPhone =
-                  currentUser?.phone ??
-                  (isPhoneUser
-                    ? syntheticEmailToPhone(session.user.email!)
-                    : "");
+                // Mobile: from the Convex users.phone field (set by OTP auth)
+                const displayPhone = currentUser?.phone ?? "";
 
-                // Email: show real email only — never expose the synthetic
-                // "@phone.blackkin.local" placeholder to the user.
-                const rawEmail = currentUser?.email ?? "";
-                const displayEmail = isSyntheticPhoneEmail(rawEmail)
-                  ? ""
-                  : rawEmail;
+                // Email: optional contact email stored in Convex
+                const displayEmail = currentUser?.email ?? "";
 
                 return (
                   <>
@@ -311,9 +301,7 @@ export default function AccountPage() {
             </CardHeader>
             <CardContent className="text-sm space-y-4">
               <p className="text-muted-foreground">
-                {isPhoneUser
-                  ? "Signed in with mobile number and password."
-                  : "Signed in with email or Google."}
+                Signed in with mobile number via OTP.
               </p>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 Sign Out

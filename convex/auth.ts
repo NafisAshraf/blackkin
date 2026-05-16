@@ -1,20 +1,14 @@
-import { createClient, type GenericCtx } from "@convex-dev/better-auth";
+﻿import { createClient, type GenericCtx } from "@convex-dev/better-auth";
 import { convex } from "@convex-dev/better-auth/plugins";
 import { components, internal } from "./_generated/api";
 import { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { betterAuth } from "better-auth/minimal";
+import { phoneNumber } from "better-auth/plugins";
 import authConfig from "./auth.config";
 import type { AuthFunctions } from "@convex-dev/better-auth";
+
 const siteUrl = process.env.SITE_URL!;
-
-function isSyntheticPhoneEmail(email: string | undefined | null): boolean {
-  return !!email?.endsWith("@phone.blackkin.local");
-}
-
-function syntheticEmailToPhone(email: string): string {
-  return `+${email.replace("@phone.blackkin.local", "")}`;
-}
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -25,12 +19,28 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
   triggers: {
     user: {
       onCreate: async (ctx, doc) => {
-        const isPhone = isSyntheticPhoneEmail(doc.email);
+        // The phoneNumber plugin stores the phone on the Better Auth user object.
+        const phone: string | undefined =
+          (doc as { phoneNumber?: string }).phoneNumber || undefined;
+
+        if (phone) {
+          // Smart backfill: if a Convex user with this phone already exists
+          // (e.g. from a previous auth migration), re-point their authUserId
+          // instead of creating a duplicate record.
+          const existing = await ctx.db
+            .query("users")
+            .withIndex("by_phone", (q) => q.eq("phone", phone))
+            .unique();
+          if (existing) {
+            await ctx.db.patch(existing._id, { authUserId: doc._id });
+            return;
+          }
+        }
+
         await ctx.db.insert("users", {
           authUserId: doc._id,
-          email: isPhone ? undefined : doc.email,
-          phone: isPhone ? syntheticEmailToPhone(doc.email) : undefined,
-          name: doc.name,
+          phone,
+          // name is collected later (at checkout or account settings)
           role: "customer",
         });
       },
@@ -39,19 +49,18 @@ export const authComponent = createClient<DataModel>(components.betterAuth, {
           .query("users")
           .withIndex("by_authUserId", (q) => q.eq("authUserId", newDoc._id))
           .unique();
-        if (user) {
-          const isPhone = isSyntheticPhoneEmail(newDoc.email);
-          // Always sync name from Better Auth (so session.user.name stays consistent).
-          // For email: only overwrite when Better Auth itself holds a real email.
-          // For phone users the Better Auth email is synthetic, so we don't touch the
-          // real email that the user may have added directly via the Convex updateProfile
-          // mutation. Similarly, we preserve the Convex phone field for email users.
-          await ctx.db.patch(user._id, {
-            name: newDoc.name ?? user.name,
-            ...(isPhone
-              ? { phone: syntheticEmailToPhone(newDoc.email) } // keep user.email intact
-              : { email: newDoc.email }), // keep user.phone intact
-          });
+        if (!user) return;
+
+        const phone: string | undefined =
+          (newDoc as { phoneNumber?: string }).phoneNumber || undefined;
+        const name: string | undefined = newDoc.name || undefined;
+
+        // Only patch fields that have a value to avoid overwriting Convex-side data.
+        const patch: Record<string, unknown> = {};
+        if (phone) patch.phone = phone;
+        if (name) patch.name = name;
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(user._id, patch);
         }
       },
       onDelete: async (ctx, doc) => {
@@ -74,25 +83,70 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     baseURL: siteUrl,
     trustedOrigins: ["http://192.168.100.14:3000"],
     database: authComponent.adapter(ctx),
-    // Configure simple, non-verified email/password to get started
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: false,
-    },
-    socialProviders: {
-      google: {
-        clientId: process.env.GOOGLE_CLIENT_ID!,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      },
-    },
     plugins: [
       // The Convex plugin is required for Convex compatibility
       convex({ authConfig }),
+      // Phone number OTP authentication — only auth method for customers
+      phoneNumber({
+        sendOTP: async ({ phoneNumber: phone, code }) => {
+          const apiKey = process.env.SPACE_TEL_API_KEY;
+          const senderId = process.env.SPACE_TEL_SENDER_ID;
+
+          if (!apiKey || !senderId) {
+            console.error(
+              "[SMS] SPACE_TEL_API_KEY or SPACE_TEL_SENDER_ID not set — OTP not sent.",
+            );
+            console.log(`[SMS-MOCK] ${phone} -> ${code}`);
+            return;
+          }
+
+          // API expects 8801XXXXXXXXX format (no + prefix)
+          const contactNumber = phone.replace(/^\+/, "");
+          const textBody = `Your Blackkin OTP is ${code}. Valid for 5 minutes. Do not share this code.`;
+
+          try {
+            const res = await fetch(
+              "https://ccs.massdataltd.com/api/SendSMS/shoot",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  apiKey,
+                  contactNumbers: contactNumber,
+                  senderId,
+                  textBody,
+                  type: "text",
+                  label: "transactional",
+                }),
+              },
+            );
+
+            const data = (await res.json()) as {
+              code: number;
+              shootId?: string;
+            };
+
+            if (data.code === 0 || data.code === 4) {
+              console.log(
+                `[SMS] OTP delivered to ${phone} — shoot: ${data.shootId ?? "-"}`,
+              );
+            } else {
+              console.error(
+                `[SMS] Delivery failed for ${phone} — code: ${data.code}`,
+              );
+            }
+          } catch (err) {
+            console.error("[SMS] Network error — OTP not sent:", err);
+          }
+        },
+        otpLength: 6,
+        expiresIn: 300, // 5 minutes
+      }),
     ],
   });
 };
 
-// Example function for getting the current user
+// Query helper for getting the current Better Auth user
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {

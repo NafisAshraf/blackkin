@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth-server";
-import { LoginForm } from "@/components/auth/LoginForm";
+import { LoginShell } from "@/components/auth/LoginShell";
 
 export default async function LoginPage({
   searchParams,
@@ -14,14 +14,6 @@ export default async function LoginPage({
     redirect(next || "/");
   }
 
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4">
-      <img
-        src="/assets/blackkin_footer.png"
-        alt="Blackkin"
-        className="h-7 w-auto brightness-0 mb-8"
-      />
-      <LoginForm />
-    </div>
-  );
+  // Render a shell that auto-opens the AuthDialog. The dialog handles all auth.
+  return <LoginShell next={next} />;
 }

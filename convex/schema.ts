@@ -5,7 +5,7 @@ export default defineSchema({
   // ─── USERS (extended from existing) ────────────────────────
   users: defineTable({
     authUserId: v.string(),
-    name: v.string(),
+    name: v.optional(v.string()),
     email: v.optional(v.string()), // undefined for phone-only users
     phone: v.optional(v.string()), // set for users who signed up with mobile number
     role: v.union(
@@ -524,7 +524,7 @@ export default defineSchema({
     voucherId: v.id("vouchers"),
     orderId: v.id("orders"),
     userId: v.optional(v.id("users")), // set for authenticated users
-    email: v.string(), // user email snapshot (guest-ready)
+    email: v.optional(v.string()), // user email snapshot (undefined for phone-only users)
     discountAmount: v.number(), // actual BDT deducted
     status: v.union(
       v.literal("pending"),

@@ -186,7 +186,10 @@ export const create = mutation({
       orderNumber,
       userId: user._id,
       status: "new",
-      shippingAddress: { ...args.shippingAddress, email: user.email },
+      shippingAddress: {
+        ...args.shippingAddress,
+        email: user.email ?? undefined,
+      },
       subtotal,
       discountAmount,
       total: afterBundleTotal, // will be patched below if voucher applied
@@ -205,7 +208,7 @@ export const create = mutation({
         code: args.voucherCode,
         effectiveCartTotal: afterBundleTotal,
         userId: user._id,
-        email: user.email ?? "",
+        email: user.email,
         orderId,
         isCod: true, // COD: confirmed immediately
       });
@@ -236,6 +239,12 @@ export const create = mutation({
         status: "new",
         totalAmount: finalTotal,
       });
+    }
+
+    // Backfill user name from shipping address if not yet set.
+    // This is the primary way a phone-only user gets a name on their account.
+    if (!user.name && args.shippingAddress.name) {
+      await ctx.db.patch(user._id, { name: args.shippingAddress.name });
     }
 
     // Insert order items and decrement color stock
@@ -588,7 +597,7 @@ export const createInternal = internalMutation({
       orderNumber,
       userId,
       status: "new",
-      shippingAddress: { ...shippingAddress, email: user?.email },
+      shippingAddress: { ...shippingAddress, email: user?.email ?? undefined },
       subtotal,
       discountAmount,
       total: afterBundleTotal, // will be patched below if voucher applied
@@ -608,7 +617,7 @@ export const createInternal = internalMutation({
         code: args.voucherCode,
         effectiveCartTotal: afterBundleTotal,
         userId,
-        email: user?.email ?? "",
+        email: user?.email,
         orderId,
         isCod: false, // SSLCommerz: pending until IPN
       });
@@ -638,6 +647,11 @@ export const createInternal = internalMutation({
         status: "new",
         totalAmount: finalTotal,
       });
+    }
+
+    // Backfill user name from shipping address if not yet set.
+    if (user && !user.name && shippingAddress.name) {
+      await ctx.db.patch(user._id, { name: shippingAddress.name });
     }
 
     await Promise.all(

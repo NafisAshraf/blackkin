@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { CartIcon } from "@/components/cart/CartIcon";
 import SearchOverlay from "@/components/SearchOverlay";
+import { useAuthDialog } from "@/contexts/AuthDialogContext";
 import { Heart, Search, User, X, Menu, Flame } from "lucide-react";
 
 export function Navbar() {
@@ -19,6 +20,7 @@ export function Navbar() {
 function NavbarInner() {
   const pathname = usePathname();
   const { data: session, isPending } = authClient.useSession();
+  const { openAuth } = useAuthDialog();
 
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
   const [navVisible, setNavVisible] = useState(true);
@@ -65,11 +67,6 @@ function NavbarInner() {
 
   const isHomePage = pathname === "/";
   const spacerHeight = isHomePage ? 0 : announcementHeight + 80;
-
-  const loginHref =
-    pathname && pathname !== "/login" && pathname !== "/register"
-      ? `/login?next=${encodeURIComponent(pathname)}`
-      : "/login";
 
   return (
     <>
@@ -220,13 +217,23 @@ function NavbarInner() {
 
               <CartIcon />
 
-              <Link
-                href={session ? "/account/wishlist" : loginHref}
-                className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
-                aria-label="Wishlist"
-              >
-                <Heart className="h-5 w-5" />
-              </Link>
+              {session ? (
+                <Link
+                  href="/account/wishlist"
+                  className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
+                  aria-label="Wishlist"
+                >
+                  <Heart className="h-5 w-5" />
+                </Link>
+              ) : (
+                <button
+                  onClick={() => openAuth(pathname ?? undefined)}
+                  className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
+                  aria-label="Sign in to see wishlist"
+                >
+                  <Heart className="h-5 w-5" />
+                </button>
+              )}
 
               {isPending ? null : session ? (
                 <Link
@@ -237,13 +244,13 @@ function NavbarInner() {
                   <User className="h-5 w-5" />
                 </Link>
               ) : (
-                <Link
-                  href={loginHref}
+                <button
+                  onClick={() => openAuth(pathname ?? undefined)}
                   className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                   aria-label="Sign in"
                 >
                   <User className="h-5 w-5" />
-                </Link>
+                </button>
               )}
             </div>
           </div>
@@ -286,13 +293,15 @@ function NavbarInner() {
                   </Link>
                 )}
                 {!isPending && !session && (
-                  <Link
-                    href={loginHref}
-                    className="py-2.5 text-sm font-medium tracking-wide uppercase text-foreground"
-                    onClick={() => setMobileMenuOpen(false)}
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      openAuth(pathname ?? undefined);
+                    }}
+                    className="py-2.5 text-sm font-medium tracking-wide uppercase text-foreground text-left"
                   >
                     Sign In
-                  </Link>
+                  </button>
                 )}
               </nav>
             </div>

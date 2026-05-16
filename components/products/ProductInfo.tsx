@@ -390,6 +390,22 @@ export default function ProductInfo({
         </div>
       )}
 
+      {/* Bundle Discount Hints */}
+      <div className="flex gap-2">
+        <div className="flex-1 border border-border/60 bg-muted/30 px-3 py-2.5 text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Buy 2+
+          </p>
+          <p className="text-xs font-bold mt-0.5">Save 5%</p>
+        </div>
+        <div className="flex-1 border border-border/60 bg-muted/30 px-3 py-2.5 text-center">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Buy 3+
+          </p>
+          <p className="text-xs font-bold mt-0.5">Save 10% + Free Delivery</p>
+        </div>
+      </div>
+
       {/* Quantity & Actions */}
       <div ref={addToCartRef} className="space-y-4 pt-1">
         <p className="text-sm font-medium">Quantity</p>

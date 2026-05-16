@@ -228,7 +228,7 @@ export async function applyVoucherInMutation(
     code: string;
     effectiveCartTotal: number;
     userId: Id<"users"> | null;
-    email: string;
+    email: string | undefined;
     orderId: Id<"orders">;
     isCod: boolean;
   },
@@ -240,7 +240,7 @@ export async function applyVoucherInMutation(
     code,
     effectiveCartTotal,
     userId,
-    email,
+    email ?? "",
   );
 
   // Atomically increment usedCount (race-safe because mutations are serialized)
@@ -253,7 +253,7 @@ export async function applyVoucherInMutation(
     voucherId,
     orderId,
     userId: userId ?? undefined,
-    email: email.toLowerCase().trim(),
+    email: email ? email.toLowerCase().trim() : undefined,
     discountAmount,
     status: isCod ? "confirmed" : "pending",
   });
@@ -319,7 +319,7 @@ export const getUsageByOrderId = internalQuery({
       voucherId: v.id("vouchers"),
       orderId: v.id("orders"),
       userId: v.optional(v.id("users")),
-      email: v.string(),
+      email: v.optional(v.string()),
       discountAmount: v.number(),
       status: v.union(
         v.literal("pending"),
@@ -379,7 +379,7 @@ export const adminGetById = query({
           _id: v.id("voucherUsages"),
           _creationTime: v.number(),
           orderId: v.id("orders"),
-          email: v.string(),
+          email: v.optional(v.string()),
           discountAmount: v.number(),
           status: v.union(
             v.literal("pending"),
