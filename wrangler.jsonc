@@ -16,12 +16,22 @@
 		"directory": ".open-next/assets",
 		"binding": "ASSETS"
 	},
+	"routes": [
+		{
+			"pattern": "blackkin.com",
+			"zone_name": "blackkin.com",
+			"custom_domain": true,
+			"enabled": true,
+			"previews_enabled": false
+		}
+	],
 	"services": [
 		{
 			// Self-reference service binding, the service name must match the worker name
 			// see https://opennext.js.org/cloudflare/caching
 			"binding": "WORKER_SELF_REFERENCE",
-			"service": "blackkin"
+			"service": "blackkin",
+			"environment": "production"
 		}
 	],
 	"r2_buckets": [
@@ -39,5 +49,10 @@
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image
 		"binding": "IMAGES"
+	},
+	"observability": {
+		"logs": {
+			"enabled": true
+		}
 	}
 }
