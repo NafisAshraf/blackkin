@@ -83,6 +83,16 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     baseURL: siteUrl,
     trustedOrigins: ["http://192.168.100.14:3000"],
     database: authComponent.adapter(ctx),
+    session: {
+      // Sessions last 30 days — users stay signed in on their device.
+      expiresIn: 60 * 60 * 24 * 30,
+      // Only refresh (re-write) the session token if it is older than 7 days.
+      // Default is ~1 day, which causes frequent adapter writes.
+      updateAge: 60 * 60 * 24 * 7,
+      // Cookie cache embeds a short-lived session snapshot in the cookie so
+      // /get-session requests don't need to hit the Convex DB every time.
+      disableCookieCache: false,
+    },
     plugins: [
       // The Convex plugin is required for Convex compatibility
       convex({ authConfig }),

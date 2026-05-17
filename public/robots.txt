@@ -1,0 +1,29 @@
+User-agent: *
+# Allow crawling of public pages
+Allow: /
+Allow: /products
+Allow: /blog
+# Block private and API routes
+Disallow: /api/
+Disallow: /admin/
+Disallow: /account/
+Disallow: /checkout/
+# Slow down aggressive crawlers
+Crawl-delay: 10
+
+# Google — no crawl delay needed, trust their rate limiting
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /account/
+Disallow: /checkout/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /account/
+Disallow: /checkout/
+
+Sitemap: https://blackkin.com/sitemap.xml
