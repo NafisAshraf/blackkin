@@ -1,58 +1,64 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"main": ".open-next/worker.js",
-	"name": "blackkin",
-	"compatibility_date": "2026-05-04",
-	"compatibility_flags": [
-		"nodejs_compat",
-		"global_fetch_strictly_public"
-	],
-	"vars": {
-		"NEXT_PUBLIC_CONVEX_URL": "https://elated-labrador-720.convex.cloud",
-		"NEXT_PUBLIC_CONVEX_SITE_URL": "https://elated-labrador-720.convex.site",
-		"NEXT_PUBLIC_SITE_URL": "https://blackkin.project-digontodigitals.workers.dev"
-	},
-	"assets": {
-		"directory": ".open-next/assets",
-		"binding": "ASSETS"
-	},
-	"routes": [
-		{
-			"pattern": "blackkin.com",
-			"zone_name": "blackkin.com",
-			"custom_domain": true,
-			"enabled": true,
-			"previews_enabled": false
-		}
-	],
-	"services": [
-		{
-			// Self-reference service binding, the service name must match the worker name
-			// see https://opennext.js.org/cloudflare/caching
-			"binding": "WORKER_SELF_REFERENCE",
-			"service": "blackkin",
-			"environment": "production"
-		}
-	],
-	"r2_buckets": [
-		// Use R2 incremental cache
-		// See https://opennext.js.org/cloudflare/caching
-		{
-			"binding": "NEXT_INC_CACHE_R2_BUCKET",
-			// Create the bucket before deploying
-			// You can change the bucket name if you want
-			// See https://developers.cloudflare.com/workers/wrangler/commands/#r2-bucket-create
-			"bucket_name": "blackkin-opennext-cache"
-		}
-	],
-	"images": {
-		// Enable image optimization
-		// see https://opennext.js.org/cloudflare/howtos/image
-		"binding": "IMAGES"
-	},
-	"observability": {
-		"logs": {
-			"enabled": true
-		}
-	}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "blackkin",
+  "compatibility_date": "2026-05-04",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "vars": {
+    "NEXT_PUBLIC_CONVEX_URL": "https://elated-labrador-720.convex.cloud",
+    "NEXT_PUBLIC_CONVEX_SITE_URL": "https://elated-labrador-720.convex.site",
+    "NEXT_PUBLIC_SITE_URL": "https://blackkin.project-digontodigitals.workers.dev",
+    "SPACE_TEL_API_KEY": "01756001234.9e0e0211-cce4-4c45-8eb6-03aea9bf1b35",
+    "SPACE_TEL_SENDER_ID": "8809643901724",
+    // Public Turnstile site key (safe to commit)
+    "NEXT_PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAADYoRGmEfgizC8L1",
+    // TURNSTILE_SECRET_KEY and TURNSTILE_COOKIE_SECRET must be set as
+    // Cloudflare Worker secrets (never commit them):
+    //   wrangler secret put TURNSTILE_SECRET_KEY
+    //   wrangler secret put TURNSTILE_COOKIE_SECRET
+    //   (generate TURNSTILE_COOKIE_SECRET with: openssl rand -hex 32)
+  },
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS",
+  },
+  "routes": [
+    {
+      "pattern": "blackkin.com",
+      "zone_name": "blackkin.com",
+      "custom_domain": true,
+      "enabled": true,
+      "previews_enabled": false,
+    },
+  ],
+  "services": [
+    {
+      // Self-reference service binding, the service name must match the worker name
+      // see https://opennext.js.org/cloudflare/caching
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "blackkin",
+      "environment": "production",
+    },
+  ],
+  "r2_buckets": [
+    // Use R2 incremental cache
+    // See https://opennext.js.org/cloudflare/caching
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      // Create the bucket before deploying
+      // You can change the bucket name if you want
+      // See https://developers.cloudflare.com/workers/wrangler/commands/#r2-bucket-create
+      "bucket_name": "blackkin-opennext-cache",
+    },
+  ],
+  "images": {
+    // Enable image optimization
+    // see https://opennext.js.org/cloudflare/howtos/image
+    "binding": "IMAGES",
+  },
+  "observability": {
+    "logs": {
+      "enabled": true,
+    },
+  },
 }

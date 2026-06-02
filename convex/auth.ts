@@ -98,6 +98,13 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       convex({ authConfig }),
       // Phone number OTP authentication — only auth method for customers
       phoneNumber({
+        // Auto-create a new user when OTP is verified for the first time.
+        // Without this, Better Auth throws 500 for new users (user not found).
+        signUpOnVerification: {
+          getTempEmail: (phone) =>
+            `phone_${phone.replace(/[^0-9]/g, "")}@blackkin.internal`,
+          getTempName: (phone) => phone,
+        },
         sendOTP: async ({ phoneNumber: phone, code }) => {
           const apiKey = process.env.SPACE_TEL_API_KEY;
           const senderId = process.env.SPACE_TEL_SENDER_ID;
@@ -116,7 +123,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 
           try {
             const res = await fetch(
-              "https://ccs.massdataltd.com/api/SendSMS/shoot",
+              "https://ccs.teamitqan.com/api/SendSMS/shoot",
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -130,6 +137,14 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
                 }),
               },
             );
+
+            if (!res.ok) {
+              const body = await res.text().catch(() => "(no body)");
+              console.error(
+                `[SMS] HTTP ${res.status} from gateway — body: ${body}`,
+              );
+              return;
+            }
 
             const data = (await res.json()) as {
               code: number;

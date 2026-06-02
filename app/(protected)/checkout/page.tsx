@@ -258,6 +258,11 @@ export default function CheckoutPage() {
             : {}),
         });
 
+        // Persist name to user profile on first order (fire-and-forget)
+        if (!userProfile?.name && name.trim()) {
+          updateProfile({ name: name.trim() }).catch(console.error);
+        }
+
         // Fire-and-forget address save if user opted in
         if (addressMode === "custom" && saveAs !== "none") {
           saveAddressMutation({
@@ -278,6 +283,12 @@ export default function CheckoutPage() {
       } else {
         // ── SSLCommerz Online Payment ──
         toast.loading("Connecting to payment gateway…", { id: "ssl-init" });
+
+        // Persist name before navigating away (fire-and-forget)
+        if (!userProfile?.name && name.trim()) {
+          updateProfile({ name: name.trim() }).catch(console.error);
+        }
+
         const result = await initiatePayment({
           shippingAddress,
           ...(notes.trim() ? { notes: notes.trim() } : {}),

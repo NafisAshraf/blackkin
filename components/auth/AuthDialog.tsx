@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { normalizePhone, isPhoneNumber } from "@/lib/auth-utils";
@@ -44,6 +44,7 @@ export function AuthDialog({
   const [step, setStep] = useState<Step>("phone");
   const [phoneInput, setPhoneInput] = useState("");
   const [normalizedPhone, setNormalizedPhone] = useState("");
+  const [displayPhone, setDisplayPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -58,6 +59,7 @@ export function AuthDialog({
       setStep("phone");
       setPhoneInput("");
       setNormalizedPhone("");
+      setDisplayPhone("");
       setOtp("");
       setError(null);
     }
@@ -93,6 +95,50 @@ export function AuthDialog({
     };
   }, []);
 
+  // Keep the dialog above the software keyboard on mobile.
+  // window.innerHeight stays fixed on iOS; only visualViewport.height shrinks
+  // when the keyboard opens, so we use the visualViewport API to reposition.
+  const [dialogStyle, setDialogStyle] = useState<CSSProperties>({});
+  useEffect(() => {
+    if (!open) {
+      setDialogStyle({});
+      return;
+    }
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      const keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
+      if (keyboardHeight > 80) {
+        // Keyboard open: pin dialog to the top of the visible viewport
+        setDialogStyle({
+          top: `${vv.offsetTop + 48}px`,
+          transform: "translateX(-50%) translateY(0)",
+          maxHeight: `${vv.height - 32}px`,
+          overflowY: "auto",
+          transition:
+            "top 0.2s ease, transform 0.2s ease, max-height 0.2s ease",
+        });
+      } else {
+        // Keyboard dismissed: let CSS classes recenter the dialog
+        setDialogStyle({
+          transition:
+            "top 0.2s ease, transform 0.2s ease, max-height 0.2s ease",
+        });
+      }
+    };
+
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    // Run immediately: the input auto-focuses when the dialog opens, so the
+    // keyboard may already be up before the listeners are registered.
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [open]);
+
   const handleSendOtp = async () => {
     setError(null);
 
@@ -118,6 +164,11 @@ export function AuthDialog({
         return;
       }
       setNormalizedPhone(phone);
+      // Display +88 prefix so user sees "+88 01977017823" instead of "+8801977017823"
+      const raw = cleaned;
+      setDisplayPhone(
+        raw.startsWith("+") || raw.startsWith("88") ? phone : `+88 ${raw}`,
+      );
       setStep("otp");
       startCountdown();
     } catch {
@@ -196,6 +247,7 @@ export function AuthDialog({
     >
       <DialogContent
         className="max-w-sm"
+        style={dialogStyle}
         // Prevent accidental dismiss on overlay click when required
         onInteractOutside={required ? (e) => e.preventDefault() : undefined}
       >
@@ -224,7 +276,7 @@ export function AuthDialog({
           <DialogDescription>
             {step === "phone"
               ? "Enter your mobile number. We'll send you a one-time code."
-              : `We sent a 6-digit code to ${normalizedPhone}.`}
+              : `We sent a 6-digit code to ${displayPhone}.`}
           </DialogDescription>
         </DialogHeader>
 
