@@ -96,10 +96,7 @@ export const handleSuccess = httpAction(async (ctx, req) => {
         await ctx.runMutation(internal.vouchers.confirmVoucherUsage, {
           orderId,
         });
-        return Response.redirect(
-          `${SITE_URL}/account/orders/${orderId}?payment=success`,
-          303,
-        );
+        return Response.redirect(`${SITE_URL}/thank-you`, 303);
       }
     }
 

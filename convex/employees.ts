@@ -104,22 +104,39 @@ export const reactivateEmployee = mutation({
   },
 });
 
-/** Internal: promote a user to admin after Better Auth creates them */
-export const promoteUserByEmail = internalMutation({
+/** Internal: create or promote a phone-login user to admin */
+export const upsertEmployeeByPhone = internalMutation({
   args: {
-    email: v.string(),
+    name: v.string(),
+    phone: v.string(),
     permissions: permissionsValidator,
   },
   returns: v.union(v.id("users"), v.null()),
   handler: async (ctx, args) => {
     const user = await ctx.db
       .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .withIndex("by_phone", (q) => q.eq("phone", args.phone))
       .unique();
-    if (!user) return null;
+
+    if (user?.role === "superadmin") {
+      throw new Error("This phone number already belongs to a superadmin");
+    }
+
+    if (!user) {
+      return await ctx.db.insert("users", {
+        authUserId: `pending:${args.phone}`,
+        name: args.name,
+        phone: args.phone,
+        role: "admin",
+        permissions: args.permissions,
+      });
+    }
+
     await ctx.db.patch(user._id, {
+      name: args.name,
       role: "admin",
       permissions: args.permissions,
+      isActive: undefined,
     });
     return user._id;
   },

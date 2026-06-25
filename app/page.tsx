@@ -54,9 +54,11 @@ export default async function HomePage() {
               muted
               playsInline
               disablePictureInPicture
+              controls={false}
               preload="auto"
-              className="w-full h-full object-cover object-center"
+              className="mobile-inline-video pointer-events-none w-full h-full object-cover object-center"
               style={{ objectPosition: "center top" }}
+              {...{ "webkit-playsinline": "true" }}
             />
           ) : (
             <img
@@ -162,8 +164,10 @@ export default async function HomePage() {
                   muted
                   playsInline
                   disablePictureInPicture
+                  controls={false}
                   preload="auto"
-                  className="w-full h-full object-cover object-center"
+                  className="mobile-inline-video pointer-events-none w-full h-full object-cover object-center"
+                  {...{ "webkit-playsinline": "true" }}
                 />
               ) : (
                 <img

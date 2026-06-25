@@ -211,6 +211,20 @@
   width: 100%;
 }
 
+.mobile-inline-video {
+  display: block;
+}
+
+.mobile-inline-video::-webkit-media-controls,
+.mobile-inline-video::-webkit-media-controls-panel,
+.mobile-inline-video::-webkit-media-controls-play-button,
+.mobile-inline-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ─── ADMIN SIDEBAR MOBILE ──────────────────────────────── */
 .admin-sidebar-overlay {
   position: fixed;

@@ -26,6 +26,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, Pencil, UserX, UserCheck } from "lucide-react";
+import { isPhoneNumber, normalizePhone } from "@/lib/auth-utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -258,8 +259,7 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
   const createEmployee = useAction(api.employeeActions.createEmployee);
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
   const [permissions, setPermissions] = useState<Permissions>({
     ...DEFAULT_PERMISSIONS,
   });
@@ -267,12 +267,25 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+
+    if (!trimmedName) {
+      toast.error("Please enter the employee's name");
+      return;
+    }
+
+    if (!isPhoneNumber(trimmedPhone)) {
+      toast.error("Please enter a valid mobile number (10-15 digits).");
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await createEmployee({
-        name,
-        email,
-        password,
+        name: trimmedName,
+        phone: normalizePhone(trimmedPhone),
         permissions,
       });
       if (result.success) {
@@ -305,26 +318,19 @@ function AddEmployeeDialog({ onClose }: { onClose: () => void }) {
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="emp-email">Email</Label>
+          <Label htmlFor="emp-phone">Phone Number</Label>
           <Input
-            id="emp-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            id="emp-phone"
+            type="tel"
+            inputMode="numeric"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             required
-            placeholder="jane@example.com"
+            placeholder="01712345678"
           />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="emp-password">Password</Label>
-          <Input
-            id="emp-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            placeholder="••••••••"
-          />
+          <p className="text-[11px] text-muted-foreground">
+            Use the same mobile number the employee will use to sign in.
+          </p>
         </div>
         <div className="space-y-2">
           <Label>Permissions</Label>

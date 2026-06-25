@@ -21,14 +21,22 @@ const permissionsValidator = v.object({
   blog: v.boolean(),
 });
 
-const SITE_URL = process.env.SITE_URL!;
-const CONVEX_SITE_URL = process.env.CONVEX_SITE_URL!;
+function isPhoneNumber(value: string): boolean {
+  const cleaned = value.replace(/[\s\-()]/g, "");
+  return /^\+?\d{10,15}$/.test(cleaned);
+}
+
+function normalizePhone(value: string): string {
+  const cleaned = value.replace(/[\s\-()]/g, "");
+  if (cleaned.startsWith("+")) return cleaned;
+  if (cleaned.startsWith("88")) return `+${cleaned}`;
+  return `+88${cleaned}`;
+}
 
 export const createEmployee = action({
   args: {
     name: v.string(),
-    email: v.string(),
-    password: v.string(),
+    phone: v.string(),
     permissions: permissionsValidator,
   },
   returns: v.object({ success: v.boolean(), error: v.optional(v.string()) }),
@@ -36,52 +44,36 @@ export const createEmployee = action({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return { success: false, error: "Unauthenticated" };
 
-    // Call Better Auth sign-up endpoint over Convex HTTP router
-    const signUpUrl = `${CONVEX_SITE_URL}/api/auth/sign-up/email`;
-    let authRes: Response;
-    try {
-      authRes = await fetch(signUpUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Origin: SITE_URL,
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          email: args.email,
-          password: args.password,
-          name: args.name,
-        }),
-      });
-    } catch {
-      return { success: false, error: "Network error creating account" };
+    const caller = await ctx.runQuery(internal.users.getByAuthUserIdInternal, {
+      authUserId: identity.subject,
+    });
+
+    if (!caller || caller.isActive === false || caller.role !== "superadmin") {
+      return { success: false, error: "Unauthorized" };
     }
 
-    if (!authRes.ok) {
-      let errMsg = "Failed to create account";
-      try {
-        const body = (await authRes.json()) as { message?: string };
-        errMsg = body.message ?? errMsg;
-      } catch {
-        // ignore json parse error
-      }
-      return { success: false, error: errMsg };
+    const name = args.name.trim();
+    if (!name) {
+      return { success: false, error: "Name is required" };
     }
 
-    // The Better Auth onCreate trigger created the Convex user as "customer".
-    // Promote them to admin.
-    const userId = await ctx.runMutation(
-      internal.employees.promoteUserByEmail,
-      {
-        email: args.email,
-        permissions: args.permissions,
-      },
-    );
-
-    if (!userId) {
+    if (!isPhoneNumber(args.phone)) {
       return {
         success: false,
-        error: "Account created but role assignment failed. Check Convex logs.",
+        error: "Please enter a valid mobile number (10-15 digits).",
+      };
+    }
+
+    try {
+      await ctx.runMutation(internal.employees.upsertEmployeeByPhone, {
+        name,
+        phone: normalizePhone(args.phone),
+        permissions: args.permissions,
+      });
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to create employee",
       };
     }
 

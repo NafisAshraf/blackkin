@@ -21,7 +21,6 @@ interface MediaGalleryProps {
 
 export default function MediaGallery({ media }: MediaGalleryProps) {
   const sorted = [...media].sort((a, b) => a.sortOrder - b.sortOrder);
-  const imagesOnly = sorted.filter((m) => m.type === "image");
   const [isHovered, setIsHovered] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const baseId = useId();
@@ -114,31 +113,48 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
     );
   }
 
-  const total = imagesOnly.length;
+  const total = sorted.length;
 
   return (
     <>
-      {/* â”€â”€ MOBILE: Horizontal Embla slider (images only) â”€â”€â”€ */}
+      {/* Mobile: Horizontal Embla slider */}
       <div className="lg:hidden group relative">
-        {imagesOnly.length === 0 ? (
+        {sorted.length === 0 ? (
           <div className="w-full aspect-[3/4] bg-muted" />
         ) : (
           <div>
             <div className="relative">
               <div ref={emblaRef} className="overflow-hidden">
                 <div className="flex">
-                  {imagesOnly.map((item, i) => (
+                  {sorted.map((item, i) => (
                     <div
                       key={item.storageId}
                       className="flex-[0_0_100%] aspect-[3/4] bg-muted overflow-hidden"
                     >
-                      {item.url && (
+                      {!item.url ? null : item.type === "image" ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={item.url}
                           alt={`Product ${i + 1}`}
                           className="w-full h-full object-cover"
                         />
+                      ) : item.type === "video" ? (
+                        <video
+                          src={item.url}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          disablePictureInPicture
+                          controls={false}
+                          preload="metadata"
+                          className="mobile-inline-video w-full h-full object-cover"
+                          {...{ "webkit-playsinline": "true" }}
+                        />
+                      ) : (
+                        <div className="w-full h-full">
+                          <ModelViewer url={item.url} />
+                        </div>
                       )}
                     </div>
                   ))}
@@ -300,7 +316,10 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
                 muted
                 playsInline
                 disablePictureInPicture
-                className="w-full h-full object-cover"
+                controls={false}
+                preload="metadata"
+                className="mobile-inline-video w-full h-full object-cover"
+                {...{ "webkit-playsinline": "true" }}
               />
             ) : (
               <div className="w-full h-full">

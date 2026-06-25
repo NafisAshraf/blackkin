@@ -278,7 +278,7 @@ export default function CheckoutPage() {
           setIsSubmitting(false);
           setShowEmailCapture(true);
         } else {
-          router.push("/account/orders");
+          router.push("/thank-you");
         }
       } else {
         // ── SSLCommerz Online Payment ──
@@ -1022,7 +1022,7 @@ export default function CheckoutPage() {
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => router.push("/account/orders")}
+                onClick={() => router.push("/thank-you")}
               >
                 Skip
               </Button>
@@ -1039,7 +1039,7 @@ export default function CheckoutPage() {
                   } finally {
                     setIsSavingEmail(false);
                   }
-                  router.push("/account/orders");
+                  router.push("/thank-you");
                 }}
               >
                 {isSavingEmail ? (
