@@ -5,6 +5,11 @@ import { requireAdmin } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { resolveColorFirstImageUrls } from "./lib/media";
 import { r2 } from "./r2";
+import {
+  getActiveSizeMaps,
+  getVariantSizeLabel,
+  withResolvedVariantSize,
+} from "./lib/variantSizes";
 
 // ─── Validators ─────────────────────────────────────────────
 
@@ -67,6 +72,7 @@ export const getAlsoLike = query({
   args: {},
   returns: v.array(recommendedProductCard),
   handler: async (ctx) => {
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const rows = await ctx.db
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", "also_like"))
@@ -90,6 +96,11 @@ export const getAlsoLike = query({
           .query("productVariants")
           .withIndex("by_productId", (q) => q.eq("productId", product._id))
           .take(50);
+        const activeVariants = variants
+          .map((variant) => withResolvedVariantSize(variant, sizeMaps))
+          .filter((variant): variant is NonNullable<typeof variant> =>
+            Boolean(variant),
+          );
 
         return {
           _id: product._id,
@@ -105,7 +116,7 @@ export const getAlsoLike = query({
           colorFirstImageUrls: await resolveColorFirstImageUrls(
             product.variantMedia ?? [],
           ),
-          variants: variants.map((v) => ({ color: v.color })),
+          variants: activeVariants.map((v) => ({ color: v.color })),
         };
       }),
     );
@@ -125,6 +136,7 @@ export const getAlsoBought = query({
   },
   returns: v.array(alsoBoughtVariantCard),
   handler: async (ctx, args) => {
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const seenVariantIds = new Set<string>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cards: any[] = [];
@@ -164,6 +176,8 @@ export const getAlsoBought = query({
 
       const variant = await ctx.db.get(row.recommendedVariantId);
       if (!variant || variant.stock <= 0) continue;
+      const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+      if (!sizeLabel) continue;
 
       const product = await ctx.db.get(variant.productId);
       if (!product || !isProductVisible(product)) continue;
@@ -182,7 +196,7 @@ export const getAlsoBought = query({
         productId: product._id,
         productName: product.name,
         productSlug: product.slug,
-        size: variant.size,
+        size: sizeLabel,
         color: variant.color,
         basePrice: product.basePrice,
         effectivePrice,
@@ -270,6 +284,7 @@ export const listAlsoBoughtBySize = query({
   ),
   handler: async (ctx) => {
     await requireAdmin(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const rows = await ctx.db
       .query("productRecommendations")
       .withIndex("by_type", (q) => q.eq("type", "also_bought"))
@@ -294,6 +309,8 @@ export const listAlsoBoughtBySize = query({
           if (!row.recommendedVariantId) return null;
           const variant = await ctx.db.get(row.recommendedVariantId);
           if (!variant) return null;
+          const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+          if (!sizeLabel) return null;
           const product = await ctx.db.get(variant.productId);
           if (!product) return null;
           const imageUrl = product.thumbnailStorageId
@@ -305,7 +322,7 @@ export const listAlsoBoughtBySize = query({
             variantId: variant._id,
             productId: product._id,
             productName: product.name,
-            size: variant.size,
+            size: sizeLabel,
             color: variant.color,
             imageUrl,
             stock: variant.stock,
@@ -365,8 +382,14 @@ export const addVariant = mutation({
   returns: v.id("productRecommendations"),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const variant = await ctx.db.get(args.recommendedVariantId);
     if (!variant) throw new ConvexError("Variant not found");
+    const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+    if (!sizeLabel) throw new ConvexError("Variant not available");
+    if (sizeLabel !== args.forSize) {
+      throw new ConvexError("Variant size does not match this section");
+    }
 
     // Check for duplicate variant in this size section
     const existing = await ctx.db
@@ -479,6 +502,7 @@ export const getVariantsForPicker = query({
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const existing = await ctx.db
       .query("productRecommendations")
       .withIndex("by_type_and_forSize", (q) =>
@@ -493,12 +517,17 @@ export const getVariantsForPicker = query({
         ),
     );
 
-    const variants = await ctx.db
-      .query("productVariants")
-      .withIndex("by_productId_and_size", (q) =>
-        q.eq("productId", args.productId).eq("size", args.size),
-      )
-      .take(50);
+    const variants = (
+      await ctx.db
+        .query("productVariants")
+        .withIndex("by_productId", (q) => q.eq("productId", args.productId))
+        .take(100)
+    )
+      .map((variant) => withResolvedVariantSize(variant, sizeMaps))
+      .filter(
+        (variant): variant is NonNullable<typeof variant> =>
+          variant !== null && variant.size === args.size,
+      );
 
     const deduped = [...variants]
       .sort((a, b) => b._creationTime - a._creationTime)

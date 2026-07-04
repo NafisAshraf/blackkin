@@ -23,6 +23,11 @@ import { r2 } from "./r2";
 import { Id } from "./_generated/dataModel";
 import { applyVoucherInMutation } from "./vouchers";
 import { computeBundleDiscount } from "./bundleDiscount";
+import {
+  getActiveSizeMaps,
+  getVariantSizeLabel,
+  isSelectableVariant,
+} from "./lib/variantSizes";
 
 const shippingAddressValidator = v.object({
   name: v.string(),
@@ -30,6 +35,20 @@ const shippingAddressValidator = v.object({
   email: v.optional(v.string()),
   address: v.string(),
 });
+
+const DELIVERY_CHARGE = 80;
+
+function getDeliveryCost(bundle: { bundleDiscountFreeDelivery: boolean }) {
+  return bundle.bundleDiscountFreeDelivery ? 0 : DELIVERY_CHARGE;
+}
+
+function getFinalTotal(
+  afterBundleTotal: number,
+  voucherDiscountAmount: number,
+  deliveryCost: number,
+) {
+  return Math.max(0, afterBundleTotal - voucherDiscountAmount) + deliveryCost;
+}
 
 const orderItemObject = v.object({
   _id: v.id("orderItems"),
@@ -118,6 +137,7 @@ export const create = mutation({
 
     if (cartItems.length === 0) throw new ConvexError("Cart is empty");
 
+    const sizeMaps = await getActiveSizeMaps(ctx);
     let subtotal = 0;
     let discountAmount = 0;
 
@@ -135,9 +155,11 @@ export const create = mutation({
         if (!variant || variant.productId !== product._id) {
           throw new ConvexError("Variant not found");
         }
+        const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+        if (!sizeLabel) throw new ConvexError("Variant not available");
         if (variant.stock < item.quantity) {
           throw new ConvexError(
-            `Insufficient stock for "${product.name}" (${variant.size})`,
+            `Insufficient stock for "${product.name}" (${sizeLabel})`,
           );
         }
 
@@ -156,7 +178,7 @@ export const create = mutation({
           productId: product._id,
           variantId: variant._id,
           productName: product.name,
-          size: variant.size,
+          size: sizeLabel,
           color: variant.color,
           unitPrice,
           quantity: item.quantity,
@@ -179,6 +201,8 @@ export const create = mutation({
       effectiveCartTotal,
     );
     const afterBundleTotal = effectiveCartTotal - bundle.bundleDiscountAmount;
+    const deliveryCost = getDeliveryCost(bundle);
+    const totalBeforeVoucher = afterBundleTotal + deliveryCost;
 
     // Create the order first (we need orderId to create voucherUsage)
     const orderNumber = await nextOrderNumber(ctx);
@@ -192,7 +216,8 @@ export const create = mutation({
       },
       subtotal,
       discountAmount,
-      total: afterBundleTotal, // will be patched below if voucher applied
+      deliveryCost,
+      total: totalBeforeVoucher, // will be patched below if voucher applied
       ...(bundle.bundleDiscountAmount > 0 && {
         bundleDiscountAmount: bundle.bundleDiscountAmount,
         bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
@@ -216,11 +241,19 @@ export const create = mutation({
       await ctx.db.patch(orderId, {
         voucherCode: args.voucherCode.toUpperCase().trim(),
         voucherDiscountAmount,
-        total: Math.max(0, afterBundleTotal - voucherDiscountAmount),
+        total: getFinalTotal(
+          afterBundleTotal,
+          voucherDiscountAmount,
+          deliveryCost,
+        ),
       });
     }
 
-    const finalTotal = Math.max(0, afterBundleTotal - voucherDiscountAmount);
+    const finalTotal = getFinalTotal(
+      afterBundleTotal,
+      voucherDiscountAmount,
+      deliveryCost,
+    );
 
     const order = await ctx.db.get(orderId);
     if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
@@ -538,6 +571,7 @@ export const createInternal = internalMutation({
 
     if (cartItems.length === 0) throw new ConvexError("Cart is empty");
 
+    const sizeMaps = await getActiveSizeMaps(ctx);
     let subtotal = 0;
     let discountAmount = 0;
 
@@ -553,9 +587,11 @@ export const createInternal = internalMutation({
         if (!variant || variant.productId !== product._id) {
           throw new ConvexError("Variant not found");
         }
+        const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+        if (!sizeLabel) throw new ConvexError("Variant not available");
         if (variant.stock < item.quantity) {
           throw new ConvexError(
-            `Insufficient stock for "${product.name}" (${variant.size})`,
+            `Insufficient stock for "${product.name}" (${sizeLabel})`,
           );
         }
         const {
@@ -570,7 +606,7 @@ export const createInternal = internalMutation({
           productId: product._id,
           variantId: variant._id,
           productName: product.name,
-          size: variant.size,
+          size: sizeLabel,
           color: variant.color,
           unitPrice,
           quantity: item.quantity,
@@ -591,6 +627,8 @@ export const createInternal = internalMutation({
       effectiveCartTotal,
     );
     const afterBundleTotal = effectiveCartTotal - bundle.bundleDiscountAmount;
+    const deliveryCost = getDeliveryCost(bundle);
+    const totalBeforeVoucher = afterBundleTotal + deliveryCost;
 
     const orderNumber = await nextOrderNumber(ctx);
     const orderId = await ctx.db.insert("orders", {
@@ -600,7 +638,8 @@ export const createInternal = internalMutation({
       shippingAddress: { ...shippingAddress, email: user?.email ?? undefined },
       subtotal,
       discountAmount,
-      total: afterBundleTotal, // will be patched below if voucher applied
+      deliveryCost,
+      total: totalBeforeVoucher, // will be patched below if voucher applied
       ...(bundle.bundleDiscountAmount > 0 && {
         bundleDiscountAmount: bundle.bundleDiscountAmount,
         bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
@@ -624,11 +663,19 @@ export const createInternal = internalMutation({
       await ctx.db.patch(orderId, {
         voucherCode: args.voucherCode.toUpperCase().trim(),
         voucherDiscountAmount,
-        total: Math.max(0, afterBundleTotal - voucherDiscountAmount),
+        total: getFinalTotal(
+          afterBundleTotal,
+          voucherDiscountAmount,
+          deliveryCost,
+        ),
       });
     }
 
-    const finalTotal = Math.max(0, afterBundleTotal - voucherDiscountAmount);
+    const finalTotal = getFinalTotal(
+      afterBundleTotal,
+      voucherDiscountAmount,
+      deliveryCost,
+    );
 
     const order = await ctx.db.get(orderId);
     if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
@@ -1097,11 +1144,15 @@ export const updateOrderItem = mutation({
     if (!item || item.orderId !== orderId)
       throw new ConvexError("Item not found");
 
+    const sizeMaps = await getActiveSizeMaps(ctx);
+
     // If variant changed, adjust stock
     if (item.variantId !== variantId) {
       const oldVariant = await ctx.db.get(item.variantId);
       const newVariant = await ctx.db.get(variantId);
       if (!newVariant) throw new ConvexError("Variant not found");
+      const sizeLabel = getVariantSizeLabel(newVariant, sizeMaps);
+      if (!sizeLabel) throw new ConvexError("Variant not available");
       if (newVariant.stock < quantity)
         throw new ConvexError("Insufficient stock");
 
@@ -1116,7 +1167,7 @@ export const updateOrderItem = mutation({
       await ctx.db.patch(itemId, {
         variantId,
         color: newVariant.color ?? item.color,
-        size: newVariant.size ?? item.size,
+        size: sizeLabel,
         quantity,
         totalPrice: item.unitPrice * quantity,
       });
@@ -1124,6 +1175,8 @@ export const updateOrderItem = mutation({
       // Same variant, just update quantity
       const variant = await ctx.db.get(variantId);
       if (!variant) throw new ConvexError("Variant not found");
+      if (!isSelectableVariant(variant, sizeMaps))
+        throw new ConvexError("Variant not available");
       const stockDiff = quantity - item.quantity;
       if (stockDiff > 0 && variant.stock < stockDiff)
         throw new ConvexError("Insufficient stock");
@@ -1186,6 +1239,9 @@ export const addOrderItem = mutation({
 
     const variant = await ctx.db.get(variantId);
     if (!variant) throw new ConvexError("Variant not found");
+    const sizeMaps = await getActiveSizeMaps(ctx);
+    const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+    if (!sizeLabel) throw new ConvexError("Variant not available");
     if (variant.productId !== productId)
       throw new ConvexError("Variant does not belong to product");
     if (variant.stock < quantity) throw new ConvexError("Insufficient stock");
@@ -1199,7 +1255,7 @@ export const addOrderItem = mutation({
       productId,
       variantId,
       productName: product.name,
-      size: variant.size,
+      size: sizeLabel,
       color: variant.color,
       unitPrice,
       quantity,

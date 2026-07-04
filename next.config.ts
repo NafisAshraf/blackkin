@@ -3,12 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
 
-  // Cache public pages at Cloudflare edge so bots and repeat visitors
-  // are served from cache instead of triggering fresh SSR + Convex calls.
+  // Cache public pages at any CDN/proxy layer so repeat visitors do not
+  // trigger fresh SSR + Convex calls on every request.
   async headers() {
     return [
       {
-        // Home page — cache for 60s, serve stale for up to 5 min while revalidating
+        // Home page: cache for 60s, serve stale for up to 5 min while revalidating.
         source: "/",
         headers: [
           {
@@ -42,5 +42,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-
-import("@opennextjs/cloudflare").then((m) => m.initOpenNextCloudflareForDev());

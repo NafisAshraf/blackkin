@@ -10,7 +10,7 @@ export default async function ProtectedLayout({
   const isUserAuthenticated = await isAuthenticated();
 
   if (!isUserAuthenticated) {
-    // x-pathname is injected by middleware.ts so we can send the user back
+    // x-pathname is injected by proxy.ts so we can send the user back
     // to the exact page they were trying to reach after login.
     const pathname = (await headers()).get("x-pathname") ?? "/";
     redirect(`/login?next=${encodeURIComponent(pathname)}`);

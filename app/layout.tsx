@@ -1,11 +1,5 @@
 import type { Metadata } from "next";
-import {
-  Geist,
-  Geist_Mono,
-  Montserrat,
-  Cormorant_Garamond,
-  Anton,
-} from "next/font/google";
+import type { CSSProperties } from "react";
 import "./globals.css";
 import Script from "next/script";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
@@ -16,29 +10,13 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { Toaster } from "@/components/ui/sonner";
 import { MarketingScripts } from "@/components/MarketingScripts";
 
-const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-sans" });
-const cormorant = Cormorant_Garamond({
-  subsets: ["latin"],
-  variable: "--font-serif",
-  weight: ["400", "500", "600", "700"],
-  style: ["normal", "italic"],
-});
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const anton = Anton({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-anton",
-});
+const fontVariables = {
+  "--font-sans": 'Montserrat, "Helvetica Neue", Arial, sans-serif',
+  "--font-serif": 'Georgia, "Times New Roman", serif',
+  "--font-geist-sans": '"Segoe UI", Arial, sans-serif',
+  "--font-geist-mono": '"Cascadia Code", Consolas, monospace',
+  "--font-anton": 'Impact, "Arial Black", sans-serif',
+} as CSSProperties;
 
 export const metadata: Metadata = {
   title: {
@@ -65,16 +43,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn(
-        "font-sans",
-        montserrat.variable,
-        cormorant.variable,
-        anton.variable,
-      )}
+      className={cn("font-sans")}
+      style={fontVariables}
     >
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <ConvexClientProvider>
           <TooltipProvider>
             <CartProvider>

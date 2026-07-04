@@ -4,6 +4,7 @@ import { mutation, query, MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAdmin } from "./lib/auth.helpers";
 import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { resolveColorFirstImageUrls } from "./lib/media";
+import { getActiveSizeMaps, isSelectableVariant } from "./lib/variantSizes";
 import { r2 } from "./r2";
 
 // ─── Slot union (reused in args validators) ────────────────────────────────
@@ -128,6 +129,7 @@ export const getContent = query({
       .collect();
 
     activeSections.sort((a, b) => a.position - b.position);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     const productSections = await Promise.all(
       activeSections.map(async (section) => {
@@ -166,7 +168,10 @@ export const getContent = query({
                 .take(50);
               const colors = [
                 ...new Set(
-                  variants.map((v) => v.color).filter((c): c is string => !!c),
+                  variants
+                    .filter((v) => isSelectableVariant(v, sizeMaps))
+                    .map((v) => v.color)
+                    .filter((c): c is string => !!c),
                 ),
               ];
 

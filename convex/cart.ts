@@ -5,6 +5,11 @@ import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { computeBundleDiscount } from "./bundleDiscount";
 import { Id } from "./_generated/dataModel";
 import { r2 } from "./r2";
+import {
+  getActiveSizeMaps,
+  getVariantSizeLabel,
+  isSelectableVariant,
+} from "./lib/variantSizes";
 
 const cartItemFull = v.object({
   _id: v.id("cartItems"),
@@ -46,6 +51,7 @@ export const get = query({
   returns: v.array(cartItemFull),
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     const items = await ctx.db
       .query("cartItems")
@@ -58,6 +64,8 @@ export const get = query({
         const variant = await ctx.db.get(item.variantId);
 
         if (!product || !variant) return null;
+        const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+        if (!sizeLabel) return null;
 
         const { effectivePrice: discountedPrice, discountAmount } =
           await getEffectivePrice(ctx, product);
@@ -73,7 +81,7 @@ export const get = query({
           basePrice: product.basePrice,
           discountedPrice,
           discountAmount,
-          size: variant.size,
+          size: sizeLabel,
           color: variant.color,
           imageUrl,
           stock: variant.stock,
@@ -108,6 +116,7 @@ export const getGuestCartItems = query({
   returns: v.array(guestCartItemFull),
   handler: async (ctx, args) => {
     if (args.items.length === 0) return [];
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     const enriched = await Promise.all(
       args.items.map(async (item) => {
@@ -121,6 +130,8 @@ export const getGuestCartItems = query({
 
         if (!product || !isProductVisible(product)) return null;
         if (!variant || variant.productId !== product._id) return null;
+        const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+        if (!sizeLabel) return null;
         if (variant.stock === 0) return null;
 
         const { effectivePrice: discountedPrice, discountAmount } =
@@ -139,7 +150,7 @@ export const getGuestCartItems = query({
           basePrice: product.basePrice,
           discountedPrice,
           discountAmount,
-          size: variant.size,
+          size: sizeLabel,
           color: variant.color,
           imageUrl,
           stock: variant.stock,
@@ -160,6 +171,7 @@ export const add = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     if (args.quantity < 1) throw new ConvexError("Quantity must be at least 1");
 
@@ -170,6 +182,9 @@ export const add = mutation({
     const variant = await ctx.db.get(args.variantId);
     if (!variant || variant.productId !== args.productId) {
       throw new ConvexError("Variant not found");
+    }
+    if (!isSelectableVariant(variant, sizeMaps)) {
+      throw new ConvexError("Variant not available");
     }
     if (variant.stock < args.quantity)
       throw new ConvexError("Insufficient stock");
@@ -206,6 +221,7 @@ export const updateQuantity = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     if (args.quantity < 1) throw new ConvexError("Quantity must be at least 1");
 
@@ -214,7 +230,11 @@ export const updateQuantity = mutation({
       throw new ConvexError("Cart item not found");
 
     const variant = await ctx.db.get(item.variantId);
-    if (!variant || variant.stock < args.quantity) {
+    if (
+      !variant ||
+      !isSelectableVariant(variant, sizeMaps) ||
+      variant.stock < args.quantity
+    ) {
       throw new ConvexError("Insufficient stock");
     }
 
@@ -274,6 +294,7 @@ export const mergeGuestCart = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     for (const guestItem of args.items) {
       // Validate IDs are valid Convex IDs by attempting to fetch
@@ -289,6 +310,7 @@ export const mergeGuestCart = mutation({
 
       if (!product || !isProductVisible(product)) continue;
       if (!variant || variant.productId !== product._id) continue;
+      if (!isSelectableVariant(variant, sizeMaps)) continue;
 
       const qty = Math.max(1, Math.min(guestItem.quantity, variant.stock));
       if (qty === 0) continue;
@@ -334,6 +356,7 @@ export const getCartWithPricing = query({
   }),
   handler: async (ctx) => {
     const user = await requireAuth(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     const cartItems = await ctx.db
       .query("cartItems")
@@ -348,6 +371,8 @@ export const getCartWithPricing = query({
         const product = await ctx.db.get(item.productId);
         const variant = await ctx.db.get(item.variantId);
         if (!product || !variant) return null;
+        const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+        if (!sizeLabel) return null;
 
         const pricing = await getEffectivePrice(ctx, product);
         const itemSubtotal = product.basePrice * item.quantity;
@@ -366,7 +391,7 @@ export const getCartWithPricing = query({
           basePrice: product.basePrice,
           discountedPrice: pricing.effectivePrice,
           discountAmount: pricing.discountAmount,
-          size: variant.size,
+          size: sizeLabel,
           color: variant.color,
           imageUrl,
           stock: variant.stock,

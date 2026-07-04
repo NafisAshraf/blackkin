@@ -7,6 +7,13 @@ import { getEffectivePrice, isProductVisible } from "./lib/discounts";
 import { Doc, Id } from "./_generated/dataModel";
 import { r2 } from "./r2";
 import { resolveColorFirstImageUrls } from "./lib/media";
+import {
+  getActiveSizeMaps,
+  getVariantSizeLabel,
+  normalizeVariantInput,
+  variantCombinationKey,
+  withResolvedVariantSize,
+} from "./lib/variantSizes";
 
 // ─── SKU HELPERS ───────────────────────────────────────────
 
@@ -75,11 +82,15 @@ const variantValidator = v.object({
   _id: v.id("productVariants"),
   _creationTime: v.number(),
   productId: v.id("products"),
+  sizeId: v.optional(v.id("platformSizes")),
   size: v.string(),
   color: v.optional(v.string()),
   sku: v.optional(v.string()),
   stock: v.number(),
   priceOverride: v.optional(v.number()),
+  isArchived: v.optional(v.boolean()),
+  archivedAt: v.optional(v.number()),
+  archivedReason: v.optional(v.string()),
 });
 
 const productStatusValidator = v.union(
@@ -162,10 +173,16 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
     .filter(Boolean)
     .map((t: any) => ({ _id: t._id, name: t.name, slug: t.slug }));
 
-  const variants = await ctx.db
+  const sizeMaps = await getActiveSizeMaps(ctx);
+  const rawVariants = await ctx.db
     .query("productVariants")
     .withIndex("by_productId", (q: any) => q.eq("productId", product._id))
     .take(50);
+  const variants = rawVariants
+    .map((variant: Doc<"productVariants">) =>
+      withResolvedVariantSize(variant, sizeMaps),
+    )
+    .filter(Boolean);
 
   return {
     ...product,
@@ -183,16 +200,23 @@ async function enrichProduct(ctx: any, product: Doc<"products">) {
   };
 }
 
-function normalizeVariantValue(value?: string) {
-  return value?.trim().toLowerCase() ?? "";
-}
-
-function variantCombinationKey(variant: { size: string; color?: string }) {
-  return `${normalizeVariantValue(variant.size)}::${normalizeVariantValue(variant.color)}`;
+async function enrichProductCard(ctx: any, product: Doc<"products">) {
+  const enriched = await enrichProduct(ctx, product);
+  const imageUrl = product.thumbnailStorageId
+    ? await r2.getUrl(product.thumbnailStorageId)
+    : null;
+  const hoverImageUrl = product.hoverThumbnailStorageId
+    ? await r2.getUrl(product.hoverThumbnailStorageId)
+    : null;
+  const colorFirstImageUrls = await resolveColorFirstImageUrls(
+    product.variantMedia ?? [],
+    product.commonMediaTop ?? [],
+  );
+  return { ...enriched, imageUrl, hoverImageUrl, colorFirstImageUrls };
 }
 
 function assertUniqueVariantCombinations(
-  variants: Array<{ size: string; color?: string }>,
+  variants: Array<{ sizeId?: Id<"platformSizes">; size: string; color?: string }>,
 ) {
   const seen = new Set<string>();
 
@@ -276,17 +300,21 @@ export const listFiltered = query({
 
     let variantProductIds: Set<Id<"products">> | null = null;
     if (args.size || args.color) {
+      const sizeMaps = await getActiveSizeMaps(ctx);
       const allVariants = await ctx.db
         .query("productVariants")
         .order("asc")
         .take(2000);
       variantProductIds = new Set(
         allVariants
-          .filter(
-            (v) =>
-              (!args.size || v.size === args.size) &&
-              (!args.color || v.color === args.color),
-          )
+          .filter((v) => {
+            const sizeLabel = getVariantSizeLabel(v, sizeMaps);
+            return (
+              sizeLabel !== null &&
+              (!args.size || sizeLabel === args.size) &&
+              (!args.color || v.color === args.color)
+            );
+          })
           .map((v) => v.productId),
       );
     }
@@ -443,6 +471,7 @@ export const searchForAdmin = query({
       variants: v.array(
         v.object({
           _id: v.id("productVariants"),
+          sizeId: v.optional(v.id("platformSizes")),
           size: v.string(),
           color: v.optional(v.string()),
           stock: v.number(),
@@ -454,6 +483,7 @@ export const searchForAdmin = query({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     if (!args.query.trim()) return [];
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const results = await ctx.db
       .query("products")
       .withSearchIndex("search_name", (q) => q.search("searchText", args.query))
@@ -464,12 +494,16 @@ export const searchForAdmin = query({
           .query("productVariants")
           .withIndex("by_productId", (q) => q.eq("productId", p._id))
           .take(50);
+        const activeVariants = variants
+          .map((v) => withResolvedVariantSize(v, sizeMaps))
+          .filter((v): v is NonNullable<typeof v> => Boolean(v));
         return {
           _id: p._id,
           name: p.name,
           basePrice: p.basePrice,
-          variants: variants.map((v) => ({
+          variants: activeVariants.map((v) => ({
             _id: v._id,
+            sizeId: v.sizeId,
             size: v.size,
             color: v.color,
             stock: v.stock,
@@ -489,6 +523,7 @@ export const listAllAdminFlat = query({
   args: {},
   handler: async (ctx) => {
     await requireAdmin(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
 
     const products = await ctx.db.query("products").order("asc").take(500);
 
@@ -513,6 +548,9 @@ export const listAllAdminFlat = query({
           .query("productVariants")
           .withIndex("by_productId", (q) => q.eq("productId", p._id))
           .take(50);
+        const activeVariants = variants
+          .map((v) => withResolvedVariantSize(v, sizeMaps))
+          .filter((v): v is NonNullable<typeof v> => Boolean(v));
 
         const imageUrl = p.thumbnailStorageId
           ? await r2.getUrl(p.thumbnailStorageId)
@@ -523,7 +561,7 @@ export const listAllAdminFlat = query({
           ...pricing,
           tagIds,
           productTagEntries,
-          variants,
+          variants: activeVariants,
           imageUrl,
         };
       }),
@@ -560,6 +598,7 @@ export const listAllForPicker = query({
       variants: v.array(
         v.object({
           _id: v.id("productVariants"),
+          sizeId: v.optional(v.id("platformSizes")),
           size: v.string(),
           color: v.optional(v.string()),
           stock: v.number(),
@@ -570,6 +609,7 @@ export const listAllForPicker = query({
   ),
   handler: async (ctx) => {
     await requireAdmin(ctx);
+    const sizeMaps = await getActiveSizeMaps(ctx);
     const products = await ctx.db.query("products").order("asc").take(500);
 
     return await Promise.all(
@@ -580,8 +620,11 @@ export const listAllForPicker = query({
           .query("productVariants")
           .withIndex("by_productId", (q) => q.eq("productId", p._id))
           .take(50);
+        const activeVariants = variants
+          .map((v) => withResolvedVariantSize(v, sizeMaps))
+          .filter((v): v is NonNullable<typeof v> => Boolean(v));
 
-        const totalStock = variants.reduce((sum, v) => sum + v.stock, 0);
+        const totalStock = activeVariants.reduce((sum, v) => sum + v.stock, 0);
 
         const imageUrl = p.thumbnailStorageId
           ? await r2.getUrl(p.thumbnailStorageId)
@@ -604,8 +647,9 @@ export const listAllForPicker = query({
           imageUrl,
           totalStock,
           categoryName,
-          variants: variants.map((v) => ({
+          variants: activeVariants.map((v) => ({
             _id: v._id,
+            sizeId: v.sizeId,
             size: v.size,
             color: v.color,
             stock: v.stock,
@@ -678,6 +722,7 @@ export const create = mutation({
     variantMedia: v.array(variantMediaEntryValidator),
     variants: v.array(
       v.object({
+        sizeId: v.optional(v.id("platformSizes")),
         size: v.string(),
         color: v.optional(v.string()),
         sku: v.optional(v.string()),
@@ -693,7 +738,11 @@ export const create = mutation({
     if (args.basePrice <= 0) throw new ConvexError("Price must be positive");
     if (args.variants.length === 0)
       throw new ConvexError("At least one variant required");
-    assertUniqueVariantCombinations(args.variants);
+    const sizeMaps = await getActiveSizeMaps(ctx);
+    const normalizedVariants = args.variants.map((variant) =>
+      normalizeVariantInput(variant, sizeMaps),
+    );
+    assertUniqueVariantCombinations(normalizedVariants);
 
     const existing = await ctx.db
       .query("products")
@@ -761,7 +810,7 @@ export const create = mutation({
     if (product) await aggregateProducts.insertIfDoesNotExist(ctx, product);
 
     await Promise.all(
-      variants.map((v) =>
+      normalizedVariants.map((v) =>
         ctx.db.insert("productVariants", { ...v, productId }),
       ),
     );
@@ -980,6 +1029,7 @@ export const updateVariants = mutation({
     variants: v.array(
       v.object({
         id: v.optional(v.id("productVariants")),
+        sizeId: v.optional(v.id("platformSizes")),
         size: v.string(),
         color: v.optional(v.string()),
         sku: v.optional(v.string()),
@@ -993,57 +1043,72 @@ export const updateVariants = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
+    const sizeMaps = await getActiveSizeMaps(ctx);
+    const normalizedVariants = args.variants.map((variant) =>
+      normalizeVariantInput(variant, sizeMaps),
+    );
+    assertUniqueVariantCombinations(normalizedVariants);
+
     const currentVariants = await ctx.db
       .query("productVariants")
       .withIndex("by_productId", (q) => q.eq("productId", args.productId))
       .take(200);
 
-    const deleteIds = new Set(
-      (args.deleteIds ?? []).map((id) => id.toString()),
+    const activeCurrent = currentVariants
+      .map((variant) => withResolvedVariantSize(variant, sizeMaps))
+      .filter((variant): variant is NonNullable<typeof variant> =>
+        Boolean(variant),
+      );
+
+    const currentById = new Map(
+      activeCurrent.map((variant) => [String(variant._id), variant]),
     );
-    const updatesById = new Map(
-      args.variants
-        .filter((variant) => variant.id)
-        .map((variant) => [variant.id!.toString(), variant]),
+    const currentByKey = new Map(
+      activeCurrent.map((variant) => [variantCombinationKey(variant), variant]),
     );
 
-    const finalVariants: Array<{ size: string; color?: string }> = [];
+    const submittedKeys = new Set(
+      normalizedVariants.map((variant) => variantCombinationKey(variant)),
+    );
+    const keepIds = new Set<string>();
+    const now = Date.now();
 
-    for (const variant of currentVariants) {
-      const variantId = variant._id.toString();
-      if (deleteIds.has(variantId)) continue;
+    for (const variant of normalizedVariants) {
+      const key = variantCombinationKey(variant);
+      const target =
+        (variant.id ? currentById.get(String(variant.id)) : null) ??
+        currentByKey.get(key);
 
-      const updated = updatesById.get(variantId);
-      if (updated) {
-        finalVariants.push({ size: updated.size, color: updated.color });
+      const { id: _id, ...data } = variant;
+      if (target) {
+        keepIds.add(String(target._id));
+        await ctx.db.patch(target._id, {
+          ...data,
+          isArchived: false,
+        });
       } else {
-        finalVariants.push({ size: variant.size, color: variant.color });
+        const insertedId = await ctx.db.insert("productVariants", {
+          ...data,
+          productId: args.productId,
+        });
+        keepIds.add(String(insertedId));
       }
-    }
-
-    for (const variant of args.variants) {
-      if (!variant.id) {
-        finalVariants.push({ size: variant.size, color: variant.color });
-      }
-    }
-
-    assertUniqueVariantCombinations(finalVariants);
-
-    if (args.deleteIds) {
-      await Promise.all(args.deleteIds.map((id) => ctx.db.delete(id)));
     }
 
     await Promise.all(
-      args.variants.map(({ id, ...data }) => {
-        if (id) {
-          return ctx.db.patch(id, data);
-        } else {
-          return ctx.db.insert("productVariants", {
-            ...data,
-            productId: args.productId,
-          });
-        }
-      }),
+      activeCurrent
+        .filter(
+          (variant) =>
+            !keepIds.has(String(variant._id)) &&
+            !submittedKeys.has(variantCombinationKey(variant)),
+        )
+        .map((variant) =>
+          ctx.db.patch(variant._id, {
+            isArchived: true,
+            archivedAt: now,
+            archivedReason: "Removed from product variant matrix",
+          }),
+        ),
     );
 
     return null;
@@ -1243,10 +1308,10 @@ export const listOnSale = query({
               const p = await ctx.db.get(row.productId);
               if (!p || !isProductVisible(p, now)) return null;
               activeGroupProductIds.add(row.productId);
-              return enrichProduct(ctx, p);
+              return enrichProductCard(ctx, p);
             }),
           )
-        ).filter(Boolean) as Awaited<ReturnType<typeof enrichProduct>>[];
+        ).filter(Boolean) as Awaited<ReturnType<typeof enrichProductCard>>[];
 
         return {
           _id: group._id,
@@ -1320,7 +1385,7 @@ export const listOnSale = query({
     });
 
     const individualProducts = await Promise.all(
-      individualSaleProducts.map((p) => enrichProduct(ctx, p)),
+      individualSaleProducts.map((p) => enrichProductCard(ctx, p)),
     );
 
     return { groups, individualProducts };
@@ -1464,17 +1529,21 @@ export const listFilteredSSR = query({
 
     let variantProductIds: Set<Id<"products">> | null = null;
     if (args.size || args.color) {
+      const sizeMaps = await getActiveSizeMaps(ctx);
       const allVariants = await ctx.db
         .query("productVariants")
         .order("asc")
         .take(2000);
       variantProductIds = new Set(
         allVariants
-          .filter(
-            (v) =>
-              (!args.size || v.size === args.size) &&
-              (!args.color || v.color === args.color),
-          )
+          .filter((v) => {
+            const sizeLabel = getVariantSizeLabel(v, sizeMaps);
+            return (
+              sizeLabel !== null &&
+              (!args.size || sizeLabel === args.size) &&
+              (!args.color || v.color === args.color)
+            );
+          })
           .map((v) => v.productId),
       );
     }

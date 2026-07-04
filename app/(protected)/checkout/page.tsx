@@ -55,6 +55,7 @@ type AddressMode = "home" | "work" | "custom";
 type SaveAs = "home" | "work" | "none";
 
 type PaymentMethod = "cod" | "sslcommerz";
+const DELIVERY_CHARGE = 80;
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -99,6 +100,10 @@ export default function CheckoutPage() {
   );
   const voucherDiscount = voucherResult?.valid
     ? (voucherResult.discountAmount ?? 0)
+    : 0;
+  const deliveryCost = cart?.bundleDiscountFreeDelivery ? 0 : DELIVERY_CHARGE;
+  const checkoutTotal = cart
+    ? Math.max(0, cart.total - voucherDiscount) + deliveryCost
     : 0;
 
   // Address mode: which pill is selected
@@ -469,7 +474,7 @@ export default function CheckoutPage() {
             {/* Payment Method */}
             <div className="space-y-3">
               <Label>Payment Method</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {/* Cash on Delivery */}
                 <label
                   className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
@@ -496,7 +501,11 @@ export default function CheckoutPage() {
                   </div>
                 </label>
 
-                {/* Online Payment */}
+                {/*
+                  Online payment is intentionally hidden until SSLCommerz is
+                  ready. Keep this radio-card dormant for a future re-enable.
+
+                  Online Payment dormant JSX:
                 <label
                   className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
                     paymentMethod === "sslcommerz"
@@ -521,7 +530,12 @@ export default function CheckoutPage() {
                     </p>
                   </div>
                 </label>
+                */}
               </div>
+
+              {/*
+                SSLCommerz helper text is intentionally hidden while COD is the
+                only customer-facing payment option.
 
               {paymentMethod === "sslcommerz" && (
                 <p className="text-xs text-muted-foreground">
@@ -529,6 +543,7 @@ export default function CheckoutPage() {
                   Supports VISA, Mastercard, bKash, Nagad and more.
                 </p>
               )}
+              */}
             </div>
 
             <Separator />
@@ -790,17 +805,23 @@ export default function CheckoutPage() {
                   <span>-৳{voucherDiscount.toLocaleString()}</span>
                 </div>
               )}
-              {cart.bundleDiscountFreeDelivery && (
-                <div className="flex justify-between text-green-600">
-                  <span>Delivery</span>
-                  <span>Free</span>
-                </div>
-              )}
+              <div
+                className={`flex justify-between ${
+                  deliveryCost === 0 ? "text-green-600" : ""
+                }`}
+              >
+                <span>Delivery</span>
+                <span>
+                  {deliveryCost === 0
+                    ? "Free"
+                    : `৳${deliveryCost.toLocaleString()}`}
+                </span>
+              </div>
               <Separator />
               <div className="flex justify-between font-semibold text-base">
                 <span>Total</span>
                 <span>
-                  ৳{Math.max(0, cart.total - voucherDiscount).toLocaleString()}
+                  ৳{checkoutTotal.toLocaleString()}
                 </span>
               </div>
             </div>

@@ -216,7 +216,7 @@ function NewProductForm() {
 
   useEffect(() => {
     if (sizes && sizes.length > 0 && selectedSizes.length === 0) {
-      setSelectedSizes([sizes[0].name]);
+      setSelectedSizes([String(sizes[0]._id)]);
     }
   }, [sizes]);
 
@@ -321,6 +321,7 @@ function NewProductForm() {
         stockMatrix,
         selectedColors,
         selectedSizes,
+        sizes ?? [],
       );
 
       // Build variantMedia from variantMediaMap
@@ -373,6 +374,7 @@ function NewProductForm() {
         })),
         variantMedia,
         variants: variants.map((v) => ({
+          sizeId: v.sizeId,
           size: v.size,
           color: v.color,
           stock: v.stock,

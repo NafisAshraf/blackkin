@@ -45,6 +45,9 @@ export default defineSchema({
     name: v.string(), // e.g. "S", "M", "L", "XL"
     measurements: v.string(), // tooltip text e.g. "Chest: 36-38\", Waist: 28-30\""
     sortOrder: v.number(),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedReason: v.optional(v.string()),
   }).index("by_name", ["name"]),
 
   platformColors: defineTable({
@@ -214,13 +217,20 @@ export default defineSchema({
   // ─── PRODUCT VARIANTS ────────────────────────────────────
   productVariants: defineTable({
     productId: v.id("products"),
+    sizeId: v.optional(v.id("platformSizes")),
     size: v.string(),
     color: v.optional(v.string()),
     sku: v.optional(v.string()),
     stock: v.number(),
     priceOverride: v.optional(v.number()),
+    isArchived: v.optional(v.boolean()),
+    archivedAt: v.optional(v.number()),
+    archivedReason: v.optional(v.string()),
   })
     .index("by_productId", ["productId"])
+    .index("by_sizeId", ["sizeId"])
+    .index("by_productId_and_sizeId", ["productId", "sizeId"])
+    .index("by_productId_and_sizeId_and_color", ["productId", "sizeId", "color"])
     .index("by_productId_and_size", ["productId", "size"])
     .index("by_productId_and_size_and_color", ["productId", "size", "color"]),
 

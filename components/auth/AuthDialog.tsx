@@ -293,7 +293,7 @@ export function AuthDialog({
                 <Label htmlFor="auth-phone">Mobile Number</Label>
                 <div className="flex gap-2">
                   <span className="inline-flex items-center px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground select-none">
-                    +880
+                    +88
                   </span>
                   <Input
                     id="auth-phone"

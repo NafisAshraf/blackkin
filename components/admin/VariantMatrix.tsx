@@ -5,8 +5,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AlertCircle } from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────
-
 export interface PlatformSize {
   _id: Id<"platformSizes">;
   name: string;
@@ -21,45 +19,60 @@ export interface PlatformColor {
   sortOrder: number;
 }
 
-/** Flat variant for backend submission */
 export interface VariantEntry {
+  id?: Id<"productVariants">;
+  sizeId?: Id<"platformSizes">;
   size: string;
   color: string;
   stock: number;
 }
 
-/** stock[colorName][sizeName] = quantity */
-export type StockMatrix = Record<string, Record<string, number>>;
+export type StockCell = {
+  stock: number;
+  variantId?: Id<"productVariants">;
+};
+
+/** stock[colorName][sizeId] = stock cell */
+export type StockMatrix = Record<string, Record<string, StockCell>>;
 
 interface VariantMatrixProps {
   platformSizes: PlatformSize[] | undefined;
   platformColors: PlatformColor[] | undefined;
-  /** Selected color names */
   selectedColors: string[];
   onSelectedColorsChange: (colors: string[]) => void;
-  /** Selected size names */
   selectedSizes: string[];
   onSelectedSizesChange: (sizes: string[]) => void;
-  /** Stock matrix: stockMatrix[color][size] */
   stockMatrix: StockMatrix;
   onStockMatrixChange: (matrix: StockMatrix) => void;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────
-
 function cellClass(stock: number): string {
-  if (stock === 0) return "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
-  if (stock <= 5) return "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800";
+  if (stock === 0) {
+    return "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
+  }
+  if (stock <= 5) {
+    return "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800";
+  }
   return "";
 }
 
 function stockInputClass(stock: number): string {
-  if (stock === 0) return "border-red-300 dark:border-red-700 focus-visible:ring-red-400";
-  if (stock <= 5) return "border-amber-300 dark:border-amber-700 focus-visible:ring-amber-400";
+  if (stock === 0) {
+    return "border-red-300 dark:border-red-700 focus-visible:ring-red-400";
+  }
+  if (stock <= 5) {
+    return "border-amber-300 dark:border-amber-700 focus-visible:ring-amber-400";
+  }
   return "";
 }
 
-// ─── Component ────────────────────────────────────────────────
+function stockOf(cell: StockCell | undefined) {
+  return cell?.stock ?? 0;
+}
+
+function normalizeSizeName(name: string) {
+  return name.trim().toLowerCase();
+}
 
 export function VariantMatrix({
   platformSizes,
@@ -76,84 +89,93 @@ export function VariantMatrix({
 
   const noSizes = !sizesLoading && platformSizes.length === 0;
   const noColors = !colorsLoading && platformColors.length === 0;
+  const sizeByKey = new Map(
+    (platformSizes ?? []).map((size) => [String(size._id), size]),
+  );
+
+  function getSizeLabel(sizeKey: string) {
+    return sizeByKey.get(sizeKey)?.name ?? sizeKey;
+  }
 
   function toggleColor(colorName: string) {
     if (selectedColors.includes(colorName)) {
-      if (selectedColors.length <= 1) return; // enforce minimum 1
+      if (selectedColors.length <= 1) return;
       onSelectedColorsChange(selectedColors.filter((c) => c !== colorName));
-      // Remove this color's row from the matrix
       const next = { ...stockMatrix };
       delete next[colorName];
       onStockMatrixChange(next);
     } else {
       onSelectedColorsChange([...selectedColors, colorName]);
-      // Add this color's row to the matrix with default 0 stock
       const next = { ...stockMatrix };
       next[colorName] = {};
-      for (const size of selectedSizes) {
-        next[colorName][size] = 0;
+      for (const sizeKey of selectedSizes) {
+        next[colorName][sizeKey] = { stock: 0 };
       }
       onStockMatrixChange(next);
     }
   }
 
-  function toggleSize(sizeName: string) {
-    if (selectedSizes.includes(sizeName)) {
-      if (selectedSizes.length <= 1) return; // enforce minimum 1
-      onSelectedSizesChange(selectedSizes.filter((s) => s !== sizeName));
-      // Remove this size column from all rows
+  function toggleSize(sizeKey: string) {
+    if (selectedSizes.includes(sizeKey)) {
+      if (selectedSizes.length <= 1) return;
+      onSelectedSizesChange(selectedSizes.filter((s) => s !== sizeKey));
       const next: StockMatrix = {};
       for (const color of selectedColors) {
         next[color] = { ...(stockMatrix[color] ?? {}) };
-        delete next[color][sizeName];
+        delete next[color][sizeKey];
       }
       onStockMatrixChange(next);
     } else {
-      onSelectedSizesChange([...selectedSizes, sizeName]);
-      // Add this size column with default 0 stock for all selected colors
+      onSelectedSizesChange([...selectedSizes, sizeKey]);
       const next: StockMatrix = {};
       for (const color of selectedColors) {
         next[color] = { ...(stockMatrix[color] ?? {}) };
-        next[color][sizeName] = 0;
+        next[color][sizeKey] = { stock: 0 };
       }
       onStockMatrixChange(next);
     }
   }
 
-  function setStock(colorName: string, sizeName: string, value: number) {
+  function setStock(colorName: string, sizeKey: string, value: number) {
     const next: StockMatrix = {};
-    for (const c of selectedColors) {
-      next[c] = { ...(stockMatrix[c] ?? {}) };
+    for (const color of selectedColors) {
+      next[color] = { ...(stockMatrix[color] ?? {}) };
     }
+    const previous = next[colorName]?.[sizeKey];
     if (!next[colorName]) next[colorName] = {};
-    next[colorName][sizeName] = value;
+    next[colorName][sizeKey] = {
+      ...previous,
+      stock: value,
+    };
     onStockMatrixChange(next);
   }
 
-  // Totals
   const rowTotals: Record<string, number> = {};
   for (const color of selectedColors) {
     rowTotals[color] = selectedSizes.reduce(
-      (sum, size) => sum + (stockMatrix[color]?.[size] ?? 0),
-      0
+      (sum, sizeKey) => sum + stockOf(stockMatrix[color]?.[sizeKey]),
+      0,
     );
   }
+
   const colTotals: Record<string, number> = {};
-  for (const size of selectedSizes) {
-    colTotals[size] = selectedColors.reduce(
-      (sum, color) => sum + (stockMatrix[color]?.[size] ?? 0),
-      0
+  for (const sizeKey of selectedSizes) {
+    colTotals[sizeKey] = selectedColors.reduce(
+      (sum, color) => sum + stockOf(stockMatrix[color]?.[sizeKey]),
+      0,
     );
   }
-  const grandTotal = Object.values(rowTotals).reduce((s, v) => s + v, 0);
+
+  const grandTotal = Object.values(rowTotals).reduce((sum, value) => sum + value, 0);
   const totalVariants = selectedColors.length * selectedSizes.length;
   const zeroStockCount = selectedColors.reduce(
     (sum, color) =>
-      sum + selectedSizes.filter((size) => (stockMatrix[color]?.[size] ?? 0) === 0).length,
-    0
+      sum +
+      selectedSizes.filter(
+        (sizeKey) => stockOf(stockMatrix[color]?.[sizeKey]) === 0,
+      ).length,
+    0,
   );
-
-  // ── Empty states ─────────────────────────────────────────
 
   if (noColors || noSizes) {
     return (
@@ -164,12 +186,17 @@ export function VariantMatrix({
             {noColors && noSizes
               ? "No colors or sizes configured"
               : noColors
-              ? "No colors configured"
-              : "No sizes configured"}
+                ? "No colors configured"
+                : "No sizes configured"}
           </p>
           <p className="mt-0.5 text-amber-700 dark:text-amber-300">
             Go to <strong>Platform Configuration</strong> and add{" "}
-            {noColors && noSizes ? "colors and sizes" : noColors ? "colors" : "sizes"} first.
+            {noColors && noSizes
+              ? "colors and sizes"
+              : noColors
+                ? "colors"
+                : "sizes"}{" "}
+            first.
           </p>
         </div>
       </div>
@@ -177,12 +204,11 @@ export function VariantMatrix({
   }
 
   if (sizesLoading || colorsLoading) {
-    return <p className="text-sm text-muted-foreground">Loading colors and sizes…</p>;
+    return <p className="text-sm text-muted-foreground">Loading colors and sizes...</p>;
   }
 
   return (
     <div className="space-y-5">
-      {/* ── Color chips ── */}
       <div className="space-y-2">
         <p className="text-sm font-medium">Colors</p>
         <div className="flex flex-wrap gap-2">
@@ -201,7 +227,7 @@ export function VariantMatrix({
                   active
                     ? "border-foreground bg-foreground text-background"
                     : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground",
-                  isLast && "opacity-50 cursor-not-allowed"
+                  isLast && "opacity-50 cursor-not-allowed",
                 )}
               >
                 {color.hexCode && (
@@ -217,12 +243,12 @@ export function VariantMatrix({
         </div>
       </div>
 
-      {/* ── Size chips ── */}
       <div className="space-y-2">
         <p className="text-sm font-medium">Sizes</p>
         <div className="flex flex-wrap gap-2">
           {platformSizes.map((size) => {
-            const active = selectedSizes.includes(size.name);
+            const sizeKey = String(size._id);
+            const active = selectedSizes.includes(sizeKey);
             const isLast = active && selectedSizes.length === 1;
             return (
               <button
@@ -230,13 +256,13 @@ export function VariantMatrix({
                 type="button"
                 title={size.name}
                 disabled={isLast}
-                onClick={() => toggleSize(size.name)}
+                onClick={() => toggleSize(sizeKey)}
                 className={cn(
                   "rounded-full border px-3 py-1 text-sm font-medium transition-colors",
                   active
                     ? "border-foreground bg-foreground text-background"
                     : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-foreground",
-                  isLast && "opacity-50 cursor-not-allowed"
+                  isLast && "opacity-50 cursor-not-allowed",
                 )}
               >
                 <span className="max-w-[100px] truncate">{size.name}</span>
@@ -246,7 +272,6 @@ export function VariantMatrix({
         </div>
       </div>
 
-      {/* ── Stock matrix ── */}
       {selectedColors.length > 0 && selectedSizes.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm font-medium">Stock</p>
@@ -254,13 +279,25 @@ export function VariantMatrix({
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground w-32">Color</th>
-                  {selectedSizes.map((size) => (
-                    <th key={size} className="px-2 py-2 text-center font-medium min-w-[80px]">
-                      <span className="max-w-[80px] truncate block" title={size}>{size}</span>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground w-32">
+                    Color
+                  </th>
+                  {selectedSizes.map((sizeKey) => (
+                    <th
+                      key={sizeKey}
+                      className="px-2 py-2 text-center font-medium min-w-[80px]"
+                    >
+                      <span
+                        className="max-w-[80px] truncate block"
+                        title={getSizeLabel(sizeKey)}
+                      >
+                        {getSizeLabel(sizeKey)}
+                      </span>
                     </th>
                   ))}
-                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Total</th>
+                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">
+                    Total
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -281,21 +318,26 @@ export function VariantMatrix({
                           </span>
                         </div>
                       </td>
-                      {selectedSizes.map((sizeName) => {
-                        const stock = stockMatrix[colorName]?.[sizeName] ?? 0;
+                      {selectedSizes.map((sizeKey) => {
+                        const cell = stockMatrix[colorName]?.[sizeKey];
+                        const stock = stockOf(cell);
                         return (
-                          <td key={sizeName} className={cn("px-2 py-1.5", cellClass(stock))}>
+                          <td key={sizeKey} className={cn("px-2 py-1.5", cellClass(stock))}>
                             <Input
                               type="number"
                               min="0"
                               step="1"
                               value={stock}
-                              onChange={(e) =>
-                                setStock(colorName, sizeName, Math.max(0, parseInt(e.target.value) || 0))
+                              onChange={(event) =>
+                                setStock(
+                                  colorName,
+                                  sizeKey,
+                                  Math.max(0, parseInt(event.target.value) || 0),
+                                )
                               }
                               className={cn(
                                 "h-8 w-16 text-center text-xs px-1",
-                                stockInputClass(stock)
+                                stockInputClass(stock),
                               )}
                             />
                           </td>
@@ -307,12 +349,16 @@ export function VariantMatrix({
                     </tr>
                   );
                 })}
-                {/* Column totals row */}
                 <tr className="bg-muted/50 border-t">
-                  <td className="px-3 py-2 font-medium text-muted-foreground text-xs">Total</td>
-                  {selectedSizes.map((sizeName) => (
-                    <td key={sizeName} className="px-2 py-2 text-center font-medium text-muted-foreground">
-                      {colTotals[sizeName] ?? 0}
+                  <td className="px-3 py-2 font-medium text-muted-foreground text-xs">
+                    Total
+                  </td>
+                  {selectedSizes.map((sizeKey) => (
+                    <td
+                      key={sizeKey}
+                      className="px-2 py-2 text-center font-medium text-muted-foreground"
+                    >
+                      {colTotals[sizeKey] ?? 0}
                     </td>
                   ))}
                   <td className="px-3 py-2 text-center font-bold">{grandTotal}</td>
@@ -321,7 +367,6 @@ export function VariantMatrix({
             </table>
           </div>
 
-          {/* Summary bar */}
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
             <span>
               <strong className="text-foreground">{grandTotal}</strong> total units
@@ -341,28 +386,43 @@ export function VariantMatrix({
   );
 }
 
-/** Convert a StockMatrix + selected colors/sizes into a flat variants array for mutation */
 export function matrixToVariants(
   stockMatrix: StockMatrix,
   selectedColors: string[],
-  selectedSizes: string[]
+  selectedSizes: string[],
+  platformSizes: PlatformSize[],
 ): VariantEntry[] {
+  const sizeByKey = new Map(platformSizes.map((size) => [String(size._id), size]));
   const variants: VariantEntry[] = [];
+
   for (const color of selectedColors) {
-    for (const size of selectedSizes) {
+    for (const sizeKey of selectedSizes) {
+      const size = sizeByKey.get(sizeKey);
+      if (!size) continue;
+      const cell = stockMatrix[color]?.[sizeKey];
       variants.push({
+        id: cell?.variantId,
         color,
-        size,
-        stock: stockMatrix[color]?.[size] ?? 0,
+        sizeId: size._id,
+        size: size.name,
+        stock: stockOf(cell),
       });
     }
   }
+
   return variants;
 }
 
-/** Build initial state from existing variants (for edit mode) */
 export function variantsToMatrix(
-  variants: { size: string; color?: string; stock: number }[]
+  variants: {
+    _id?: Id<"productVariants">;
+    id?: Id<"productVariants">;
+    sizeId?: Id<"platformSizes">;
+    size: string;
+    color?: string;
+    stock: number;
+  }[],
+  platformSizes: PlatformSize[],
 ): {
   selectedColors: string[];
   selectedSizes: string[];
@@ -371,13 +431,26 @@ export function variantsToMatrix(
   const colorsSet = new Set<string>();
   const sizesSet = new Set<string>();
   const matrix: StockMatrix = {};
+  const sizeById = new Map(platformSizes.map((size) => [String(size._id), size]));
+  const sizeByName = new Map(
+    platformSizes.map((size) => [normalizeSizeName(size.name), size]),
+  );
 
-  for (const v of variants) {
-    const color = v.color ?? "__no_color__";
+  for (const variant of variants) {
+    const size =
+      (variant.sizeId ? sizeById.get(String(variant.sizeId)) : null) ??
+      sizeByName.get(normalizeSizeName(variant.size));
+    if (!size) continue;
+
+    const color = variant.color ?? "__no_color__";
+    const sizeKey = String(size._id);
     colorsSet.add(color);
-    sizesSet.add(v.size);
+    sizesSet.add(sizeKey);
     if (!matrix[color]) matrix[color] = {};
-    matrix[color][v.size] = v.stock;
+    matrix[color][sizeKey] = {
+      stock: variant.stock,
+      variantId: variant.id ?? variant._id,
+    };
   }
 
   return {

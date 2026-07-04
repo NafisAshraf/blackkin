@@ -348,10 +348,14 @@ export default function ProductInfo({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Size</p>
+            {/*
+              Size guide is intentionally hidden for launch. Keep this button
+              dormant so it can be restored when the guide content is ready.
             <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               <Info className="h-3 w-3" />
               Size guide
             </button>
+            */}
           </div>
           {/* Show measurement hint if available */}
           {selectedSize && (

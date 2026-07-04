@@ -139,7 +139,7 @@ function SizesTab() {
     setDeleteTarget(null);
     try {
       await deleteMutation({ id: size._id });
-      toast.success("Size deleted");
+      toast.success("Size archived");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -176,13 +176,17 @@ function SizesTab() {
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete size &quot;{deleteTarget?.name}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>Archive size &quot;{deleteTarget?.name}&quot;?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This hides the size from normal admin and customer flows. If the
+              size is still used by active product variants, the archive will be
+              blocked.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => deleteTarget && handleDelete(deleteTarget)}>
-              Delete
+              Archive
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -216,7 +220,7 @@ function SizesTab() {
                       onClick: () => setDialogState({ mode: "edit", size }),
                     },
                     {
-                      label: deletingId === size._id ? "Deleting…" : "Delete",
+                      label: deletingId === size._id ? "Archiving..." : "Archive",
                       icon: Trash2,
                       variant: "destructive",
                       disabled: deletingId === size._id,

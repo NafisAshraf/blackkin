@@ -2,15 +2,27 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { TURNSTILE_COOKIE, createVerificationCookie } from "@/lib/turnstile";
 
+// Turnstile is intentionally disabled for the ExonHost migration/test
+// deployment. Keep the endpoint code for a future re-enable, but return a
+// disabled response while TURNSTILE_ENABLED=false.
+const TURNSTILE_ENABLED = false;
+
 const SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 export async function POST(request: NextRequest) {
+  if (!TURNSTILE_ENABLED) {
+    return NextResponse.json(
+      { error: "Turnstile verification is disabled for this deployment." },
+      { status: 404 },
+    );
+  }
+
   const body = await request.formData();
   const token = body.get("cf-turnstile-response");
   const rawNext = body.get("next");
 
-  // Sanitise the redirect target — must be a relative path, no open-redirect
+  // Sanitise the redirect target: must be a relative path, no open redirect.
   const safeNext =
     typeof rawNext === "string" &&
     rawNext.startsWith("/") &&
@@ -51,8 +63,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Issue signed verification cookie and redirect to destination.
-  // Using 303 (POST → GET) so the browser commits Set-Cookie before loading
-  // the next page — avoids the iOS Chrome cookie race condition that occurs
+  // Using 303 (POST -> GET) so the browser commits Set-Cookie before loading
+  // the next page. This avoids the iOS Chrome cookie race condition that occurs
   // when using fetch() + window.location.replace().
   const cookieValue = await createVerificationCookie(cookieSecret);
   const successUrl = new URL(safeNext, request.url);

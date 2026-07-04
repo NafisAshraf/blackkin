@@ -195,9 +195,6 @@ export default function EditProductPage() {
   const [commonMediaBottom, setCommonMediaBottom] = useState<
     VariantMediaItem[]
   >([]);
-  const [existingVariantIds, setExistingVariantIds] = useState<
-    Id<"productVariants">[]
-  >([]);
   const [initialized, setInitialized] = useState(false);
   const [mediaInitialized, setMediaInitialized] = useState(false);
 
@@ -262,7 +259,7 @@ export default function EditProductPage() {
 
   // ── Populate form when product loads ──────────────────────────
   useEffect(() => {
-    if (!product || initialized) return;
+    if (!product || !sizes || initialized) return;
 
     setName(product.name);
     setSlug(product.slug);
@@ -298,6 +295,8 @@ export default function EditProductPage() {
 
     // Variants
     const rawVariants = (product.variants as any[]).map((v) => ({
+      _id: v._id as Id<"productVariants">,
+      sizeId: v.sizeId as Id<"platformSizes"> | undefined,
       size: v.size as string,
       color: v.color as string | undefined,
       stock: (v.stock as number) ?? 0,
@@ -306,15 +305,12 @@ export default function EditProductPage() {
       selectedColors: cols,
       selectedSizes: szs,
       stockMatrix: mat,
-    } = variantsToMatrix(rawVariants);
-    setExistingVariantIds(
-      (product.variants as any[]).map((v) => v._id as Id<"productVariants">),
-    );
+    } = variantsToMatrix(rawVariants, sizes);
     setSelectedColors(cols);
     setSelectedSizes(szs);
     setStockMatrix(mat);
     setInitialized(true);
-  }, [product, initialized]);
+  }, [product, sizes, initialized]);
 
   useEffect(() => {
     if (!product || mediaInitialized) return;
@@ -475,17 +471,18 @@ export default function EditProductPage() {
         stockMatrix,
         selectedColors,
         selectedSizes,
+        sizes ?? [],
       );
       await updateVariants({
         productId,
         variants: matrixVariants.map((v) => ({
+          id: v.id,
+          sizeId: v.sizeId,
           size: v.size,
           color: v.color,
           stock: v.stock,
         })),
-        deleteIds: existingVariantIds,
       });
-      setExistingVariantIds([]);
 
       await assignTags({ productId, tagIds: Array.from(selectedTags) });
       toast.success("Product updated");

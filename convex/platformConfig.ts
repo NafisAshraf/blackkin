@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { ConvexError } from "convex/values";
 import { requireAdmin } from "./lib/auth.helpers";
+import { normalizeSizeName } from "./lib/variantSizes";
 
 // ─── SIZES ───────────────────────────────────────────────────
 
@@ -14,11 +15,16 @@ export const listSizes = query({
       name: v.string(),
       measurements: v.string(),
       sortOrder: v.number(),
+      isArchived: v.optional(v.boolean()),
+      archivedAt: v.optional(v.number()),
+      archivedReason: v.optional(v.string()),
     }),
   ),
   handler: async (ctx) => {
     const sizes = await ctx.db.query("platformSizes").order("asc").take(100);
-    return [...sizes].sort((a, b) => a.sortOrder - b.sortOrder);
+    return [...sizes]
+      .filter((size) => size.isArchived !== true)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
 
@@ -31,12 +37,13 @@ export const createSize = mutation({
   returns: v.id("platformSizes"),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    const existing = await ctx.db
-      .query("platformSizes")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
-      .unique();
-    if (existing) throw new ConvexError("Size already exists");
     const all = await ctx.db.query("platformSizes").order("asc").take(200);
+    const existing = all.find(
+      (size) =>
+        size.isArchived !== true &&
+        normalizeSizeName(size.name) === normalizeSizeName(args.name),
+    );
+    if (existing) throw new ConvexError("Size already exists");
     const maxSort =
       all.length > 0 ? Math.max(...all.map((s) => s.sortOrder)) : -1;
     return await ctx.db.insert("platformSizes", {
@@ -58,6 +65,18 @@ export const updateSize = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const { id, ...updates } = args;
+
+    if (updates.name !== undefined) {
+      const all = await ctx.db.query("platformSizes").order("asc").take(200);
+      const duplicate = all.find(
+        (size) =>
+          size._id !== id &&
+          size.isArchived !== true &&
+          normalizeSizeName(size.name) === normalizeSizeName(updates.name!),
+      );
+      if (duplicate) throw new ConvexError("Size already exists");
+    }
+
     const clean = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined),
     );
@@ -91,7 +110,32 @@ export const deleteSize = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    await ctx.db.delete(args.id);
+    const size = await ctx.db.get(args.id);
+    if (!size) return null;
+
+    const variants = await ctx.db
+      .query("productVariants")
+      .order("asc")
+      .take(2000);
+    const activeReferences = variants.filter(
+      (variant) =>
+        variant.isArchived !== true &&
+        (variant.sizeId === args.id ||
+          (!variant.sizeId &&
+            normalizeSizeName(variant.size) === normalizeSizeName(size.name))),
+    );
+
+    if (activeReferences.length > 0) {
+      throw new ConvexError(
+        "This size is used by active product variants. Remove or archive those variants first.",
+      );
+    }
+
+    await ctx.db.patch(args.id, {
+      isArchived: true,
+      archivedAt: Date.now(),
+      archivedReason: "Archived from size settings",
+    });
     return null;
   },
 });
