@@ -6,6 +6,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -711,6 +712,7 @@ function AdminProductsContent() {
   async function handleDelete(id: Id<"products">) {
     try {
       await removeProduct({ id });
+      await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
       toast.success("Product deleted");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to delete");
@@ -725,6 +727,7 @@ function AdminProductsContent() {
   ) {
     try {
       await updateStatus({ id, status: newStatus });
+      await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
       toast.success(`Status updated to ${newStatus}`);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to update status");

@@ -1,10 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { Id } from "@/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 
 interface ProductCardProps {
   product: {
@@ -30,17 +27,9 @@ interface ProductCardProps {
   imageUrl?: string | null;
   hoverImageUrl?: string | null;
   colorFirstImageUrls?: Array<{ color: string; url: string | null }>;
+  colorHexMap?: Record<string, string>;
+  priority?: boolean;
   hideTags?: boolean;
-}
-
-function useColorHexMap(): Record<string, string> {
-  const colors = useQuery(api.platformConfig.listColors);
-  if (!colors) return {};
-  const map: Record<string, string> = {};
-  for (const c of colors) {
-    map[c.name.toLowerCase()] = c.hexCode;
-  }
-  return map;
 }
 
 function getColorHexFromMap(
@@ -127,9 +116,10 @@ export default function ProductCard({
   imageUrl,
   hoverImageUrl,
   colorFirstImageUrls,
+  colorHexMap = {},
+  priority = false,
   hideTags,
 }: ProductCardProps) {
-  const colorMap = useColorHexMap();
   const [clickedColor, setClickedColor] = useState<string | null>(null);
   const [isCardHovered, setIsCardHovered] = useState(false);
   const {
@@ -170,7 +160,7 @@ export default function ProductCard({
     (isCardHovered && hoverImageUrl ? hoverImageUrl : imageUrl);
 
   return (
-    <Link
+    <a
       href={`/products/${slug}`}
       className="block group"
       onMouseEnter={() => setIsCardHovered(true)}
@@ -184,6 +174,9 @@ export default function ProductCard({
             <img
               src={displayImageUrl}
               alt={name}
+              loading={priority ? "eager" : "lazy"}
+              fetchPriority={priority ? "high" : "auto"}
+              decoding="async"
               className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
@@ -241,7 +234,7 @@ export default function ProductCard({
           {uniqueColors.length > 0 && (
             <div className="flex items-center gap-1.5 pt-0.5">
               {uniqueColors.map((color) => {
-                const hex = getColorHexFromMap(colorMap, color);
+                const hex = getColorHexFromMap(colorHexMap, color);
                 return (
                   <span
                     key={color}
@@ -278,6 +271,6 @@ export default function ProductCard({
           )}
         </div>
       </div>
-    </Link>
+    </a>
   );
 }

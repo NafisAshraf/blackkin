@@ -17,13 +17,203 @@ interface MediaItem {
 
 interface MediaGalleryProps {
   media: MediaItem[];
+  jumpRequest?: { index: number; nonce: number } | null;
+  posterUrl?: string | null;
+  layout?: "mobile" | "desktop";
 }
 
-export default function MediaGallery({ media }: MediaGalleryProps) {
+function MediaPlaceholder({
+  posterUrl,
+  label,
+  priority = false,
+}: {
+  posterUrl?: string | null;
+  label: string;
+  priority?: boolean;
+}) {
+  if (posterUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={posterUrl}
+        alt={label}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  return <div className="h-full w-full bg-muted" />;
+}
+
+function useDeferredMediaLoad(priority: boolean) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [shouldLoad, setShouldLoad] = useState(priority);
+
+  useEffect(() => {
+    if (priority || shouldLoad) return;
+    const target = ref.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "900px 0px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [priority, shouldLoad]);
+
+  return [ref, shouldLoad] as const;
+}
+
+function GalleryImage({
+  src,
+  alt,
+  className,
+  priority,
+  posterUrl,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  priority: boolean;
+  posterUrl?: string | null;
+}) {
+  const [ref, shouldLoad] = useDeferredMediaLoad(priority);
+
+  return (
+    <div ref={ref} className="h-full w-full">
+      {shouldLoad ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
+          className={className}
+        />
+      ) : (
+        <MediaPlaceholder
+          posterUrl={posterUrl}
+          label={alt}
+          priority={priority}
+        />
+      )}
+    </div>
+  );
+}
+
+function GalleryVideo({
+  src,
+  posterUrl,
+  isActive,
+  className,
+}: {
+  src: string;
+  posterUrl?: string | null;
+  isActive: boolean;
+  className: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+
+  useEffect(() => {
+    setHasLoaded(false);
+  }, [src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!isActive) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      return;
+    }
+
+    if (video.getAttribute("src") !== src) {
+      video.src = src;
+      video.load();
+    }
+
+    video.play().catch(() => {
+      // Muted autoplay can still be rejected on some devices; keep poster visible.
+    });
+  }, [isActive, src]);
+
+  return (
+    <div className="relative h-full w-full bg-muted">
+      {posterUrl && !hasLoaded && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={posterUrl}
+          alt=""
+          loading="eager"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      <video
+        ref={videoRef}
+        src={isActive ? src : undefined}
+        loop
+        muted
+        playsInline
+        disablePictureInPicture
+        controls={false}
+        preload={isActive ? "metadata" : "none"}
+        poster={posterUrl ?? undefined}
+        onLoadedData={() => setHasLoaded(true)}
+        className={cn(
+          className,
+          posterUrl && !hasLoaded ? "opacity-0" : "opacity-100",
+        )}
+        {...{ "webkit-playsinline": "true" }}
+      />
+    </div>
+  );
+}
+
+function useIsDesktopViewport() {
+  // Mobile-first SSR: the first source is present before hydration for the
+  // majority-mobile storefront audience.
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return isDesktop;
+}
+
+export default function MediaGallery({
+  media,
+  jumpRequest,
+  posterUrl,
+  layout,
+}: MediaGalleryProps) {
   const sorted = [...media].sort((a, b) => a.sortOrder - b.sortOrder);
   const [isHovered, setIsHovered] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const baseId = useId();
+  const isDesktopViewport = useIsDesktopViewport();
+  const isLayoutVisible =
+    !layout ||
+    (layout === "desktop" ? isDesktopViewport : !isDesktopViewport);
+  const shouldRenderMobileMedia = isLayoutVisible && !isDesktopViewport;
+  const shouldRenderDesktopMedia = isLayoutVisible && isDesktopViewport;
 
   // Refs for each desktop media item
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -51,6 +241,27 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
       emblaApi.off("reInit", onSelect);
     };
   }, [emblaApi, onSelect]);
+
+  useEffect(() => {
+    if (!jumpRequest || sorted.length === 0) return;
+
+    const targetIndex = Math.max(
+      0,
+      Math.min(jumpRequest.index, sorted.length - 1),
+    );
+    setActiveIndex(targetIndex);
+    setCurrentIndex(targetIndex);
+
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop) {
+      itemRefs.current[targetIndex]?.scrollIntoView({
+        behavior: "auto",
+        block: "start",
+      });
+    } else {
+      emblaApi?.scrollTo(targetIndex, true);
+    }
+  }, [jumpRequest, emblaApi, sorted.length]);
 
   // Desktop: track active media item via scroll position
   // Use window scroll + element getBoundingClientRect for accurate tracking
@@ -128,33 +339,40 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
                 <div className="flex">
                   {sorted.map((item, i) => (
                     <div
-                      key={item.storageId}
+                      key={`${item.storageId}-${i}`}
                       className="flex-[0_0_100%] aspect-[3/4] bg-muted overflow-hidden"
                     >
-                      {!item.url ? null : item.type === "image" ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                      {!shouldRenderMobileMedia || !item.url ? (
+                        <MediaPlaceholder
+                          posterUrl={shouldRenderMobileMedia ? posterUrl : null}
+                          label={`Product ${i + 1}`}
+                        />
+                      ) : item.type === "image" ? (
+                        <GalleryImage
                           src={item.url}
                           alt={`Product ${i + 1}`}
+                          priority={i === 0}
+                          posterUrl={posterUrl}
                           className="w-full h-full object-cover"
                         />
                       ) : item.type === "video" ? (
-                        <video
+                        <GalleryVideo
                           src={item.url}
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          disablePictureInPicture
-                          controls={false}
-                          preload="metadata"
+                          posterUrl={posterUrl}
+                          isActive={
+                            shouldRenderMobileMedia && currentIndex === i
+                          }
                           className="mobile-inline-video w-full h-full object-cover"
-                          {...{ "webkit-playsinline": "true" }}
                         />
-                      ) : (
+                      ) : shouldRenderMobileMedia && currentIndex === i ? (
                         <div className="w-full h-full">
                           <ModelViewer url={item.url} />
                         </div>
+                      ) : (
+                        <MediaPlaceholder
+                          posterUrl={shouldRenderMobileMedia ? posterUrl : null}
+                          label={`Product ${i + 1}`}
+                        />
                       )}
                     </div>
                   ))}
@@ -249,7 +467,7 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
                 const isActive = activeIndex === i;
                 return (
                   <button
-                    key={`nav-${item.storageId}`}
+                    key={`nav-${item.storageId}-${i}`}
                     onClick={() => scrollToMedia(i)}
                     className={cn(
                       "group/thumb relative w-8 aspect-[3/4] bg-muted overflow-hidden border transition-all duration-300",
@@ -259,11 +477,13 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
                     )}
                     aria-label={`Go to media ${i + 1}`}
                   >
-                    {item.url && item.type === "image" ? (
+                    {isHovered && item.url && item.type === "image" ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={item.url}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -295,36 +515,41 @@ export default function MediaGallery({ media }: MediaGalleryProps) {
 
         {sorted.map((item, i) => (
           <div
-            key={item.storageId}
+            key={`${item.storageId}-${i}`}
             ref={(el) => {
               itemRefs.current[i] = el;
             }}
             className="w-full aspect-[3/4] bg-muted overflow-hidden scroll-mt-20"
           >
-            {!item.url ? null : item.type === "image" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+            {!shouldRenderDesktopMedia || !item.url ? (
+              <MediaPlaceholder
+                posterUrl={shouldRenderDesktopMedia ? posterUrl : null}
+                label={`Product ${i + 1}`}
+              />
+            ) : item.type === "image" ? (
+              <GalleryImage
                 src={item.url}
                 alt={`Product ${i + 1}`}
+                priority={i === 0}
+                posterUrl={posterUrl}
                 className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
               />
             ) : item.type === "video" ? (
-              <video
+              <GalleryVideo
                 src={item.url}
-                autoPlay
-                loop
-                muted
-                playsInline
-                disablePictureInPicture
-                controls={false}
-                preload="metadata"
+                posterUrl={posterUrl}
+                isActive={shouldRenderDesktopMedia && activeIndex === i}
                 className="mobile-inline-video w-full h-full object-cover"
-                {...{ "webkit-playsinline": "true" }}
               />
-            ) : (
+            ) : shouldRenderDesktopMedia && activeIndex === i ? (
               <div className="w-full h-full">
                 <ModelViewer url={item.url} />
               </div>
+            ) : (
+              <MediaPlaceholder
+                posterUrl={shouldRenderDesktopMedia ? posterUrl : null}
+                label={`Product ${i + 1}`}
+              />
             )}
           </div>
         ))}

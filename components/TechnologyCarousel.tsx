@@ -2,9 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export interface CarouselItem {
   _id: string;
@@ -18,7 +15,6 @@ interface TechnologyCarouselProps {
 }
 
 export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
-  const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const isHoveredRef = useRef(false);
@@ -149,7 +145,7 @@ export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
                 if (!isCenter) {
                   setCurrentIndex(index);
                 } else if (item.url) {
-                  router.push(item.url);
+                  window.location.assign(item.url);
                 }
               }}
             >
@@ -157,6 +153,8 @@ export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
                 <img
                   src={item.imageUrl}
                   alt={item.text}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -184,12 +182,12 @@ export function TechnologyCarousel({ carousels }: TechnologyCarouselProps) {
       </div>
 
       <div className="flex justify-center mt-8">
-        <Link
+        <a
           href="/products"
           className="text-xs md:text-sm font-semibold tracking-widest uppercase bg-[#1a1a1a] text-white px-8 py-3.5 hover:bg-black transition-colors"
         >
           View All Products
-        </Link>
+        </a>
       </div>
     </section>
   );

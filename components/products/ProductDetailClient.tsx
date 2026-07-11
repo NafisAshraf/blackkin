@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import MediaGallery from "@/components/products/MediaGallery";
 import ProductInfo from "@/components/products/ProductInfo";
 import ProductAccordion from "@/components/products/ProductAccordion";
@@ -22,6 +24,11 @@ interface ResolvedMediaItem {
 interface ResolvedVariantMediaEntry {
   color: string;
   media: ResolvedMediaItem[];
+}
+
+interface GalleryJumpRequest {
+  index: number;
+  nonce: number;
 }
 
 interface Variant {
@@ -56,8 +63,14 @@ interface Recommendation {
 }
 
 interface PlatformSize {
+  _id?: string;
   name: string;
   measurements?: string;
+}
+
+interface PlatformColor {
+  name: string;
+  hexCode: string;
 }
 
 interface ProductDetailClientProps {
@@ -80,6 +93,7 @@ interface ProductDetailClientProps {
   commonMediaTopResolved: ResolvedMediaItem[];
   commonMediaBottomResolved: ResolvedMediaItem[];
   platformSizes: PlatformSize[];
+  platformColors?: PlatformColor[];
   recommendations: Recommendation[];
 }
 
@@ -92,22 +106,43 @@ export default function ProductDetailClient({
   commonMediaTopResolved,
   commonMediaBottomResolved,
   platformSizes,
+  platformColors = [],
   recommendations,
 }: ProductDetailClientProps) {
+  const liveStock = useQuery(api.storefront.getProductStock, {
+    productId: product._id,
+  });
+  const liveVariants = useMemo(() => {
+    if (!liveStock) return product.variants;
+    const stockByVariant = new Map(
+      liveStock.map((item) => [String(item._id), item.stock]),
+    );
+    return product.variants.map((variant) => ({
+      ...variant,
+      stock: stockByVariant.get(String(variant._id)) ?? variant.stock,
+    }));
+  }, [liveStock, product.variants]);
+  const liveProduct = useMemo(
+    () => ({ ...product, variants: liveVariants }),
+    [liveVariants, product],
+  );
+
   // Pre-select color from first available variant
   const initialColor =
-    product.variants.find((v) => v.stock > 0)?.color ??
-    product.variants[0]?.color ??
+    liveProduct.variants.find((v) => v.stock > 0)?.color ??
+    liveProduct.variants[0]?.color ??
     null;
   const initialSize =
-    product.variants.find((v) => v.stock > 0)?.size ??
-    product.variants[0]?.size ??
+    liveProduct.variants.find((v) => v.stock > 0)?.size ??
+    liveProduct.variants[0]?.size ??
     null;
 
   const [selectedColor, setSelectedColor] = useState<string | null>(
     initialColor,
   );
   const [selectedSize, setSelectedSize] = useState<string | null>(initialSize);
+  const [galleryJumpRequest, setGalleryJumpRequest] =
+    useState<GalleryJumpRequest | null>(null);
 
   // Ref attached to the Quantity+AddToCart section inside ProductInfo
   const addToCartRef = useRef<HTMLDivElement>(null);
@@ -132,17 +167,34 @@ export default function ProductDetailClient({
     });
   }, []);
 
-  // Compute active media for the selected color: commonTop + colorSpecific + commonBottom
-  const activeVariantEntry = variantMediaResolved.find(
-    (e) => e.color === selectedColor,
+  const allColors = Array.from(
+    new Set(
+      liveProduct.variants
+        .map((v) => v.color)
+        .filter((c): c is string => !!c),
+    ),
   );
-  const colorMedia: ResolvedMediaItem[] = activeVariantEntry?.media ?? [];
+  const mediaByColor = new Map(
+    variantMediaResolved.map((entry) => [entry.color, entry.media] as const),
+  );
+  const firstMediaIndexByColor: Record<string, number> = {};
+  const allMediaCombined: ResolvedMediaItem[] = [];
 
-  const allMediaCombined = [
-    ...commonMediaTopResolved,
-    ...colorMedia,
-    ...commonMediaBottomResolved,
-  ];
+  function appendMedia(items: ResolvedMediaItem[]) {
+    for (const item of items) {
+      allMediaCombined.push({ ...item, sortOrder: allMediaCombined.length });
+    }
+  }
+
+  appendMedia(commonMediaTopResolved);
+  for (const color of allColors) {
+    const media = mediaByColor.get(color) ?? [];
+    if (media.length > 0) {
+      firstMediaIndexByColor[color] = allMediaCombined.length;
+      appendMedia(media);
+    }
+  }
+  appendMedia(commonMediaBottomResolved);
 
   const activeMedia: ResolvedMediaItem[] =
     allMediaCombined.length > 0
@@ -158,19 +210,41 @@ export default function ProductDetailClient({
           ]
         : [];
 
+  function handleColorChange(
+    color: string,
+    options?: { jumpToMedia?: boolean },
+  ) {
+    setSelectedColor(color);
+    if (!options?.jumpToMedia) return;
+
+    const targetIndex = firstMediaIndexByColor[color];
+    if (targetIndex === undefined) return;
+
+    setGalleryJumpRequest((previous) => ({
+      index: targetIndex,
+      nonce: (previous?.nonce ?? 0) + 1,
+    }));
+  }
+
   return (
     <>
       {/* ── MOBILE layout: stacked ─────────────────────────── */}
       <div className="lg:hidden">
         <section className="w-full">
-          <MediaGallery key={selectedColor ?? "none"} media={activeMedia} />
+          <MediaGallery
+            media={activeMedia}
+            jumpRequest={galleryJumpRequest}
+            posterUrl={thumbnailUrl}
+            layout="mobile"
+          />
         </section>
         <section ref={productInfoRef} className="px-5 py-6 space-y-6">
           <ProductInfo
-            product={product}
+            product={liveProduct}
             platformSizes={platformSizes}
+            platformColors={platformColors}
             selectedColor={selectedColor}
-            onColorChange={setSelectedColor}
+            onColorChange={handleColorChange}
             selectedSize={selectedSize}
             onSizeChange={setSelectedSize}
             addToCartRef={addToCartRef}
@@ -189,7 +263,12 @@ export default function ProductDetailClient({
       <div className="hidden lg:flex w-full">
         {/* Left: media stack */}
         <div className="w-1/2 flex-shrink-0">
-          <MediaGallery key={selectedColor ?? "none"} media={activeMedia} />
+          <MediaGallery
+            media={activeMedia}
+            jumpRequest={galleryJumpRequest}
+            posterUrl={thumbnailUrl}
+            layout="desktop"
+          />
         </div>
 
         {/* Right: sticky info column */}
@@ -199,6 +278,7 @@ export default function ProductDetailClient({
             <nav className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mb-6">
               <Link
                 href="/"
+                prefetch={false}
                 className="hover:text-foreground transition-colors"
               >
                 Home
@@ -206,6 +286,7 @@ export default function ProductDetailClient({
               <span>/</span>
               <Link
                 href="/products"
+                prefetch={false}
                 className="hover:text-foreground transition-colors"
               >
                 Products
@@ -215,10 +296,11 @@ export default function ProductDetailClient({
             </nav>
 
             <ProductInfo
-              product={product}
+              product={liveProduct}
               platformSizes={platformSizes}
+              platformColors={platformColors}
               selectedColor={selectedColor}
-              onColorChange={setSelectedColor}
+              onColorChange={handleColorChange}
               selectedSize={selectedSize}
               onSizeChange={setSelectedSize}
               addToCartRef={addToCartRef}
@@ -239,22 +321,31 @@ export default function ProductDetailClient({
             </h2>
             <Link
               href="/products"
+              prefetch={false}
               className="text-xs font-medium text-muted-foreground hover:text-foreground uppercase tracking-wider transition-colors"
             >
               View All
             </Link>
           </div>
-          <RecommendationCarousel products={recommendations} />
+          <RecommendationCarousel
+            products={recommendations}
+            colorHexMap={Object.fromEntries(
+              platformColors.map((color) => [
+                color.name.toLowerCase(),
+                color.hexCode,
+              ]),
+            )}
+          />
         </section>
       )}
 
       {/* ── STICKY ADD-TO-CART BAR ──────────────────────────── */}
       <StickyAddToCartBar
         product={{
-          _id: product._id,
-          name: product.name,
-          effectivePrice: product.effectivePrice,
-          variants: product.variants,
+          _id: liveProduct._id,
+          name: liveProduct.name,
+          effectivePrice: liveProduct.effectivePrice,
+          variants: liveProduct.variants,
         }}
         thumbnailUrl={thumbnailUrl}
         selectedColor={selectedColor}

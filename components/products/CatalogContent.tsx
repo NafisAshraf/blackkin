@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { useMemo, useState } from "react";
+import { Tag, LayoutGrid, Square } from "lucide-react";
 import { Id } from "@/convex/_generated/dataModel";
-import { Loader2, Tag, LayoutGrid, Square } from "lucide-react";
 import ProductCard from "@/components/products/ProductCard";
 import ProductFilters from "@/components/products/ProductFilters";
 import SortDropdown from "@/components/products/SortDropdown";
-
-const INITIAL_LIMIT = 24;
+import { useUrlSearchParams } from "@/hooks/use-url-search-params";
 
 interface CatalogProduct {
   _id: Id<"products">;
+  _creationTime: number;
   name: string;
   slug: string;
+  description: string;
+  categoryId?: Id<"categories">;
   basePrice: number;
   effectivePrice: number;
   discountAmount: number;
@@ -22,11 +22,17 @@ interface CatalogProduct {
   discountEndTime: number | null;
   averageRating: number;
   totalRatings: number;
+  globalSortOrder: number;
   imageUrl: string | null;
   hoverImageUrl?: string | null;
   colorFirstImageUrls?: Array<{ color: string; url: string | null }>;
-  tags?: Array<{ _id: string; name: string; slug: string }>;
-  variants?: Array<{ color?: string }>;
+  tags?: Array<{ _id: Id<"tags">; name: string; slug: string }>;
+  variants?: Array<{
+    _id: Id<"productVariants">;
+    size: string;
+    color?: string;
+    stock: number;
+  }>;
 }
 
 interface SaleGroup {
@@ -38,59 +44,40 @@ interface SaleGroup {
   products: CatalogProduct[];
 }
 
-interface SaleData {
-  groups: SaleGroup[];
-  individualProducts: CatalogProduct[];
-}
-
-interface FilteredData {
-  products: CatalogProduct[];
-  hasMore: boolean;
-  total: number;
-}
-
 interface Category {
-  _id: string;
+  _id: Id<"categories">;
   name: string;
   slug: string;
 }
 
 interface Size {
-  _id: string;
+  _id: Id<"platformSizes">;
   name: string;
+  measurements: string;
 }
 
 interface Color {
-  _id: string;
+  _id: Id<"platformColors">;
   name: string;
-  hexCode: string; // required
-}
-
-interface QueryArgs {
-  categoryId?: string;
-  size?: string;
-  color?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  sortBy?: string;
+  hexCode: string;
 }
 
 interface CatalogContentProps {
-  mode: "filtered" | "search" | "sale";
-  initialData: FilteredData | SaleData | null;
+  products: CatalogProduct[];
+  sale: { groups: SaleGroup[]; individualProducts: CatalogProduct[] };
   categories: Category[];
   sizes: Size[];
   colors: Color[];
-  queryArgs: QueryArgs;
-  searchQuery?: string;
 }
 
 function ProductGrid({
   products,
-  viewMode = "grid",
+  viewMode,
+  colorHexMap,
 }: {
   products: CatalogProduct[];
-  viewMode?: "grid" | "single";
+  viewMode: "grid" | "single";
+  colorHexMap: Record<string, string>;
 }) {
   return (
     <div
@@ -98,26 +85,15 @@ function ProductGrid({
         viewMode === "single" ? "grid-cols-1" : "grid-cols-2"
       } md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6`}
     >
-      {products.map((product) => (
+      {products.map((product, index) => (
         <ProductCard
           key={product._id}
-          product={{
-            _id: product._id,
-            name: product.name,
-            slug: product.slug,
-            basePrice: product.basePrice,
-            effectivePrice: product.effectivePrice,
-            discountAmount: product.discountAmount,
-            discountGroupName: product.discountGroupName,
-            discountEndTime: product.discountEndTime,
-            averageRating: product.averageRating,
-            totalRatings: product.totalRatings,
-            tags: product.tags,
-            variants: product.variants,
-          }}
+          product={product}
           imageUrl={product.imageUrl}
           hoverImageUrl={product.hoverImageUrl}
           colorFirstImageUrls={product.colorFirstImageUrls}
+          colorHexMap={colorHexMap}
+          priority={index < 2}
         />
       ))}
     </div>
@@ -125,110 +101,115 @@ function ProductGrid({
 }
 
 export default function CatalogContent({
-  mode,
-  initialData,
+  products,
+  sale,
   categories,
   sizes,
   colors,
-  queryArgs,
-  searchQuery,
 }: CatalogContentProps) {
-  const [limit, setLimit] = useState(INITIAL_LIMIT);
+  const searchParams = useUrlSearchParams();
   const [viewMode, setViewMode] = useState<"grid" | "single">("grid");
+  const query = (searchParams.get("q") ?? "").trim().toLowerCase();
+  const categoryId = searchParams.get("categoryId") ?? "";
+  const selectedSizes = (searchParams.get("size") ?? "")
+    .split(",")
+    .filter(Boolean);
+  const selectedColors = (searchParams.get("color") ?? "")
+    .split(",")
+    .filter(Boolean);
+  const minPrice = Number(searchParams.get("minPrice") ?? "");
+  const maxPrice = Number(searchParams.get("maxPrice") ?? "");
+  const onSale = searchParams.get("onSale") === "true";
+  const sortBy = searchParams.get("sortBy") ?? "recommended";
+  const colorHexMap = Object.fromEntries(
+    colors.map((color) => [color.name.toLowerCase(), color.hexCode]),
+  );
 
-  // Only activate client query when loading more in filtered/search mode
-  const shouldFetchMore = mode === "filtered" && limit > INITIAL_LIMIT;
+  const filteredProducts = useMemo(() => {
+    const filtered = products.filter((product) => {
+      if (
+        query &&
+        !product.name.toLowerCase().includes(query) &&
+        !product.description.toLowerCase().includes(query) &&
+        !(product.tags ?? []).some((tag) =>
+          tag.name.toLowerCase().includes(query),
+        )
+      ) {
+        return false;
+      }
+      if (categoryId && String(product.categoryId) !== categoryId) return false;
+      if (
+        selectedSizes.length > 0 &&
+        !(product.variants ?? []).some((variant) =>
+          selectedSizes.includes(variant.size),
+        )
+      ) {
+        return false;
+      }
+      if (
+        selectedColors.length > 0 &&
+        !(product.variants ?? []).some(
+          (variant) =>
+            variant.color && selectedColors.includes(variant.color),
+        )
+      ) {
+        return false;
+      }
+      if (Number.isFinite(minPrice) && minPrice > 0 && product.basePrice < minPrice) {
+        return false;
+      }
+      if (Number.isFinite(maxPrice) && maxPrice > 0 && product.basePrice > maxPrice) {
+        return false;
+      }
+      return true;
+    });
 
-  const clientData = useQuery(
-    api.products.listFilteredSSR,
-    shouldFetchMore
-      ? {
-          ...(queryArgs.categoryId
-            ? { categoryId: queryArgs.categoryId as Id<"categories"> }
-            : {}),
-          ...(queryArgs.size ? { size: queryArgs.size } : {}),
-          ...(queryArgs.color ? { color: queryArgs.color } : {}),
-          ...(queryArgs.minPrice !== undefined
-            ? { minPrice: queryArgs.minPrice }
-            : {}),
-          ...(queryArgs.maxPrice !== undefined
-            ? { maxPrice: queryArgs.maxPrice }
-            : {}),
-          ...(queryArgs.sortBy
-            ? {
-                sortBy: queryArgs.sortBy as
-                  | "recommended"
-                  | "price_asc"
-                  | "price_desc"
-                  | "newest"
-                  | "best_selling",
-              }
-            : {}),
-          limit,
-        }
-      : "skip",
-  ) as FilteredData | undefined;
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "price_asc") return a.effectivePrice - b.effectivePrice;
+      if (sortBy === "price_desc") return b.effectivePrice - a.effectivePrice;
+      if (sortBy === "newest") return b._creationTime - a._creationTime;
+      if (sortBy === "best_selling") return b.totalRatings - a.totalRatings;
+      return a.globalSortOrder - b.globalSortOrder;
+    });
+  }, [
+    categoryId,
+    maxPrice,
+    minPrice,
+    products,
+    query,
+    selectedColors,
+    selectedSizes,
+    sortBy,
+  ]);
 
-  let products: CatalogProduct[] = [];
-  let hasMore = false;
-  let total = 0;
-
-  if (mode === "sale") {
-    // Sale data is structured differently — flattened for simplicity
-    const saleData = initialData as SaleData | null;
-    const allSaleProducts = [
-      ...(saleData?.groups.flatMap((g) => g.products) ?? []),
-      ...(saleData?.individualProducts ?? []),
-    ];
-    total = allSaleProducts.length;
-  } else {
-    const filteredInit = initialData as FilteredData | null;
-    products = clientData?.products ?? filteredInit?.products ?? [];
-    hasMore = clientData?.hasMore ?? filteredInit?.hasMore ?? false;
-    total = clientData?.total ?? filteredInit?.total ?? 0;
-  }
-
-  const isLoadingMore = shouldFetchMore && clientData === undefined;
-
-  let pageTitle = "CATALOG";
-  if (mode === "sale") pageTitle = "SALE";
-  else if (mode === "search" && searchQuery)
-    pageTitle = `SEARCH: "${searchQuery}"`;
-
-  const saleData = mode === "sale" ? (initialData as SaleData | null) : null;
-  const saleGroupCount = saleData?.groups.length ?? 0;
-  const saleIndividualCount = saleData?.individualProducts.length ?? 0;
-  const saleTotalCount = saleGroupCount + saleIndividualCount;
+  const saleProductCount =
+    sale.groups.reduce((total, group) => total + group.products.length, 0) +
+    sale.individualProducts.length;
+  const total = onSale ? saleProductCount : filteredProducts.length;
+  const title = onSale ? "SALE" : query ? `SEARCH: "${query}"` : "CATALOG";
 
   return (
     <>
-      {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-lg font-semibold tracking-wide uppercase">
-            {pageTitle}
+            {title}
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {mode === "sale"
-              ? `${saleTotalCount} ${saleTotalCount === 1 ? "item" : "items"} on sale`
-              : `${total} ${total === 1 ? "item" : "items"}${hasMore ? "+" : ""}`}
+            {total} {total === 1 ? "item" : "items"}
+            {onSale ? " on sale" : ""}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {mode !== "sale" && (
-            <Suspense fallback={null}>
-              <SortDropdown />
-            </Suspense>
+          {!onSale && (
+            <SortDropdown />
           )}
-          <Suspense fallback={null}>
-            <ProductFilters
-              categories={categories}
-              sizes={sizes}
-              colors={colors}
-            />
-          </Suspense>
-          {/* Grid / single-column toggle — visible only below md */}
+          <ProductFilters
+            categories={categories}
+            sizes={sizes}
+            colors={colors}
+          />
           <div className="md:hidden flex items-center border border-border rounded overflow-hidden">
             <button
               onClick={() => setViewMode("grid")}
@@ -256,17 +237,15 @@ export default function CatalogContent({
         </div>
       </div>
 
-      {/* Content */}
-      {mode === "sale" ? (
-        // ── ON SALE VIEW ────────────────────────────────
-        saleTotalCount === 0 ? (
+      {onSale ? (
+        saleProductCount === 0 ? (
           <p className="text-muted-foreground text-sm py-16 text-center">
             No products on sale right now.
           </p>
         ) : (
           <div className="space-y-12">
-            {saleData?.groups.map((group) => (
-              <div key={group._id} className="space-y-4">
+            {sale.groups.map((group) => (
+              <section key={group._id} className="space-y-4">
                 <div className="flex items-center gap-3 border-b pb-3">
                   <Tag className="h-4 w-4 text-destructive flex-shrink-0" />
                   <div>
@@ -285,19 +264,16 @@ export default function CatalogContent({
                     </p>
                   </div>
                 </div>
-                {group.products.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No available products in this group.
-                  </p>
-                ) : (
-                  <ProductGrid products={group.products} viewMode={viewMode} />
-                )}
-              </div>
+                <ProductGrid
+                  products={group.products}
+                  viewMode={viewMode}
+                  colorHexMap={colorHexMap}
+                />
+              </section>
             ))}
-
-            {(saleData?.individualProducts.length ?? 0) > 0 && (
-              <div className="space-y-4">
-                {(saleData?.groups.length ?? 0) > 0 && (
+            {sale.individualProducts.length > 0 && (
+              <section className="space-y-4">
+                {sale.groups.length > 0 && (
                   <div className="flex items-center gap-3 border-b pb-3">
                     <Tag className="h-4 w-4 text-destructive flex-shrink-0" />
                     <h2 className="text-sm font-semibold tracking-wide uppercase">
@@ -306,54 +282,24 @@ export default function CatalogContent({
                   </div>
                 )}
                 <ProductGrid
-                  products={saleData?.individualProducts ?? []}
+                  products={sale.individualProducts}
                   viewMode={viewMode}
+                  colorHexMap={colorHexMap}
                 />
-              </div>
+              </section>
             )}
           </div>
         )
+      ) : filteredProducts.length === 0 ? (
+        <p className="text-muted-foreground text-sm py-16 text-center">
+          {query ? `No results for "${query}".` : "No products found."}
+        </p>
       ) : (
-        // ── REGULAR / SEARCH VIEW ─────────────────────────
-        <>
-          {products.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-16 text-center">
-              {mode === "search"
-                ? `No results for "${searchQuery}".`
-                : "No products found."}
-            </p>
-          ) : (
-            <>
-              <ProductGrid products={products} viewMode={viewMode} />
-
-              {/* Load more */}
-              {hasMore && (
-                <div className="flex justify-center mt-10">
-                  <button
-                    className="border border-border px-8 py-3 text-xs font-semibold uppercase tracking-wider hover:bg-muted transition-colors disabled:opacity-50"
-                    onClick={() => setLimit((l) => l + INITIAL_LIMIT)}
-                    disabled={isLoadingMore}
-                  >
-                    {isLoadingMore ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading…
-                      </span>
-                    ) : (
-                      "Load More"
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {isLoadingMore && !hasMore && (
-                <div className="flex justify-center mt-10">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              )}
-            </>
-          )}
-        </>
+        <ProductGrid
+          products={filteredProducts}
+          viewMode={viewMode}
+          colorHexMap={colorHexMap}
+        />
       )}
     </>
   );

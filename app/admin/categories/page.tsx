@@ -20,6 +20,11 @@ import {
 import { Loader2, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { SortableList } from "@/components/admin/SortableList";
 import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
+
+async function refreshStorefront() {
+  await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
+}
 
 function toSlug(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -65,6 +70,7 @@ function CategoryDialog({ state, onClose }: { state: DialogState; onClose: () =>
         await createMutation({ name, slug, description: description || undefined });
         toast.success("Category created");
       }
+      await refreshStorefront();
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -113,6 +119,7 @@ export default function CategoriesPage() {
     setTogglingId(cat._id);
     try {
       await toggleActiveMutation({ id: cat._id, isActive: !cat.isActive });
+      await refreshStorefront();
       toast.success(`Category ${cat.isActive ? "deactivated" : "activated"}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -128,6 +135,7 @@ export default function CategoriesPage() {
       await reorderMutation({
         items: reordered.map((r) => ({ id: r.id as Id<"categories">, sortOrder: r.sortOrder })),
       });
+      await refreshStorefront();
     } catch {
       toast.error("Failed to reorder");
     } finally {

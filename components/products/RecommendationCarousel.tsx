@@ -26,10 +26,12 @@ interface RecProduct {
 
 interface RecommendationCarouselProps {
   products: RecProduct[];
+  colorHexMap?: Record<string, string>;
 }
 
 export default function RecommendationCarousel({
   products,
+  colorHexMap,
 }: RecommendationCarouselProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
@@ -98,6 +100,7 @@ export default function RecommendationCarousel({
                 imageUrl={product.imageUrl}
                 hoverImageUrl={product.hoverImageUrl}
                 colorFirstImageUrls={product.colorFirstImageUrls}
+                colorHexMap={colorHexMap}
               />
             </div>
           ))}

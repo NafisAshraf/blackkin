@@ -156,6 +156,7 @@ export default function StickyAddToCartBar({
           ) : isInCart ? (
             <Link
               href="/checkout"
+              prefetch={false}
               className="w-full h-10 bg-foreground text-background text-[11px] font-semibold tracking-wider uppercase flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
             >
               <ShoppingBag className="h-3.5 w-3.5" />

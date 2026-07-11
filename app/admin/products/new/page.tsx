@@ -7,6 +7,7 @@ import { useUploadFile } from "@convex-dev/r2/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -334,9 +335,10 @@ function NewProductForm() {
         })),
       }));
 
+      const savedSlug = slug.trim() || slugify(name);
       const productId = await createProduct({
         name: name.trim(),
-        slug: slug.trim() || slugify(name),
+        slug: savedSlug,
         sku: sku.trim() || undefined,
         description: description.trim(),
         categoryId: categoryId as Id<"categories">,
@@ -391,6 +393,11 @@ function NewProductForm() {
           productIds: [productId],
         });
       }
+
+      await requestStorefrontRevalidation({
+        scope: "product",
+        slug: savedSlug,
+      }).catch(() => {});
 
       toast.success("Product created successfully");
       router.push(backHref);

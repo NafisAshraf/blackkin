@@ -1,6 +1,9 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import {
+  pushUrlSearchParams,
+  useUrlSearchParams,
+} from "@/hooks/use-url-search-params";
 import { ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
@@ -20,8 +23,7 @@ const SORT_OPTIONS = [
 type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 
 export default function SortDropdown() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useUrlSearchParams();
   const current = (searchParams.get("sortBy") as SortValue) ?? "recommended";
   const currentLabel =
     SORT_OPTIONS.find((o) => o.value === current)?.label ?? "Recommended";
@@ -33,7 +35,7 @@ export default function SortDropdown() {
     } else {
       params.set("sortBy", value);
     }
-    router.push(`?${params.toString()}`);
+    pushUrlSearchParams(params);
   }
 
   return (

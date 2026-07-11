@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,10 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Pencil, Trash2, Plus, Check } from "lucide-react";
 import { SortableList } from "@/components/admin/SortableList";
 import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
+
+async function refreshStorefront() {
+  await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
+}
 
 type PlatformSize = {
   _id: Id<"platformSizes">;
@@ -82,6 +87,7 @@ function SizeDialog({
         await createMutation({ name, measurements });
         toast.success("Size created");
       }
+      await refreshStorefront();
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -152,6 +158,7 @@ function SizesTab() {
     setDeleteTarget(null);
     try {
       await deleteMutation({ id: size._id });
+      await refreshStorefront();
       toast.success("Size archived");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -170,6 +177,7 @@ function SizesTab() {
           sortOrder: r.sortOrder,
         })),
       });
+      await refreshStorefront();
     } catch {
       toast.error("Failed to reorder");
     } finally {
@@ -311,6 +319,7 @@ function ColorDialog({
         await createMutation({ name, hexCode });
         toast.success("Color created");
       }
+      await refreshStorefront();
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -394,6 +403,7 @@ function ColorsTab() {
     setDeleteTarget(null);
     try {
       await deleteMutation({ id: color._id });
+      await refreshStorefront();
       toast.success("Color deleted");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -412,6 +422,7 @@ function ColorsTab() {
           sortOrder: r.sortOrder,
         })),
       });
+      await refreshStorefront();
     } catch {
       toast.error("Failed to reorder");
     } finally {
@@ -542,6 +553,7 @@ function NavbarTab() {
         categoryId,
         enabled: !enabledIds.has(categoryId),
       });
+      await refreshStorefront();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -559,6 +571,7 @@ function NavbarTab() {
           sortOrder: r.sortOrder,
         })),
       });
+      await refreshStorefront();
     } catch {
       toast.error("Failed to reorder");
     } finally {
@@ -689,6 +702,7 @@ function SearchQueryDialog({
         await createMutation({ query });
         toast.success("Search query created");
       }
+      await refreshStorefront();
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -764,6 +778,7 @@ function SearchQueriesTab() {
     setDeleteTarget(null);
     try {
       await deleteMutation({ id: item._id });
+      await refreshStorefront();
       toast.success("Query deleted");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -782,6 +797,7 @@ function SearchQueriesTab() {
           sortOrder: r.sortOrder,
         })),
       });
+      await refreshStorefront();
     } catch {
       toast.error("Failed to reorder");
     } finally {

@@ -1,12 +1,10 @@
 "use client";
 
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import Script from "next/script";
+import { useStorefrontData } from "@/contexts/StorefrontDataContext";
 
 export function MarketingScripts() {
-  const settings = useQuery(api.marketing.getPublicSettings);
-  if (!settings) return null;
+  const { marketing: settings } = useStorefrontData();
 
   return (
     <>

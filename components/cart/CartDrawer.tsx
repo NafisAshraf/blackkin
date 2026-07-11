@@ -22,9 +22,15 @@ import {
 
 export function CartDrawer() {
   const { data: session } = authClient.useSession();
-  const { isOpen, setIsOpen, guestItemCount, removeGuestItem, updateGuestQuantity } = useCart();
+  const {
+    cartItems,
+    isOpen,
+    setIsOpen,
+    guestItemCount,
+    removeGuestItem,
+    updateGuestQuantity,
+  } = useCart();
 
-  const cartItems = useQuery(api.cart.get, session ? {} : "skip");
   const removeItem = useMutation(api.cart.remove);
   const updateItemQty = useMutation(api.cart.updateQuantity);
 
@@ -32,7 +38,9 @@ export function CartDrawer() {
   const guestLocalItems = getGuestCart();
   const guestCartItems = useQuery(
     api.cart.getGuestCartItems,
-    !session ? { items: guestLocalItems } : "skip"
+    !session && isOpen && guestLocalItems.length > 0
+      ? { items: guestLocalItems }
+      : "skip",
   );
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -125,7 +133,7 @@ export function CartDrawer() {
                 onClick={() => setIsOpen(false)}
                 className="border border-border px-6 py-2.5 text-xs font-semibold uppercase tracking-wider hover:bg-muted transition-colors"
               >
-                <Link href="/products">Browse Products</Link>
+                <Link href="/products" prefetch={false}>Browse Products</Link>
               </button>
             </div>
           ) : session ? (
@@ -299,6 +307,7 @@ export function CartDrawer() {
             </div>
             <Link
               href={session ? "/checkout" : "/login?next=/checkout"}
+              prefetch={false}
               onClick={() => setIsOpen(false)}
               className="block w-full bg-foreground text-background text-xs font-semibold tracking-[0.2em] uppercase text-center py-4 hover:opacity-90 transition-opacity"
             >
@@ -308,7 +317,7 @@ export function CartDrawer() {
               onClick={() => setIsOpen(false)}
               className="block w-full border border-border text-xs font-semibold tracking-wider uppercase text-center py-3 hover:bg-muted transition-colors"
             >
-              <Link href="/products">Continue Shopping</Link>
+              <Link href="/products" prefetch={false}>Continue Shopping</Link>
             </button>
           </div>
         )}

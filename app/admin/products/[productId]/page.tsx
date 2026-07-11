@@ -23,6 +23,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
 import {
   Loader2,
   ArrowLeft,
@@ -425,10 +426,11 @@ export default function EditProductPage() {
         })),
       }));
 
+      const savedSlug = slug.trim() || slugify(name);
       await updateProduct({
         id: productId,
         name,
-        slug: slug.trim() || slugify(name),
+        slug: savedSlug,
         sku: sku.trim() || undefined,
         description,
         categoryId: categoryId as Id<"categories">,
@@ -485,6 +487,10 @@ export default function EditProductPage() {
       });
 
       await assignTags({ productId, tagIds: Array.from(selectedTags) });
+      await requestStorefrontRevalidation({
+        scope: "product",
+        slug: savedSlug,
+      }).catch(() => {});
       toast.success("Product updated");
       router.push("/admin/products");
     } catch (e: unknown) {
@@ -499,6 +505,7 @@ export default function EditProductPage() {
     setDeleting(true);
     try {
       await removeProduct({ id: productId });
+      await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
       toast.success("Product deleted");
       router.push("/admin/products");
     } catch (e: unknown) {

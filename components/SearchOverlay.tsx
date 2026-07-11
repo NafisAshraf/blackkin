@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { X, Search, ArrowRight, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { X, Search, ArrowRight } from "lucide-react";
+import type { StorefrontSearchProduct } from "@/contexts/StorefrontDataContext";
 
 interface SearchOverlayProps {
   isOpen: boolean;
   onClose: () => void;
+  products: StorefrontSearchProduct[];
+  categories: Array<{ _id: string; name: string; slug: string }>;
+  predefinedQueries: Array<{ _id: string; query: string }>;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -21,22 +22,29 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
+export default function SearchOverlay({
+  isOpen,
+  onClose,
+  products,
+  categories,
+  predefinedQueries,
+}: SearchOverlayProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState("");
   const debouncedQuery = useDebounce(inputValue, 500);
 
-  const suggestions = useQuery(
-    api.products.searchSuggestions,
-    debouncedQuery.trim().length >= 2 ? { query: debouncedQuery } : "skip",
-  );
-
-  const predefinedQueries = useQuery(
-    api.platformConfig.listPredefinedSearchQueries,
-  );
-
-  const categories = useQuery(api.categories.list);
+  const suggestions = useMemo(() => {
+    const normalized = debouncedQuery.trim().toLowerCase();
+    if (normalized.length < 2) return [];
+    return products
+      .filter(
+        (product) =>
+          product.name.toLowerCase().includes(normalized) ||
+          product.description.toLowerCase().includes(normalized),
+      )
+      .slice(0, 6);
+  }, [debouncedQuery, products]);
 
   // Focus input when overlay opens
   useEffect(() => {
@@ -82,11 +90,9 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     [router, onClose],
   );
 
-  const isLoading =
-    debouncedQuery.trim().length >= 2 && suggestions === undefined;
-  const hasSuggestions = suggestions && suggestions.length > 0;
+  const hasSuggestions = suggestions.length > 0;
   const showEmpty =
-    debouncedQuery.trim().length >= 2 && !isLoading && !hasSuggestions;
+    debouncedQuery.trim().length >= 2 && !hasSuggestions;
   const showPredefined = debouncedQuery.trim().length < 2;
 
   if (!isOpen) return null;
@@ -189,20 +195,15 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                   Products
                 </p>
 
-                {isLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Searching...
-                  </div>
-                ) : showEmpty ? (
+                {showEmpty ? (
                   <p className="text-sm text-muted-foreground py-4">
                     No products found for &ldquo;{debouncedQuery}&rdquo;
                   </p>
                 ) : hasSuggestions ? (
                   <ul className="space-y-1">
-                    {suggestions!.map((product) => (
+                    {suggestions.map((product) => (
                       <li key={product._id}>
-                        <Link
+                        <a
                           href={`/products/${product.slug}`}
                           onClick={onClose}
                           className="flex items-center gap-4 p-2 -mx-2 hover:bg-accent rounded transition-colors group"
@@ -240,14 +241,14 @@ export default function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                           </div>
 
                           <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                        </Link>
+                        </a>
                       </li>
                     ))}
                   </ul>
                 ) : null}
 
                 {/* View all button */}
-                {debouncedQuery.trim().length >= 2 && !isLoading && (
+                {debouncedQuery.trim().length >= 2 && (
                   <button
                     onClick={() => handleSearch(debouncedQuery)}
                     className="mt-6 flex items-center gap-2 text-sm font-medium border border-border px-5 py-3 hover:bg-foreground hover:text-white transition-all duration-200 w-full justify-center group"

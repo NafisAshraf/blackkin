@@ -8,7 +8,8 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { useMutation, useConvexAuth } from "convex/react";
+import { useMutation, useConvexAuth, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@/lib/guest-cart";
 
 interface CartContextValue {
+  cartItems: FunctionReturnType<typeof api.cart.get> | undefined;
   guestItemCount: number;
   isMerging: boolean;
   isOpen: boolean;
@@ -35,6 +37,7 @@ interface CartContextValue {
 }
 
 const CartContext = createContext<CartContextValue>({
+  cartItems: undefined,
   guestItemCount: 0,
   isMerging: false,
   isOpen: false,
@@ -47,6 +50,7 @@ const CartContext = createContext<CartContextValue>({
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = authClient.useSession();
   const { isAuthenticated: isConvexAuth } = useConvexAuth();
+  const cartItems = useQuery(api.cart.get, session ? {} : "skip");
   const mergeGuestCart = useMutation(api.cart.mergeGuestCart);
   const mergedRef = useRef(false);
   const [guestItemCount, setGuestItemCount] = useState(0);
@@ -117,6 +121,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   return (
     <CartContext.Provider
       value={{
+        cartItems,
         guestItemCount,
         isMerging,
         isOpen,

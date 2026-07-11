@@ -1,11 +1,12 @@
-import Link from "next/link";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { QuoteCarousel } from "@/components/QuoteCarousel";
 import { ProductShowcase } from "@/components/ProductShowcase";
 import { TechnologyCarousel } from "@/components/TechnologyCarousel";
-import { fetchAuthQuery } from "@/lib/auth-server";
-import { api } from "@/convex/_generated/api";
+import { LazyVideo } from "@/components/LazyVideo";
+import { getPublicMediaUrl } from "@/lib/public-media";
+import { resolveProductCardMedia } from "@/lib/storefront-media";
+import { getStorefrontHome } from "@/lib/storefront-cache";
 
 export const metadata = {
   title: "Blackkin | Premium Comfort",
@@ -13,28 +14,68 @@ export const metadata = {
     "Shop premium undergarments. Crafted for lasting comfort and style.",
 };
 
+export const revalidate = 900;
+
 export default async function HomePage() {
-  // Fetch CMS content server-side. If Convex is unreachable, .catch returns null
-  // so the landing page falls back to static defaults and never 500s.
-  const content = await fetchAuthQuery(api.landingPage.getContent, {}).catch(
-    () => null,
-  );
+  const content = await getStorefrontHome().catch(() => null);
 
   // Resolve each image URL, falling back to static public-folder images.
   const hero = content?.images.hero;
-  const heroUrl = hero?.url || "/assets/hero.webm";
-  const heroType = hero?.url ? hero.type : "video";
+  const heroUrl = getPublicMediaUrl(hero?.storageId) || "/assets/hero.webm";
+  const heroType = hero ? hero.type : "video";
 
   const splitImage = content?.images.splitImage;
-  const splitImageUrl = splitImage?.url || "/assets/featured.webm";
-  const splitImageType = splitImage?.url ? splitImage.type : "video";
+  const splitImageUrl =
+    getPublicMediaUrl(splitImage?.storageId) || "/assets/featured.webm";
+  const splitImageType = splitImage ? splitImage.type : "video";
   const quotes = content?.quotes ?? [];
+  const colorHexMap = Object.fromEntries(
+    (content?.colors ?? []).map((color) => [
+      color.name.toLowerCase(),
+      color.hexCode,
+    ]),
+  );
+  const carousels = (content?.carousels ?? []).map((item) => ({
+    ...item,
+    _id: String(item._id),
+    imageUrl: getPublicMediaUrl(item.storageId) ?? "",
+  }));
 
   // Dynamic product showcase sections (null-safe; only rendered when active & has products)
-  const productSection1 =
-    content?.productSections?.find((s) => s.position === 1) ?? null;
-  const productSection2 =
-    content?.productSections?.find((s) => s.position === 2) ?? null;
+  const resolveSection = (position: 1 | 2) => {
+    const section = content?.productSections?.find(
+      (item) => item.position === position,
+    );
+    if (!section) return null;
+    return {
+      ...section,
+      products: section.products.map((product) => {
+        const resolved = resolveProductCardMedia(product);
+        return {
+          _id: String(product._id),
+          name: product.name,
+          slug: product.slug,
+          basePrice: product.basePrice,
+          effectivePrice: product.effectivePrice,
+          discountAmount: product.discountAmount,
+          discountGroupName: product.discountGroupName,
+          imageUrl: resolved.imageUrl,
+          hoverImageUrl: resolved.hoverImageUrl,
+          colorFirstImageUrls: resolved.colorFirstImageUrls,
+          colors: Array.from(
+            new Set(
+              product.variants
+                .map((variant) => variant.color)
+                .filter((color): color is string => Boolean(color)),
+            ),
+          ),
+          sortOrder: product.sortOrder,
+        };
+      }),
+    };
+  };
+  const productSection1 = resolveSection(1);
+  const productSection2 = resolveSection(2);
 
   return (
     <div className="min-h-screen">
@@ -47,23 +88,18 @@ export default async function HomePage() {
       >
         <div className="absolute inset-0">
           {heroType === "video" ? (
-            <video
+            <LazyVideo
               src={heroUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-              disablePictureInPicture
-              controls={false}
-              preload="auto"
+              priority
               className="mobile-inline-video pointer-events-none w-full h-full object-cover object-center"
               style={{ objectPosition: "center top" }}
-              {...{ "webkit-playsinline": "true" }}
             />
           ) : (
             <img
               src={heroUrl}
               alt="Blackkin Hero"
+              loading="eager"
+              decoding="async"
               className="w-full h-full object-cover object-center"
               style={{ objectPosition: "center top" }}
             />
@@ -86,12 +122,12 @@ export default async function HomePage() {
                 With World Class Technology
               </p>
             </div>
-            <Link
+            <a
               href="/products"
               className="hero-anim-3 inline-block bg-white text-black text-xs md:text-sm  tracking-[0.1em] uppercase px-12 py-4 hover:bg-white/90 transition-all active:scale-95 shadow-xl"
             >
               Shop Now
-            </Link>
+            </a>
           </div>
         </div>
       </section>
@@ -101,6 +137,7 @@ export default async function HomePage() {
         <ProductShowcase
           heading={productSection1.heading}
           products={productSection1.products}
+          colorHexMap={colorHexMap}
         />
       )}
 
@@ -130,6 +167,7 @@ export default async function HomePage() {
             <ProductShowcase
               heading={productSection2.heading}
               products={productSection2.products}
+              colorHexMap={colorHexMap}
             />
           )}
         </div>
@@ -147,32 +185,26 @@ export default async function HomePage() {
                 <br />
                 <span className="text-[#737373]">UNDERNEATH.</span>
               </h2>
-              <Link
+              <a
                 href="/products"
                 className="anim-on-scroll anim-d3 group mt-12 inline-block relative text-xs font-light tracking-[0.2em] uppercase text-white hover:text-white/60 transition-colors pb-1"
               >
                 DISCOVER MORE
                 <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-white" />
-              </Link>
+              </a>
             </div>
             <div className="order-1 lg:order-2 relative h-full min-h-[50vh] lg:min-h-0">
               {splitImageType === "video" ? (
-                <video
+                <LazyVideo
                   src={splitImageUrl}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  disablePictureInPicture
-                  controls={false}
-                  preload="auto"
                   className="mobile-inline-video pointer-events-none w-full h-full object-cover object-center"
-                  {...{ "webkit-playsinline": "true" }}
                 />
               ) : (
                 <img
                   src={splitImageUrl}
                   alt="Upgrade the way you feel"
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover object-center"
                 />
               )}
@@ -184,7 +216,7 @@ export default async function HomePage() {
       </div>
 
       {/* Premium Comfort Technology Carousel */}
-      <TechnologyCarousel carousels={content?.carousels ?? []} />
+      <TechnologyCarousel carousels={carousels.filter((item) => item.imageUrl)} />
 
       {/* Quotes Carousel — hidden if no quotes have been added yet */}
       <QuoteCarousel quotes={quotes} />

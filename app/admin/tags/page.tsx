@@ -28,6 +28,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { RowActionsMenu } from "@/components/admin/RowActionsMenu";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
+
+async function refreshStorefront() {
+  await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
+}
 
 function toSlug(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -63,6 +68,7 @@ function TagDialog({ state, onClose }: { state: TagDialogState; onClose: () => v
         await createMutation({ name, slug });
         toast.success("Tag created");
       }
+      await refreshStorefront();
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -106,6 +112,7 @@ export default function TagsPage() {
     setTogglingId(tag._id);
     try {
       await toggleActiveMutation({ id: tag._id, isActive: !tag.isActive });
+      await refreshStorefront();
       toast.success(`Tag ${tag.isActive ? "deactivated" : "activated"}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -119,6 +126,7 @@ export default function TagsPage() {
     setDeleteTarget(null);
     try {
       await removeMutation({ id: tag._id });
+      await refreshStorefront();
       toast.success("Tag deleted");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");

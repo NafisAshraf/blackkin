@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import {
+  pushUrlSearchParams,
+  useUrlSearchParams,
+} from "@/hooks/use-url-search-params";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -67,8 +70,7 @@ export default function ProductFilters({
   sizes,
   colors,
 }: ProductFiltersProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useUrlSearchParams();
   const [open, setOpen] = useState(false);
 
   const currentCategory = searchParams.get("categoryId") ?? "";
@@ -114,7 +116,7 @@ export default function ProductFilters({
     const sortBy = searchParams.get("sortBy");
     if (sortBy) params.set("sortBy", sortBy);
 
-    router.push(`?${params.toString()}`);
+    pushUrlSearchParams(params);
     setOpen(false);
   }, [
     draftOnSale,
@@ -124,7 +126,6 @@ export default function ProductFilters({
     draftMinPrice,
     draftMaxPrice,
     searchParams,
-    router,
   ]);
 
   const clearAll = useCallback(() => {
@@ -139,9 +140,9 @@ export default function ProductFilters({
     if (q) params.set("q", q);
     const sortBy = searchParams.get("sortBy");
     if (sortBy) params.set("sortBy", sortBy);
-    router.push(`?${params.toString()}`);
+    pushUrlSearchParams(params);
     setOpen(false);
-  }, [searchParams, router]);
+  }, [searchParams]);
 
   const handleOpenChange = (val: boolean) => {
     if (val) {

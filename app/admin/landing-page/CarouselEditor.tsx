@@ -12,6 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Upload, GripVertical, Trash2, ToggleRight, ToggleLeft } from "lucide-react";
 import { SortableList } from "@/components/admin/SortableList";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
+
+async function refreshStorefrontHome() {
+  await requestStorefrontRevalidation({ scope: "home" }).catch(() => {});
+}
 
 export function CarouselEditor() {
   const items = useQuery(api.landingPage.adminGetCarouselItems);
@@ -39,6 +44,7 @@ export function CarouselEditor() {
     try {
       const storageId = await r2Upload(file);
       await addItem({ storageId, text: text.trim(), url: url.trim() || undefined });
+      await refreshStorefrontHome();
       toast.success("Carousel item added");
       setFile(null);
       setText("");
@@ -56,6 +62,7 @@ export function CarouselEditor() {
     try {
       const storageId = await r2Upload(newFile);
       await updateImage({ id, storageId });
+      await refreshStorefrontHome();
       toast.success("Image updated");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to update image");
@@ -67,6 +74,7 @@ export function CarouselEditor() {
   const handleUpdateText = async (id: Id<"landingPageCarouselItems">, newText: string) => {
     try {
       await updateText({ id, text: newText });
+      await refreshStorefrontHome();
     } catch (err) {
       toast.error("Failed to update text");
     }
@@ -75,6 +83,7 @@ export function CarouselEditor() {
   const handleUpdateUrl = async (id: Id<"landingPageCarouselItems">, newUrl: string) => {
     try {
       await updateUrl({ id, url: newUrl });
+      await refreshStorefrontHome();
     } catch (err) {
       toast.error("Failed to update URL");
     }
@@ -138,6 +147,7 @@ export function CarouselEditor() {
             items={items}
             onReorder={async (reordered) => {
               await reorderItems({ items: reordered.map(r => ({ id: r.id as Id<"landingPageCarouselItems">, sortOrder: r.sortOrder })) });
+              await refreshStorefrontHome();
             }}
             renderItem={(item, dragHandle) => (
               <div className="flex items-center gap-4 px-3 py-3 bg-background">
@@ -173,7 +183,10 @@ export function CarouselEditor() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => toggleItem({ id: item._id })}
+                    onClick={async () => {
+                      await toggleItem({ id: item._id });
+                      await refreshStorefrontHome();
+                    }}
                     title={item.isActive ? "Hide" : "Show"}
                   >
                     {item.isActive ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
@@ -182,7 +195,9 @@ export function CarouselEditor() {
                     variant="ghost"
                     size="icon"
                     onClick={() => {
-                      if (confirm("Delete this carousel item?")) deleteItem({ id: item._id });
+                      if (confirm("Delete this carousel item?")) {
+                        deleteItem({ id: item._id }).then(refreshStorefrontHome);
+                      }
                     }}
                     className="text-muted-foreground hover:text-red-500"
                   >

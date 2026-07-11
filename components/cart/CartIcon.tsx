@@ -1,20 +1,12 @@
 "use client";
 
 import { ShoppingCart } from "lucide-react";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { useCart } from "./CartProvider";
 
 export function CartIcon() {
   const { data: session } = authClient.useSession();
-  const { guestItemCount, setIsOpen } = useCart();
-
-  // Only reactive for logged-in users
-  const cartItems = useQuery(
-    api.cart.get,
-    session ? {} : "skip"
-  );
+  const { cartItems, guestItemCount, setIsOpen } = useCart();
 
   const count = session
     ? (cartItems?.reduce((sum, i) => sum + i.quantity, 0) ?? 0)

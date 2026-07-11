@@ -47,6 +47,11 @@ import {
 import { SortableList } from "@/components/admin/SortableList";
 import { ProductPickerDialog } from "@/components/admin/ProductPickerDialog";
 import { CarouselEditor } from "./CarouselEditor";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
+
+async function refreshStorefrontHome() {
+  await requestStorefrontRevalidation({ scope: "home" }).catch(() => {});
+}
 
 // ─── Image slot metadata ────────────────────────────────────────────────────
 type ImageSlot = "hero" | "splitImage";
@@ -112,6 +117,7 @@ function QuoteDialog({
         await addMutation({ text: text.trim(), author: author.trim() });
         toast.success("Quote added");
       }
+      await refreshStorefrontHome();
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -234,6 +240,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
         position: section.position,
         heading: heading.trim(),
       });
+      await refreshStorefrontHome();
       toast.success("Section heading updated");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to save");
@@ -250,6 +257,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
     setIsToggling(true);
     try {
       await toggleSection({ id: section._id });
+      await refreshStorefrontHome();
       toast.success(section.isActive ? "Section hidden" : "Section visible");
     } catch (err: unknown) {
       toast.error(
@@ -271,6 +279,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
         sectionId: section._id,
         productId,
       });
+      await refreshStorefrontHome();
       toast.success("Product added");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add product");
@@ -283,6 +292,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
     setRemovingItemId(itemId);
     try {
       await removeProductFromSection({ itemId });
+      await refreshStorefrontHome();
       toast.success("Product removed");
     } catch (err: unknown) {
       toast.error(
@@ -298,6 +308,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
     setIsClearing(true);
     try {
       await clearSectionMutation({ sectionId: section._id });
+      await refreshStorefrontHome();
       toast.success("Section cleared");
     } catch (err: unknown) {
       toast.error(
@@ -318,6 +329,7 @@ function ProductSectionEditor({ section }: { section: AdminSection }) {
             sortOrder: r.sortOrder,
           })),
         });
+        await refreshStorefrontHome();
       } catch {
         toast.error("Failed to reorder");
       }
@@ -586,6 +598,7 @@ export default function LandingPageCmsPage() {
         storageId: key,
         type: isVideo ? "video" : "image",
       });
+      await refreshStorefrontHome();
       toast.success(
         `${IMAGE_SLOTS.find((s) => s.slot === slot)?.label} updated`,
       );
@@ -603,6 +616,7 @@ export default function LandingPageCmsPage() {
     setTogglingId(quote._id);
     try {
       await toggleQuote({ id: quote._id });
+      await refreshStorefrontHome();
       toast.success(quote.isActive ? "Quote hidden" : "Quote shown");
     } catch {
       toast.error("Failed to update quote");
@@ -615,6 +629,7 @@ export default function LandingPageCmsPage() {
     setDeletingId(quote._id);
     try {
       await deleteQuote({ id: quote._id });
+      await refreshStorefrontHome();
       toast.success("Quote deleted");
     } catch {
       toast.error("Failed to delete quote");

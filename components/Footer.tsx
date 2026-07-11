@@ -79,10 +79,12 @@ export function Footer() {
           <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
             {/* Logo */}
             <div className="anim-on-scroll sm:col-span-2 lg:col-span-1 flex flex-col gap-6 items-center text-center">
-              <Link href="/">
+              <Link href="/" prefetch={false}>
                 <img
                   src="/assets/blackkin_logo_text_black_trimmed.svg"
                   alt="Blackkin"
+                  loading="lazy"
+                  decoding="async"
                   style={{
                     height: "auto",
                     width: "200px",
@@ -127,24 +129,28 @@ export function Footer() {
               <nav className="flex flex-col gap-2.5 items-center lg:items-start">
                 <Link
                   href="/products"
+                  prefetch={false}
                   className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   Catalog
                 </Link>
                 <Link
                   href="/products?tag=sale"
+                  prefetch={false}
                   className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   Sale
                 </Link>
                 <Link
                   href="/products?tag=new-arrivals"
+                  prefetch={false}
                   className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   About Us
                 </Link>
                 <Link
                   href="/products"
+                  prefetch={false}
                   className="group relative inline-block text-sm text-white/70 hover:text-white transition-colors pb-0.5"
                 >
                   Contact Us
@@ -199,6 +205,8 @@ export function Footer() {
             <img
               src="/assets/blackkin_footer.png"
               alt="Blackkin"
+              loading="lazy"
+              decoding="async"
               style={{
                 width: "100%",
                 maxWidth: "none",

@@ -1,136 +1,84 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import ProductDetailClient from "@/components/products/ProductDetailClient";
-import { fetchAuthQuery } from "@/lib/auth-server";
-import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
+import { getPublicMediaUrl } from "@/lib/public-media";
+import { resolveProductCardMedia } from "@/lib/storefront-media";
+import {
+  getStorefrontProduct,
+  getStorefrontProductSlugs,
+} from "@/lib/storefront-cache";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+export const revalidate = 900;
+export const dynamicParams = true;
+
+const getProductPageData = cache(getStorefrontProduct);
+
+export async function generateStaticParams() {
+  return await getStorefrontProductSlugs();
+}
+
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
-  const product = await fetchAuthQuery(api.products.getBySlug, { slug });
+  const data = await getProductPageData(slug);
+  if (!data) return { title: "Product" };
+
   return {
-    title: product ? `${product.name} | Blackkin` : "Product | Blackkin",
+    title: data.product.metaTitle || data.product.name,
     description:
-      product?.description?.slice(0, 160) ??
-      "Shop premium undergarments at Blackkin.",
+      data.product.metaDescription || data.product.description.slice(0, 160),
+    openGraph: {
+      title: data.product.metaTitle || data.product.name,
+      description:
+        data.product.metaDescription || data.product.description.slice(0, 160),
+      images: data.product.thumbnailStorageId
+        ? [getPublicMediaUrl(data.product.thumbnailStorageId)!]
+        : [],
+    },
   };
 }
 
 export default async function ProductDetailPage({ params }: PageProps) {
   const { slug } = await params;
+  const data = await getProductPageData(slug);
+  if (!data) notFound();
 
-  const [product, recommendations, platformSizes] = await Promise.all([
-    fetchAuthQuery(api.products.getBySlug, { slug }),
-    fetchAuthQuery(api.recommendations.getAlsoLike, {}),
-    fetchAuthQuery(api.platformConfig.listSizes, {}),
-  ]);
-
-  if (!product) {
-    notFound();
-  }
-
-  // Collect all storageIds: thumbnail + hoverThumbnail + commonMediaTop + commonMediaBottom + all variantMedia items
-  const allStorageIds: string[] = [];
-  if (product.thumbnailStorageId) {
-    allStorageIds.push(product.thumbnailStorageId);
-  }
-  if (product.hoverThumbnailStorageId) {
-    allStorageIds.push(product.hoverThumbnailStorageId);
-  }
-  const variantMedia: Array<{
-    color: string;
-    media: Array<{
-      storageId: string;
-      type: "image" | "video" | "model3d";
-      sortOrder: number;
-    }>;
-  }> = product.variantMedia ?? [];
-  const commonMediaTop: Array<{
-    storageId: string;
-    type: "image" | "video" | "model3d";
-    sortOrder: number;
-  }> = (product.commonMediaTop as typeof commonMediaTop) ?? [];
-  const commonMediaBottom: Array<{
-    storageId: string;
-    type: "image" | "video" | "model3d";
-    sortOrder: number;
-  }> = (product.commonMediaBottom as typeof commonMediaBottom) ?? [];
-  for (const item of commonMediaTop) allStorageIds.push(item.storageId);
-  for (const item of commonMediaBottom) allStorageIds.push(item.storageId);
-  for (const entry of variantMedia) {
-    for (const item of entry.media) {
-      allStorageIds.push(item.storageId);
-    }
-  }
-
-  const allUrls =
-    allStorageIds.length > 0
-      ? await fetchAuthQuery(api.files.getUrls, { storageIds: allStorageIds })
-      : [];
-
-  // Build URL map
-  const urlMap: Record<string, string | null> = {};
-  allStorageIds.forEach((id, i) => {
-    urlMap[id] = allUrls[i] ?? null;
-  });
-
-  const thumbnailUrl = product.thumbnailStorageId
-    ? (urlMap[product.thumbnailStorageId] ?? null)
-    : null;
-
-  const variantMediaResolved = variantMedia.map((entry) => ({
+  const product = data.product;
+  const thumbnailUrl = getPublicMediaUrl(product.thumbnailStorageId);
+  const variantMediaResolved = product.variantMedia.map((entry) => ({
     color: entry.color,
-    media: entry.media
-      .map((item) => ({ ...item, url: urlMap[item.storageId] ?? null }))
-      .sort((a, b) => a.sortOrder - b.sortOrder),
+    media: [...entry.media]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((item) => ({ ...item, url: getPublicMediaUrl(item.storageId) })),
   }));
-
-  const commonMediaTopResolved = [...commonMediaTop]
+  const commonMediaTopResolved = [...(product.commonMediaTop ?? [])]
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((item) => ({ ...item, url: urlMap[item.storageId] ?? null }));
-
-  const commonMediaBottomResolved = [...commonMediaBottom]
+    .map((item) => ({ ...item, url: getPublicMediaUrl(item.storageId) }));
+  const commonMediaBottomResolved = [...(product.commonMediaBottom ?? [])]
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((item) => ({ ...item, url: urlMap[item.storageId] ?? null }));
-
-  type Recommendation = {
-    _id: Id<"products">;
-    name: string;
-    slug: string;
-    basePrice: number;
-    effectivePrice: number;
-    discountAmount: number;
-    discountGroupName: string | null;
-    discountEndTime: number | null;
-    averageRating: number;
-    totalRatings: number;
-    imageUrl: string | null;
-    colorFirstImageUrls: Array<{ color: string; url: string | null }>;
-    tags?: Array<{ _id: string; name: string; slug: string }>;
-    variants?: Array<{ color?: string }>;
-  };
-
-  const typedRecommendations = (recommendations ?? []) as Recommendation[];
+    .map((item) => ({ ...item, url: getPublicMediaUrl(item.storageId) }));
+  const recommendations = data.recommendations.map((recommendation) =>
+    resolveProductCardMedia(recommendation),
+  );
 
   return (
     <div className="min-h-screen">
       <Navbar />
-
       <ProductDetailClient
         product={product}
         thumbnailUrl={thumbnailUrl}
         variantMediaResolved={variantMediaResolved}
         commonMediaTopResolved={commonMediaTopResolved}
         commonMediaBottomResolved={commonMediaBottomResolved}
-        platformSizes={platformSizes ?? []}
-        recommendations={typedRecommendations}
+        platformSizes={data.sizes}
+        platformColors={data.colors}
+        recommendations={recommendations}
       />
-
       <Footer />
     </div>
   );

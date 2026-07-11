@@ -5,7 +5,6 @@ import useEmblaCarousel from "embla-carousel-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import ProductCard from "@/components/products/ProductCard";
 import { Id } from "@/convex/_generated/dataModel";
-import Link from "next/link";
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface ShowcaseProduct {
@@ -26,9 +25,14 @@ export interface ShowcaseProduct {
 interface ProductShowcaseProps {
   heading: string;
   products: ShowcaseProduct[];
+  colorHexMap?: Record<string, string>;
 }
 
-export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
+export function ProductShowcase({
+  heading,
+  products,
+  colorHexMap,
+}: ProductShowcaseProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
     align: "start",
@@ -77,13 +81,13 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
             {heading}
           </h2>
           {/* Desktop: View all products inline */}
-          <Link
+          <a
             href="/products"
             className="hidden md:block group relative text-sm font-medium tracking-wide uppercase pb-0.5 hover:opacity-70 transition-opacity"
           >
             View all products
             <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-foreground/50" />
-          </Link>
+          </a>
         </div>
 
         {/* Carousel */}
@@ -112,6 +116,7 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
                   imageUrl={product.imageUrl}
                   hoverImageUrl={product.hoverImageUrl}
                   colorFirstImageUrls={product.colorFirstImageUrls}
+                  colorHexMap={colorHexMap}
                 />
               </div>
             ))}
@@ -155,13 +160,13 @@ export function ProductShowcase({ heading, products }: ProductShowcaseProps) {
 
         {/* Mobile: View all products — centered below slider */}
         <div className="flex justify-center mt-8 md:hidden">
-          <Link
+          <a
             href="/products"
             className="group relative text-sm font-medium tracking-wide uppercase pb-0.5 hover:opacity-70 transition-opacity"
           >
             View all products
             <span className="sweep-underline absolute bottom-0 left-0 right-0 h-px bg-foreground/50" />
-          </Link>
+          </a>
         </div>
       </div>
     </section>

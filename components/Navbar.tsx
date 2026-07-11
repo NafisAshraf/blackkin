@@ -2,14 +2,17 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { authClient } from "@/lib/auth-client";
 import { CartIcon } from "@/components/cart/CartIcon";
-import SearchOverlay from "@/components/SearchOverlay";
 import { useAuthDialog } from "@/contexts/AuthDialogContext";
 import { Heart, Search, User, X, Menu, Flame } from "lucide-react";
+import { useStorefrontData } from "@/contexts/StorefrontDataContext";
+
+const SearchOverlay = dynamic(() => import("@/components/SearchOverlay"), {
+  ssr: false,
+});
 
 export function Navbar() {
   const pathname = usePathname();
@@ -31,7 +34,7 @@ function NavbarInner() {
   const lastScrollY = useRef(0);
   const ticking = useRef(false);
 
-  const navbarCategories = useQuery(api.platformConfig.listNavbarCategories);
+  const { navigation: navbarCategories, ...searchData } = useStorefrontData();
 
   const handleScroll = useCallback(() => {
     if (ticking.current) return;
@@ -72,7 +75,15 @@ function NavbarInner() {
     <>
       <div style={{ height: `${spacerHeight}px` }} />
 
-      <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+      {searchOpen && (
+        <SearchOverlay
+          isOpen
+          onClose={() => setSearchOpen(false)}
+          products={searchData.searchProducts}
+          categories={searchData.categories}
+          predefinedQueries={searchData.predefinedQueries}
+        />
+      )}
 
       <div
         className="navbar-wrapper fixed top-0 left-0 right-0 z-50"
@@ -158,7 +169,7 @@ function NavbarInner() {
 
               {/* Desktop nav */}
               <nav className="hidden md:flex items-center text-xs font-medium tracking-wide uppercase">
-                <Link
+                <a
                   href="/products"
                   className={`px-3 py-1.5 relative transition-colors hover:text-foreground group ${
                     pathname === "/products"
@@ -168,33 +179,34 @@ function NavbarInner() {
                 >
                   Catalog
                   <span className="sweep-underline absolute bottom-0 left-3 right-3 h-px bg-foreground/50" />
-                </Link>
+                </a>
 
                 {navbarCategories?.map((cat) => (
-                  <Link
+                  <a
                     key={cat.categoryId}
                     href={`/products?categoryId=${cat.categoryId}`}
                     className="px-3 py-1.5 relative text-muted-foreground hover:text-foreground transition-colors group"
                   >
                     {cat.name}
                     <span className="sweep-underline absolute bottom-0 left-3 right-3 h-px bg-foreground" />
-                  </Link>
+                  </a>
                 ))}
 
-                <Link
+                <a
                   href="/products?onSale=true"
                   className="px-3 py-1.5 relative text-red-500 hover:text-red-600 font-semibold transition-colors flex items-center gap-1 group"
                 >
                   Sale
                   <Flame className="h-3.5 w-3.5" />
                   <span className="sweep-underline absolute bottom-0 left-3 right-3 h-px bg-red-500" />
-                </Link>
+                </a>
               </nav>
             </div>
 
             {/* Center: Logo */}
             <Link
               href="/"
+              prefetch={false}
               className="absolute left-1/2 -translate-x-1/2 flex items-center"
             >
               <img
@@ -220,6 +232,7 @@ function NavbarInner() {
               {session ? (
                 <Link
                   href="/account/wishlist"
+                  prefetch={false}
                   className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                   aria-label="Wishlist"
                 >
@@ -238,6 +251,7 @@ function NavbarInner() {
               {isPending ? null : session ? (
                 <Link
                   href="/account"
+                  prefetch={false}
                   className="icon-btn-hover inline-flex items-center justify-center h-9 w-9 rounded hover:bg-accent"
                   aria-label="Account"
                 >
@@ -259,33 +273,34 @@ function NavbarInner() {
           {mobileMenuOpen && (
             <div className="mobile-menu-animate md:hidden border-t border-border bg-white">
               <nav className="flex flex-col py-3 px-6 gap-1">
-                <Link
+                <a
                   href="/products"
                   className="py-2.5 text-sm font-medium tracking-wide uppercase text-foreground"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Catalog
-                </Link>
+                </a>
                 {navbarCategories?.map((cat) => (
-                  <Link
+                  <a
                     key={cat.categoryId}
                     href={`/products?categoryId=${cat.categoryId}`}
                     className="py-2.5 text-sm font-medium tracking-wide uppercase text-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >
                     {cat.name}
-                  </Link>
+                  </a>
                 ))}
-                <Link
+                <a
                   href="/products?onSale=true"
                   className="py-2.5 text-sm font-semibold tracking-wide uppercase text-red-500 flex items-center gap-1.5"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Sale <Flame className="h-3.5 w-3.5" />
-                </Link>
+                </a>
                 {session && (
                   <Link
                     href="/account"
+                    prefetch={false}
                     className="py-2.5 text-sm font-medium tracking-wide uppercase text-foreground"
                     onClick={() => setMobileMenuOpen(false)}
                   >

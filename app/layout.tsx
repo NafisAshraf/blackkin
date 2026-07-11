@@ -6,9 +6,15 @@ import ConvexClientProvider from "@/components/ConvexClientProvider";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartProvider } from "@/components/cart/CartProvider";
-import { CartDrawer } from "@/components/cart/CartDrawer";
+import { LazyCartDrawer } from "@/components/cart/LazyCartDrawer";
 import { Toaster } from "@/components/ui/sonner";
 import { MarketingScripts } from "@/components/MarketingScripts";
+import { resolveProductCardMedia } from "@/lib/storefront-media";
+import { getStorefrontShell } from "@/lib/storefront-cache";
+import {
+  StorefrontDataProvider,
+  type StorefrontShellData,
+} from "@/contexts/StorefrontDataContext";
 
 const fontVariables = {
   "--font-sans": 'Montserrat, "Helvetica Neue", Arial, sans-serif',
@@ -35,11 +41,59 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export const revalidate = 900;
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const shell = await getStorefrontShell().catch(() => null);
+  const storefrontData: StorefrontShellData = shell
+    ? {
+        navigation: shell.navigation.map((item) => ({
+          ...item,
+          _id: String(item._id),
+          categoryId: String(item.categoryId),
+        })),
+        categories: shell.categories.map((category) => ({
+          ...category,
+          _id: String(category._id),
+        })),
+        predefinedQueries: shell.predefinedQueries.map((query) => ({
+          ...query,
+          _id: String(query._id),
+        })),
+        searchProducts: shell.searchProducts.map((product) => {
+          const resolved = resolveProductCardMedia(product);
+          return {
+            _id: String(product._id),
+            name: product.name,
+            slug: product.slug,
+            description: product.description,
+            basePrice: product.basePrice,
+            effectivePrice: product.effectivePrice,
+            discountAmount: product.discountAmount,
+            imageUrl: resolved.imageUrl,
+          };
+        }),
+        marketing: shell.marketing,
+      }
+    : {
+        navigation: [],
+        categories: [],
+        predefinedQueries: [],
+        searchProducts: [],
+        marketing: {
+          facebookPixelId: null,
+          facebookBrowserEnabled: false,
+          ga4MeasurementId: null,
+          googleEnabled: false,
+          headScripts: null,
+          bodyScripts: null,
+        },
+      };
+
   return (
     <html
       lang="en"
@@ -48,14 +102,16 @@ export default function RootLayout({
     >
       <body className="antialiased">
         <ConvexClientProvider>
-          <TooltipProvider>
-            <CartProvider>
-              {children}
-              <CartDrawer />
-              <Toaster />
-              <MarketingScripts />
-            </CartProvider>
-          </TooltipProvider>
+          <StorefrontDataProvider data={storefrontData}>
+            <TooltipProvider>
+              <CartProvider>
+                {children}
+                <LazyCartDrawer />
+                <Toaster />
+                <MarketingScripts />
+              </CartProvider>
+            </TooltipProvider>
+          </StorefrontDataProvider>
         </ConvexClientProvider>
         <Script id="scroll-anim" strategy="afterInteractive">{`
           (function() {

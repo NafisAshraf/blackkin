@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
 
 interface CustomScriptsConfig {
   headScripts?: string;
@@ -47,6 +48,7 @@ export default function CustomScriptsPage() {
           bodyScripts: bodyScripts.trim(),
         },
       });
+      await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
       toast.success("Settings saved");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to save settings");

@@ -5,6 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
+import { requestStorefrontRevalidation } from "@/lib/request-storefront-revalidation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ export function QuickTagDialog({ open, onOpenChange, editId, editName }: QuickTa
         await createTag({ name: name.trim(), slug: slug.trim() || slugify(name) });
         toast.success("Tag created");
       }
+      await requestStorefrontRevalidation({ scope: "all" }).catch(() => {});
       onOpenChange(false);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to save tag");

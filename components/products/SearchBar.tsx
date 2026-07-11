@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import {
+  pushUrlSearchParams,
+  useUrlSearchParams,
+} from "@/hooks/use-url-search-params";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 
@@ -11,12 +14,9 @@ interface SearchBarProps {
 }
 
 export default function SearchBar({ defaultValue = "", placeholder = "Search products..." }: SearchBarProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useUrlSearchParams();
   const [value, setValue] = useState(defaultValue);
-  const routerRef = useRef(router);
   const searchParamsRef = useRef(searchParams);
-  routerRef.current = router;
   searchParamsRef.current = searchParams;
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function SearchBar({ defaultValue = "", placeholder = "Search pro
       } else {
         params.delete("q");
       }
-      routerRef.current.push(`?${params.toString()}`);
+      pushUrlSearchParams(params);
     }, 300);
     return () => clearTimeout(timer);
   }, [value]);

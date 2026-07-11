@@ -22,6 +22,18 @@ Do not store server, portal, SMS, Convex, R2, or payment credentials in this fil
 - Convex site URL: `https://elated-labrador-720.convex.site`
 - Cloudflare stays active for DNS/proxy/SSL/R2.
 
+## Static Storefront And Media Delivery
+
+- `media.blackkin.com` is the public custom domain for the `blackkin-storage` R2 bucket.
+- The Cloudflare cache rule `Cache Blackkin R2 media` applies only when the hostname equals `media.blackkin.com` and sets one-year edge/browser TTLs.
+- Production builds must set `NEXT_PUBLIC_R2_PUBLIC_BASE_URL=https://media.blackkin.com`. Without it, storefront media falls back to a dynamic signed-URL redirect route.
+- The expected production build classification is:
+  - `/` and `/products`: static ISR with a 15-minute fallback refresh.
+  - `/products/[slug]`: SSG for all active product slugs with a 15-minute fallback refresh.
+  - account, checkout, admin, auth, and API routes: dynamic.
+- Stock remains a live Convex subscription on product pages; cart and authentication remain fully dynamic.
+- Product, landing-page, navigation, size/color, category/tag, discount, and marketing admin saves request an immediate storefront cache refresh. The 15-minute ISR window remains the safety fallback.
+
 ## Safety Rules
 
 - Never edit OpenLiteSpeed/Webuzo vhost files manually for routine updates.
@@ -90,6 +102,7 @@ Use this only if `blackkin.com` is not already configured in Webuzo.
    NEXT_PUBLIC_SITE_URL=https://blackkin.com
    NEXT_PUBLIC_CONVEX_URL=https://elated-labrador-720.convex.cloud
    NEXT_PUBLIC_CONVEX_SITE_URL=https://elated-labrador-720.convex.site
+   NEXT_PUBLIC_R2_PUBLIC_BASE_URL=https://media.blackkin.com
    OPENNEXT_CLOUDFLARE_DEV=false
    ```
 
@@ -122,6 +135,7 @@ The TLS workaround is only for the local command if Windows certificate verifica
 $env:NEXT_PUBLIC_SITE_URL='https://blackkin.com'
 $env:NEXT_PUBLIC_CONVEX_URL='https://elated-labrador-720.convex.cloud'
 $env:NEXT_PUBLIC_CONVEX_SITE_URL='https://elated-labrador-720.convex.site'
+$env:NEXT_PUBLIC_R2_PUBLIC_BASE_URL='https://media.blackkin.com'
 $env:OPENNEXT_CLOUDFLARE_DEV='false'
 $env:NODE_ENV='production'
 npm run build
@@ -172,7 +186,7 @@ ls -ld /home/banglan/nodeapps/blackkin
 find /home/banglan/nodeapps/blackkin -maxdepth 1 -printf "%M %u:%g %s %p\n" | sort
 ps -eo pid,user,ppid,cmd | grep -E "nodeapps/blackkin|next-server" | grep -v grep
 ss -ltnp 2>/dev/null | grep "127.0.0.1:30001" || true
-awk -F= '/^(NODE_ENV|PORT|HOSTNAME|NEXT_PUBLIC_SITE_URL|NEXT_PUBLIC_CONVEX_URL|NEXT_PUBLIC_CONVEX_SITE_URL|OPENNEXT_CLOUDFLARE_DEV)=/ {print $1"="$2}' /home/banglan/nodeapps/blackkin/blackkin.env
+awk -F= '/^(NODE_ENV|PORT|HOSTNAME|NEXT_PUBLIC_SITE_URL|NEXT_PUBLIC_CONVEX_URL|NEXT_PUBLIC_CONVEX_SITE_URL|NEXT_PUBLIC_R2_PUBLIC_BASE_URL|OPENNEXT_CLOUDFLARE_DEV)=/ {print $1"="$2}' /home/banglan/nodeapps/blackkin/blackkin.env
 ```
 
 Expected env:
@@ -184,6 +198,7 @@ HOSTNAME=127.0.0.1
 NEXT_PUBLIC_SITE_URL=https://blackkin.com
 NEXT_PUBLIC_CONVEX_URL=https://elated-labrador-720.convex.cloud
 NEXT_PUBLIC_CONVEX_SITE_URL=https://elated-labrador-720.convex.site
+NEXT_PUBLIC_R2_PUBLIC_BASE_URL=https://media.blackkin.com
 OPENNEXT_CLOUDFLARE_DEV=false
 ```
 

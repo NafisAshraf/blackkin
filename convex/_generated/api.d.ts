@@ -39,6 +39,7 @@ import type * as r2 from "../r2.js";
 import type * as recommendations from "../recommendations.js";
 import type * as reviews from "../reviews.js";
 import type * as sizeMigration from "../sizeMigration.js";
+import type * as storefront from "../storefront.js";
 import type * as tags from "../tags.js";
 import type * as triggers from "../triggers.js";
 import type * as users from "../users.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   recommendations: typeof recommendations;
   reviews: typeof reviews;
   sizeMigration: typeof sizeMigration;
+  storefront: typeof storefront;
   tags: typeof tags;
   triggers: typeof triggers;
   users: typeof users;

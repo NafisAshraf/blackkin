@@ -13,17 +13,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import SizeSelector from "./SizeSelector";
 import AddToCartButton from "@/components/cart/AddToCartButton";
+import { useCart } from "@/components/cart/CartProvider";
 import WishlistButton from "@/components/wishlist/WishlistButton";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
-import {
-  addToGuestCart,
-  getGuestCart,
-  updateGuestCartQuantity,
-  removeFromGuestCart,
-} from "@/lib/guest-cart";
-import { useQuery, useMutation } from "convex/react";
+import { getGuestCart } from "@/lib/guest-cart";
+import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   AlertDialog,
@@ -55,6 +51,11 @@ interface PlatformSize {
   measurements?: string;
 }
 
+interface PlatformColor {
+  name: string;
+  hexCode: string;
+}
+
 interface ProductInfoProps {
   product: {
     _id: Id<"products">;
@@ -70,10 +71,14 @@ interface ProductInfoProps {
     tags: Tag[];
   };
   platformSizes: PlatformSize[];
+  platformColors: PlatformColor[];
   /** Controlled color — when provided, overrides internal state */
   selectedColor?: string | null;
   /** Called when the user picks a color — required when selectedColor is provided */
-  onColorChange?: (color: string) => void;
+  onColorChange?: (
+    color: string,
+    options?: { jumpToMedia?: boolean },
+  ) => void;
   /** Controlled size — when provided, overrides internal state */
   selectedSize?: string | null;
   /** Called when the user picks a size */
@@ -145,6 +150,7 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
 export default function ProductInfo({
   product,
   platformSizes,
+  platformColors,
   selectedColor: controlledColor,
   onColorChange,
   selectedSize: controlledSize,
@@ -152,12 +158,12 @@ export default function ProductInfo({
   addToCartRef,
 }: ProductInfoProps) {
   const router = useRouter();
-  const platformColors = useQuery(api.platformConfig.listColors);
-  const colorHexMap = platformColors
-    ? Object.fromEntries(
-        platformColors.map((c) => [c.name.toLowerCase(), c.hexCode]),
-      )
-    : {};
+  const colorHexMap = Object.fromEntries(
+    platformColors.map((color) => [
+      color.name.toLowerCase(),
+      color.hexCode,
+    ]),
+  );
 
   function getColorHex(colorName?: string): string {
     if (!colorName) return "#cccccc";
@@ -179,6 +185,13 @@ export default function ProductInfo({
   } = product;
 
   const { data: session } = authClient.useSession();
+  const {
+    cartItems,
+    addGuestItem,
+    guestItemCount,
+    removeGuestItem,
+    updateGuestQuantity,
+  } = useCart();
 
   // Pre-select first available variant
   const initialVariant = variants.find((v) => v.stock > 0) || variants[0];
@@ -199,15 +212,14 @@ export default function ProductInfo({
   // Use controlled color if provided, otherwise fall back to internal state
   const selectedColor =
     controlledColor !== undefined ? controlledColor : internalColor;
-  function setSelectedColor(color: string | null) {
+  function setSelectedColor(
+    color: string | null,
+    options?: { jumpToMedia?: boolean },
+  ) {
     setInternalColor(color);
-    if (color && onColorChange) onColorChange(color);
+    if (color && onColorChange) onColorChange(color, options);
   }
-  // Cart data and mutations
-  const cartWithPricing = useQuery(
-    api.cart.getCartWithPricing,
-    session ? {} : "skip",
-  );
+  // Cart mutations share the single cart subscription owned by CartProvider.
   const updateCartQty = useMutation(api.cart.updateQuantity);
   const removeFromCartMutation = useMutation(api.cart.remove);
   const addToCartMutation = useMutation(api.cart.add);
@@ -215,7 +227,9 @@ export default function ProductInfo({
 
   const [quantity, setQuantity] = useState(1);
   const [isUpdatingCart, setIsUpdatingCart] = useState(false);
+  const [bundleAddLoading, setBundleAddLoading] = useState<2 | 3 | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [guestCartQuantity, setGuestCartQuantity] = useState(0);
 
   const uniqueSizes = Array.from(new Set(variants.map((v) => v.size)));
 
@@ -259,14 +273,54 @@ export default function ProductInfo({
 
   // Check if selected variant is in cart
   const cartItem =
-    selectedVariantId && cartWithPricing
-      ? cartWithPricing.items.find((i) => i.variantId === selectedVariantId)
+    selectedVariantId && cartItems
+      ? cartItems.find((item) => item.variantId === selectedVariantId)
       : null;
 
-  const isInCart = !!cartItem;
+  useEffect(() => {
+    if (session || !selectedVariantId) {
+      setGuestCartQuantity(0);
+      return;
+    }
+
+    const item = getGuestCart().find(
+      (guestItem) => guestItem.variantId === (selectedVariantId as string),
+    );
+    setGuestCartQuantity(item?.quantity ?? 0);
+  }, [guestItemCount, selectedVariantId, session]);
+
+  const isGuestInCart = !session && guestCartQuantity > 0;
+  const isInCart = !!cartItem || isGuestInCart;
 
   // If in cart, local quantity should match cart quantity (if not currently being edited)
-  const displayQuantity = isInCart ? cartItem.quantity : quantity;
+  const displayQuantity = cartItem
+    ? cartItem.quantity
+    : isGuestInCart
+      ? guestCartQuantity
+      : quantity;
+  const isBundleAddDisabled = !selectedVariantId || bundleAddLoading !== null;
+
+  async function addSelectedVariantQuantity(quantityToAdd: 2 | 3) {
+    if (!selectedVariantId) return;
+
+    setBundleAddLoading(quantityToAdd);
+    try {
+      if (session) {
+        await addToCartMutation({
+          productId: _id,
+          variantId: selectedVariantId,
+          quantity: quantityToAdd,
+        });
+      } else {
+        addGuestItem(_id, selectedVariantId, quantityToAdd);
+      }
+      toast.success(`${quantityToAdd} items added to cart`);
+    } catch {
+      toast.error("Failed to add to cart");
+    } finally {
+      setBundleAddLoading(null);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -324,7 +378,7 @@ export default function ProductInfo({
                   key={color}
                   type="button"
                   onClick={() => {
-                    setSelectedColor(color);
+                    setSelectedColor(color, { jumpToMedia: true });
                   }}
                   className={`h-7 w-7 rounded-full transition-all ${
                     isSelected
@@ -396,18 +450,42 @@ export default function ProductInfo({
 
       {/* Bundle Discount Hints */}
       <div className="flex gap-2">
-        <div className="flex-1 border border-border/60 bg-muted/30 px-3 py-2.5 text-center">
+        <button
+          type="button"
+          onClick={() => addSelectedVariantQuantity(2)}
+          disabled={isBundleAddDisabled}
+          className="flex-1 border border-border/60 bg-muted/30 px-3 py-2.5 text-center transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Add 2 selected items to cart"
+        >
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Buy 2+
           </p>
-          <p className="text-xs font-bold mt-0.5">Save 5%</p>
-        </div>
-        <div className="flex-1 border border-border/60 bg-muted/30 px-3 py-2.5 text-center">
+          <p className="text-xs font-bold mt-0.5">
+            {bundleAddLoading === 2 ? (
+              <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Save 10%"
+            )}
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => addSelectedVariantQuantity(3)}
+          disabled={isBundleAddDisabled}
+          className="flex-1 border border-border/60 bg-muted/30 px-3 py-2.5 text-center transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Add 3 selected items to cart"
+        >
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             Buy 3+
           </p>
-          <p className="text-xs font-bold mt-0.5">Save 10% + Free Delivery</p>
-        </div>
+          <p className="text-xs font-bold mt-0.5">
+            {bundleAddLoading === 3 ? (
+              <Loader2 className="mx-auto h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Save 15% + Free Delivery"
+            )}
+          </p>
+        </button>
       </div>
 
       {/* Quantity & Actions */}
@@ -415,7 +493,7 @@ export default function ProductInfo({
         <p className="text-sm font-medium">Quantity</p>
         <div className="flex gap-4 items-stretch">
           <div className="flex items-center gap-0 border border-border w-fit shrink-0">
-            {isInCart && cartItem!.quantity === 1 ? (
+            {isInCart && displayQuantity === 1 ? (
               <button
                 type="button"
                 className="h-11 w-11 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
@@ -430,20 +508,24 @@ export default function ProductInfo({
                 type="button"
                 className="h-11 w-11 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
                 onClick={async () => {
-                  if (isInCart) {
+                  if (cartItem) {
                     setIsUpdatingCart(true);
                     await updateCartQty({
-                      cartItemId: cartItem!._id,
-                      quantity: cartItem!.quantity - 1,
+                      cartItemId: cartItem._id,
+                      quantity: cartItem.quantity - 1,
                     });
                     setIsUpdatingCart(false);
+                  } else if (isGuestInCart && selectedVariantId) {
+                    updateGuestQuantity(
+                      selectedVariantId as string,
+                      guestCartQuantity - 1,
+                    );
                   } else {
                     setQuantity((q) => Math.max(1, q - 1));
                   }
                 }}
-                disabled={
-                  (isInCart ? (cartItem?.quantity ?? 1) <= 1 : quantity <= 1) ||
-                  isUpdatingCart
+              disabled={
+                  displayQuantity <= 1 || isUpdatingCart
                 }
               >
                 −
@@ -459,14 +541,19 @@ export default function ProductInfo({
             <button
               type="button"
               className="h-11 w-11 flex items-center justify-center hover:bg-muted transition-colors text-lg disabled:opacity-40"
-              onClick={async () => {
-                if (isInCart) {
+                onClick={async () => {
+                if (cartItem) {
                   setIsUpdatingCart(true);
                   await updateCartQty({
                     cartItemId: cartItem._id,
                     quantity: cartItem.quantity + 1,
                   });
                   setIsUpdatingCart(false);
+                } else if (isGuestInCart && selectedVariantId) {
+                  updateGuestQuantity(
+                    selectedVariantId as string,
+                    guestCartQuantity + 1,
+                  );
                 } else {
                   setQuantity((q) => q + 1);
                 }
@@ -525,7 +612,7 @@ export default function ProductInfo({
                         quantity,
                       });
                     } else {
-                      addToGuestCart(_id, selectedVariantId, quantity);
+                      addGuestItem(_id, selectedVariantId, quantity);
                     }
                     router.push("/checkout");
                   } catch {
@@ -547,6 +634,7 @@ export default function ProductInfo({
             ) : (
               <Link
                 href="/checkout"
+                prefetch={false}
                 className="w-full h-11 border border-border bg-background text-foreground text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:bg-muted transition-colors"
               >
                 <ShoppingBag className="h-4 w-4" />
@@ -591,6 +679,8 @@ export default function ProductInfo({
                   setIsUpdatingCart(true);
                   await removeFromCartMutation({ cartItemId: cartItem._id });
                   setIsUpdatingCart(false);
+                } else if (isGuestInCart && selectedVariantId) {
+                  removeGuestItem(selectedVariantId as string);
                 }
                 setShowDeleteConfirm(false);
               }}
