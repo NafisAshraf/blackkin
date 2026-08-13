@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useRouter } from "next/navigation";
+import { Loader2, ShoppingBag } from "lucide-react";
+import { toast } from "sonner";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { useCart } from "@/components/cart/CartProvider";
 import { getGuestCart } from "@/lib/guest-cart";
-import AddToCartButton from "@/components/cart/AddToCartButton";
+import { useMetaTracking } from "@/hooks/use-meta-tracking";
 import { cn } from "@/lib/utils";
 
 interface Variant {
@@ -41,8 +43,12 @@ export default function StickyAddToCartBar({
   visible,
   onScrollToOptions,
 }: StickyAddToCartBarProps) {
+  const router = useRouter();
   const { data: session } = authClient.useSession();
-  const { guestItemCount } = useCart();
+  const { guestItemCount, addGuestItem } = useCart();
+  const addToCartMutation = useMutation(api.cart.add);
+  const { trackAddToCart } = useMetaTracking();
+  const [isBuyingNow, setIsBuyingNow] = useState(false);
 
   const cartWithPricing = useQuery(
     api.cart.getCartWithPricing,
@@ -86,6 +92,42 @@ export default function StickyAddToCartBar({
   const isInCart = !!authCartItem || guestInCart;
   const outOfStock = selectedVariant !== null && selectedVariant.stock === 0;
   const needsSelection = !selectedVariantId;
+
+  /** Sticky bar always adds qty 1 then redirects to checkout. */
+  async function handleBuyNow() {
+    if (!selectedVariantId) return;
+    setIsBuyingNow(true);
+    try {
+      if (session) {
+        await addToCartMutation({
+          productId: product._id,
+          variantId: selectedVariantId,
+          quantity: 1,
+        });
+      } else {
+        addGuestItem(product._id, selectedVariantId, 1);
+      }
+      trackAddToCart({
+        content_ids: [String(product._id)],
+        content_name: product.name,
+        content_type: "product",
+        contents: [
+          {
+            id: String(product._id),
+            quantity: 1,
+            item_price: product.effectivePrice,
+          },
+        ],
+        currency: "BDT",
+        num_items: 1,
+        value: product.effectivePrice,
+      });
+      router.push("/checkout");
+    } catch {
+      toast.error("Could not proceed to checkout");
+      setIsBuyingNow(false);
+    }
+  }
 
   // Show selection info under name
   const selectionLabel = [selectedColor, selectedSize]
@@ -163,15 +205,21 @@ export default function StickyAddToCartBar({
               Checkout
             </Link>
           ) : (
-            <AddToCartButton
-              productId={product._id}
-              variantId={selectedVariantId}
-              disabled={!selectedVariantId}
-              quantity={1}
-              productName={product.name}
-              unitPrice={product.effectivePrice}
-              className="h-10 tracking-wider"
-            />
+            <button
+              type="button"
+              disabled={!selectedVariantId || isBuyingNow}
+              onClick={handleBuyNow}
+              className="w-full h-10 bg-foreground text-background text-[11px] font-semibold tracking-wider uppercase flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isBuyingNow ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <>
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  Buy Now
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>

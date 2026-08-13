@@ -127,7 +127,9 @@ export default function CheckoutPage() {
       if (!authCart) return undefined;
       return {
         items: authCart.items.map((item) => ({
-          key: item._id,
+          // Always key by variantId so guest→auth merge doesn't remount
+          // rows or break cartUpdateLoadingId comparisons mid-update.
+          key: item.variantId,
           cartItemId: item._id,
           variantId: item.variantId,
           productId: item.productId,
@@ -396,7 +398,7 @@ export default function CheckoutPage() {
         updateGuestQuantity(item.variantId, quantity);
         return;
       }
-      setCartUpdateLoadingId(item.key);
+      setCartUpdateLoadingId(item.variantId);
       try {
         await updateCartQty({ cartItemId: item.cartItemId, quantity });
       } catch (e: unknown) {
@@ -416,7 +418,7 @@ export default function CheckoutPage() {
         removeGuestItem(item.variantId);
         return;
       }
-      setCartUpdateLoadingId(item.key);
+      setCartUpdateLoadingId(item.variantId);
       try {
         await removeFromCart({ cartItemId: item.cartItemId });
       } catch (e: unknown) {
@@ -538,6 +540,12 @@ export default function CheckoutPage() {
   // would let `placeOrder()` fire a beat too early against an empty cart.
   const expectedMergedVariantIdsRef = useRef<string[]>([]);
 
+  // Always point at the latest placeOrder so the merge-readiness effect
+  // below doesn't close over form state from the render that started
+  // silent sign-in (notes, address, voucher, etc.).
+  const placeOrderRef = useRef(placeOrder);
+  placeOrderRef.current = placeOrder;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -593,8 +601,7 @@ export default function CheckoutPage() {
     );
     if (!merged) return;
     setPendingPlaceOrder(false);
-    placeOrder();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void placeOrderRef.current();
   }, [pendingPlaceOrder, isConvexAuth, cart]);
 
   if (isMerging || cart === undefined || savedAddresses === undefined) {
@@ -949,7 +956,7 @@ export default function CheckoutPage() {
 
             <div className="space-y-4">
               {cart.items.map((item) => {
-                const isItemLoading = cartUpdateLoadingId === item.key;
+                const isItemLoading = cartUpdateLoadingId === item.variantId;
                 return (
                   <div key={item.key} className="flex gap-4 items-start">
                     {item.imageUrl && (
