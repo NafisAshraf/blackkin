@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useQuery, usePaginatedQuery, useMutation, useAction } from "convex/react";
+import {
+  useQuery,
+  usePaginatedQuery,
+  useMutation,
+  useAction,
+} from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
@@ -187,27 +192,32 @@ const TAB_COLORS: Record<
 > = {
   all: {
     active: "bg-emerald-600 text-white",
-    inactive: "border border-emerald-600 text-emerald-700 bg-white dark:bg-background",
+    inactive:
+      "border border-emerald-600 text-emerald-700 bg-white dark:bg-background",
     dot: "bg-emerald-600",
   },
   new: {
     active: "bg-blue-600 text-white",
-    inactive: "border border-blue-600 text-blue-700 bg-white dark:bg-background",
+    inactive:
+      "border border-blue-600 text-blue-700 bg-white dark:bg-background",
     dot: "bg-blue-600",
   },
   confirmed: {
     active: "bg-teal-600 text-white",
-    inactive: "border border-teal-600 text-teal-700 bg-white dark:bg-background",
+    inactive:
+      "border border-teal-600 text-teal-700 bg-white dark:bg-background",
     dot: "bg-teal-600",
   },
   ready_for_delivery: {
     active: "bg-orange-500 text-white",
-    inactive: "border border-orange-500 text-orange-600 bg-white dark:bg-background",
+    inactive:
+      "border border-orange-500 text-orange-600 bg-white dark:bg-background",
     dot: "bg-orange-500",
   },
   in_courier: {
     active: "bg-yellow-500 text-white",
-    inactive: "border border-yellow-600 text-yellow-700 bg-white dark:bg-background",
+    inactive:
+      "border border-yellow-600 text-yellow-700 bg-white dark:bg-background",
     dot: "bg-yellow-500",
   },
   cancelled: {
@@ -217,27 +227,32 @@ const TAB_COLORS: Record<
   },
   hold: {
     active: "bg-purple-600 text-white",
-    inactive: "border border-purple-600 text-purple-700 bg-white dark:bg-background",
+    inactive:
+      "border border-purple-600 text-purple-700 bg-white dark:bg-background",
     dot: "bg-purple-600",
   },
   ship_later: {
     active: "bg-pink-500 text-white",
-    inactive: "border border-pink-500 text-pink-600 bg-white dark:bg-background",
+    inactive:
+      "border border-pink-500 text-pink-600 bg-white dark:bg-background",
     dot: "bg-pink-500",
   },
   paid: {
     active: "bg-emerald-500 text-white",
-    inactive: "border border-emerald-500 text-emerald-600 bg-white dark:bg-background",
+    inactive:
+      "border border-emerald-500 text-emerald-600 bg-white dark:bg-background",
     dot: "bg-emerald-500",
   },
   deleted: {
     active: "bg-gray-500 text-white",
-    inactive: "border border-gray-500 text-gray-600 bg-white dark:bg-background",
+    inactive:
+      "border border-gray-500 text-gray-600 bg-white dark:bg-background",
     dot: "bg-gray-500",
   },
   completed: {
     active: "bg-green-700 text-white",
-    inactive: "border border-green-700 text-green-800 bg-white dark:bg-background",
+    inactive:
+      "border border-green-700 text-green-800 bg-white dark:bg-background",
     dot: "bg-green-700",
   },
 };
@@ -252,8 +267,18 @@ function formatDate(timestamp: number): string {
   const d = new Date(timestamp);
   const day = String(d.getDate()).padStart(2, "0");
   const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
   ];
   const month = months[d.getMonth()];
   const year = d.getFullYear();
@@ -274,12 +299,19 @@ function getInitialLetter(name: string): string {
 }
 
 const AVATAR_COLORS = [
-  "bg-blue-400", "bg-purple-400", "bg-green-400", "bg-orange-400",
-  "bg-pink-400", "bg-teal-400", "bg-red-400", "bg-yellow-400",
+  "bg-blue-400",
+  "bg-purple-400",
+  "bg-green-400",
+  "bg-orange-400",
+  "bg-pink-400",
+  "bg-teal-400",
+  "bg-red-400",
+  "bg-yellow-400",
 ];
 function colorFromName(name: string): string {
   let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < name.length; i++)
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
@@ -291,9 +323,18 @@ interface ProductDetailsDialogProps {
   thumbnails: ProductThumbnail[];
 }
 
-function ProductDetailsDialog({ open, onClose, thumbnails }: ProductDetailsDialogProps) {
+function ProductDetailsDialog({
+  open,
+  onClose,
+  thumbnails,
+}: ProductDetailsDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Order Items</DialogTitle>
@@ -303,27 +344,38 @@ function ProductDetailsDialog({ open, onClose, thumbnails }: ProductDetailsDialo
             <div key={idx} className="flex items-center gap-3 py-2">
               <div className="w-12 h-12 rounded-lg overflow-hidden border flex-shrink-0 bg-muted flex items-center justify-center">
                 {item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.productName} className="w-full h-full object-cover" />
+                  <img
+                    src={item.imageUrl}
+                    alt={item.productName}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <span className={`w-full h-full flex items-center justify-center text-white text-sm font-bold ${colorFromName(item.productName)}`}>
+                  <span
+                    className={`w-full h-full flex items-center justify-center text-white text-sm font-bold ${colorFromName(item.productName)}`}
+                  >
                     {getInitialLetter(item.productName)}
                   </span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">{item.productName}</p>
-                <p className="text-xs text-muted-foreground">
-                  {item.size}{item.color ? ` / ${item.color}` : ""}
+                <p className="font-medium text-sm truncate">
+                  {item.productName}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {item.quantity} × {formatAmount(item.unitPrice)} = <span className="font-medium text-foreground">{formatAmount(item.totalPrice)}</span>
+                  {item.size}
+                  {item.color ? ` / ${item.color}` : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {item.quantity} × {formatAmount(item.unitPrice)} ={" "}
+                  <span className="font-medium text-foreground">
+                    {formatAmount(item.totalPrice)}
+                  </span>
                 </p>
               </div>
             </div>
           ))}
         </div>
-        <DialogFooter showCloseButton>
-        </DialogFooter>
+        <DialogFooter showCloseButton></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -341,14 +393,27 @@ interface CustomerDetailsDialogProps {
   address?: EnrichedOrder["shippingAddress"];
 }
 
-function CustomerDetailsDialog({ open, onClose, userId, name, phone, email, address }: CustomerDetailsDialogProps) {
+function CustomerDetailsDialog({
+  open,
+  onClose,
+  userId,
+  name,
+  phone,
+  email,
+  address,
+}: CustomerDetailsDialogProps) {
   const recentOrders = useQuery(
     api.orders.getOrdersByUserId,
-    userId ? { userId } : "skip"
+    userId ? { userId } : "skip",
   );
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Customer Details</DialogTitle>
@@ -356,7 +421,9 @@ function CustomerDetailsDialog({ open, onClose, userId, name, phone, email, addr
         <div className="space-y-4">
           {/* Customer info */}
           <div className="space-y-1.5">
-            <p className="text-sm font-semibold text-foreground">{name || "—"}</p>
+            <p className="text-sm font-semibold text-foreground">
+              {name || "—"}
+            </p>
             {phone && <p className="text-sm text-muted-foreground">{phone}</p>}
             {email && <p className="text-sm text-muted-foreground">{email}</p>}
           </div>
@@ -364,25 +431,41 @@ function CustomerDetailsDialog({ open, onClose, userId, name, phone, email, addr
           {/* Address */}
           {address && (
             <div className="text-sm text-muted-foreground space-y-0.5 border rounded p-3 bg-muted/30">
-              <p className="font-medium text-foreground text-xs uppercase tracking-wide mb-1">Address</p>
+              <p className="font-medium text-foreground text-xs uppercase tracking-wide mb-1">
+                Address
+              </p>
               <p>{address.address}</p>
             </div>
           )}
 
           {/* Recent orders */}
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Recent Orders</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              Recent Orders
+            </p>
             {recentOrders === undefined ? (
-              <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
             ) : recentOrders.length === 0 ? (
               <p className="text-sm text-muted-foreground">No orders found.</p>
             ) : (
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {recentOrders.map((o) => (
-                  <div key={o._id} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
-                    <span className="font-mono text-xs text-muted-foreground">{formatOrderId(o.orderNumber)}</span>
+                  <div
+                    key={o._id}
+                    className="flex items-center justify-between text-sm py-1.5 border-b last:border-0"
+                  >
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {formatOrderId(o.orderNumber)}
+                    </span>
                     <span className="text-xs">{formatAmount(o.total)}</span>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{STATUS_LABELS[o.status as OrderStatus]}</Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0"
+                    >
+                      {STATUS_LABELS[o.status as OrderStatus]}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -425,10 +508,13 @@ function NotePopover({ orderId, customerNote, adminNote }: NotePopoverProps) {
   const hasNote = Boolean(adminNote);
 
   return (
-    <Popover open={open} onOpenChange={(v) => {
-      setOpen(v);
-      if (v) setNoteText(adminNote ?? "");
-    }}>
+    <Popover
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (v) setNoteText(adminNote ?? "");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -447,7 +533,9 @@ function NotePopover({ orderId, customerNote, adminNote }: NotePopoverProps) {
       <PopoverContent className="w-72 p-3 space-y-3" align="end">
         {customerNote && (
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Customer Note</Label>
+            <Label className="text-xs text-muted-foreground">
+              Customer Note
+            </Label>
             <p className="text-sm bg-muted/50 rounded p-2">{customerNote}</p>
           </div>
         )}
@@ -461,8 +549,15 @@ function NotePopover({ orderId, customerNote, adminNote }: NotePopoverProps) {
             className="resize-none text-sm"
           />
         </div>
-        <Button size="sm" className="w-full" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+        <Button
+          size="sm"
+          className="w-full"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+          ) : null}
           Save Note
         </Button>
       </PopoverContent>
@@ -506,7 +601,12 @@ function ConfirmDialog({
   }
 
   return (
-    <AlertDialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
@@ -516,7 +616,10 @@ function ConfirmDialog({
           <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             variant={confirmVariant}
-            onClick={(e) => { e.preventDefault(); handleConfirm(); }}
+            onClick={(e) => {
+              e.preventDefault();
+              handleConfirm();
+            }}
             disabled={loading}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -547,19 +650,27 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   // ── Section B: Products ──
   const [showAddProduct, setShowAddProduct] = useState(false);
   const [productSearch, setProductSearch] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState<Id<"products"> | null>(null);
-  const [selectedVariantId, setSelectedVariantId] = useState<Id<"productVariants"> | null>(null);
+  const [selectedProductId, setSelectedProductId] =
+    useState<Id<"products"> | null>(null);
+  const [selectedVariantId, setSelectedVariantId] =
+    useState<Id<"productVariants"> | null>(null);
   const [addQty, setAddQty] = useState(1);
   const [addingProduct, setAddingProduct] = useState(false);
-  const [removeItemId, setRemoveItemId] = useState<Id<"orderItems"> | null>(null);
+  const [removeItemId, setRemoveItemId] = useState<Id<"orderItems"> | null>(
+    null,
+  );
 
   // Load all products for picker
   const allPickerProducts = useQuery(api.products.listAllForPicker);
 
   // ── Section C: Pricing ──
-  const [deliveryCost, setDeliveryCost] = useState<number>(order.deliveryCost ?? 0);
+  const [deliveryCost, setDeliveryCost] = useState<number>(
+    order.deliveryCost ?? 0,
+  );
   const [discount, setDiscount] = useState<number>(order.discountAmount ?? 0);
-  const [paymentMethod, setPaymentMethod] = useState<string>(order.paymentMethod ?? "cod");
+  const [paymentMethod, setPaymentMethod] = useState<string>(
+    order.paymentMethod ?? "cod",
+  );
   const [savingPricing, setSavingPricing] = useState(false);
   const [paymentLink, setPaymentLink] = useState<string | null>(null);
   const [generatingLink, setGeneratingLink] = useState(false);
@@ -569,11 +680,19 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   const removeItem = useMutation(api.orders.removeOrderItem);
   const addItem = useMutation(api.orders.addOrderItem);
   const updatePricing = useMutation(api.orders.updateOrderPricing);
-  const generatePaymentLink = useAction(api.paymentActions.generateAdminPaymentLink);
+  const generatePaymentLink = useAction(
+    api.paymentActions.generateAdminPaymentLink,
+  );
 
   // Fetch live order data
-  const orderData = useQuery(api.orders.getById, open ? { orderId: order._id } : "skip");
-  const advancePaid = useQuery(api.orders.getAdvancePaid, open ? { orderId: order._id } : "skip");
+  const orderData = useQuery(
+    api.orders.getById,
+    open ? { orderId: order._id } : "skip",
+  );
+  const advancePaid = useQuery(
+    api.orders.getAdvancePaid,
+    open ? { orderId: order._id } : "skip",
+  );
 
   // Product search
   const filteredPickerProducts = useMemo(() => {
@@ -582,8 +701,7 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
     if (!q) return allPickerProducts;
     return allPickerProducts.filter(
       (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.slug.toLowerCase().includes(q),
+        p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q),
     );
   }, [allPickerProducts, productSearch]);
 
@@ -623,14 +741,23 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   async function handleUpdateItemQty(
     itemId: Id<"orderItems">,
     variantId: Id<"productVariants">,
-    newQty: number
+    newQty: number,
   ) {
     if (newQty < 1) return;
     try {
-      await updateItem({ orderId: order._id, itemId, variantId, quantity: newQty });
+      await updateItem({
+        orderId: order._id,
+        itemId,
+        variantId,
+        quantity: newQty,
+      });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg.includes("Insufficient") ? "Insufficient stock" : "Failed to update quantity");
+      toast.error(
+        msg.includes("Insufficient")
+          ? "Insufficient stock"
+          : "Failed to update quantity",
+      );
     }
   }
 
@@ -665,7 +792,11 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
       setAddQty(1);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg.includes("Insufficient") ? "Insufficient stock" : "Failed to add product");
+      toast.error(
+        msg.includes("Insufficient")
+          ? "Insufficient stock"
+          : "Failed to add product",
+      );
     } finally {
       setAddingProduct(false);
     }
@@ -693,7 +824,10 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   async function handleGeneratePaymentLink() {
     setGeneratingLink(true);
     try {
-      const result = await generatePaymentLink({ orderId: order._id, dueAmount: due });
+      const result = await generatePaymentLink({
+        orderId: order._id,
+        dueAmount: due,
+      });
       setPaymentLink(result.GatewayPageURL);
     } catch {
       toast.error("Failed to generate payment link");
@@ -703,20 +837,30 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-5xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Order — {formatOrderId(order.orderNumber)}</DialogTitle>
+          <DialogTitle>
+            Edit Order — {formatOrderId(order.orderNumber)}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 pb-2">
-
           {/* ── Section A: Customer Info ── */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">Customer Info</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Customer Info
+            </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="edit-name" className="text-xs">Name</Label>
+                <Label htmlFor="edit-name" className="text-xs">
+                  Name
+                </Label>
                 <Input
                   id="edit-name"
                   value={name}
@@ -725,7 +869,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit-phone" className="text-xs">Phone</Label>
+                <Label htmlFor="edit-phone" className="text-xs">
+                  Phone
+                </Label>
                 <Input
                   id="edit-phone"
                   value={phone}
@@ -735,7 +881,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-email" className="text-xs">Email <span className="text-muted-foreground">(optional)</span></Label>
+              <Label htmlFor="edit-email" className="text-xs">
+                Email <span className="text-muted-foreground">(optional)</span>
+              </Label>
               <Input
                 id="edit-email"
                 value={email}
@@ -745,7 +893,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-address" className="text-xs">Address</Label>
+              <Label htmlFor="edit-address" className="text-xs">
+                Address
+              </Label>
               <Textarea
                 id="edit-address"
                 value={address}
@@ -755,8 +905,14 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                 placeholder="Full delivery address"
               />
             </div>
-            <Button size="sm" onClick={handleSaveCustomer} disabled={savingCustomer}>
-              {savingCustomer ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+            <Button
+              size="sm"
+              onClick={handleSaveCustomer}
+              disabled={savingCustomer}
+            >
+              {savingCustomer ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : null}
               Save Customer Info
             </Button>
           </div>
@@ -775,11 +931,17 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
             )}
             <div className="space-y-2">
               {liveItems.map((item) => (
-                <div key={item._id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/20">
+                <div
+                  key={item._id}
+                  className="flex items-center gap-2 p-2 border rounded-md bg-muted/20"
+                >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.productName}</p>
+                    <p className="text-sm font-medium truncate">
+                      {item.productName}
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {item.color ? `${item.color} / ` : ""}{item.size} · {formatAmount(item.unitPrice)} each
+                      {item.color ? `${item.color} / ` : ""}
+                      {item.size} · {formatAmount(item.unitPrice)} each
                     </p>
                   </div>
                   {/* Qty controls */}
@@ -788,17 +950,31 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                       variant="outline"
                       size="sm"
                       className="h-6 w-6 p-0"
-                      onClick={() => handleUpdateItemQty(item._id, item.variantId, item.quantity - 1)}
+                      onClick={() =>
+                        handleUpdateItemQty(
+                          item._id,
+                          item.variantId,
+                          item.quantity - 1,
+                        )
+                      }
                       disabled={item.quantity <= 1}
                     >
                       <Minus className="h-3 w-3" />
                     </Button>
-                    <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+                    <span className="w-6 text-center text-sm font-medium">
+                      {item.quantity}
+                    </span>
                     <Button
                       variant="outline"
                       size="sm"
                       className="h-6 w-6 p-0"
-                      onClick={() => handleUpdateItemQty(item._id, item.variantId, item.quantity + 1)}
+                      onClick={() =>
+                        handleUpdateItemQty(
+                          item._id,
+                          item.variantId,
+                          item.quantity + 1,
+                        )
+                      }
                     >
                       <Plus className="h-3 w-3" />
                     </Button>
@@ -827,9 +1003,15 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
               onClick={() => setShowAddProduct((v) => !v)}
             >
               {showAddProduct ? (
-                <><ChevronUp className="h-3.5 w-3.5 mr-1.5" />Hide Product Search</>
+                <>
+                  <ChevronUp className="h-3.5 w-3.5 mr-1.5" />
+                  Hide Product Search
+                </>
               ) : (
-                <><Plus className="h-3.5 w-3.5 mr-1.5" />Choose Another Product</>
+                <>
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Choose Another Product
+                </>
               )}
             </Button>
 
@@ -859,7 +1041,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                   </div>
                 ) : filteredPickerProducts.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-2">
-                    {productSearch ? "No products match your search" : "No products found"}
+                    {productSearch
+                      ? "No products match your search"
+                      : "No products found"}
                   </p>
                 ) : (
                   <div className="space-y-1 max-h-52 overflow-y-auto">
@@ -896,20 +1080,30 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                             </div>
                             {/* Info */}
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{product.name}</p>
+                              <p className="text-sm font-medium truncate">
+                                {product.name}
+                              </p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className="text-xs text-muted-foreground">
-                                  Tk {product.effectivePrice.toLocaleString("en-BD")}
+                                  Tk{" "}
+                                  {product.effectivePrice.toLocaleString(
+                                    "en-BD",
+                                  )}
                                 </span>
                                 {hasDiscount && (
                                   <span className="text-[10px] text-muted-foreground line-through">
-                                    Tk {product.basePrice.toLocaleString("en-BD")}
+                                    Tk{" "}
+                                    {product.basePrice.toLocaleString("en-BD")}
                                   </span>
                                 )}
                                 {product.totalStock === 0 ? (
-                                  <span className="text-[10px] text-red-500">Out of stock</span>
+                                  <span className="text-[10px] text-red-500">
+                                    Out of stock
+                                  </span>
                                 ) : product.totalStock <= 5 ? (
-                                  <span className="text-[10px] text-amber-500">{product.totalStock} left</span>
+                                  <span className="text-[10px] text-amber-500">
+                                    {product.totalStock} left
+                                  </span>
                                 ) : null}
                               </div>
                             </div>
@@ -920,8 +1114,11 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                             <div className="mt-1.5 ml-12 flex flex-wrap gap-1">
                               {product.variants.map((variant) => {
                                 const isOOS = variant.stock === 0;
-                                const isVariantSelected = selectedVariantId === variant._id;
-                                const effectiveVariantPrice = variant.priceOverride ?? product.effectivePrice;
+                                const isVariantSelected =
+                                  selectedVariantId === variant._id;
+                                const effectiveVariantPrice =
+                                  variant.priceOverride ??
+                                  product.effectivePrice;
                                 return (
                                   <button
                                     key={variant._id}
@@ -931,22 +1128,29 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                                       e.stopPropagation();
                                       setSelectedVariantId(variant._id);
                                     }}
-                                    title={isOOS ? "Out of stock" : `Stock: ${variant.stock} · Tk ${effectiveVariantPrice.toLocaleString("en-BD")}`}
+                                    title={
+                                      isOOS
+                                        ? "Out of stock"
+                                        : `Stock: ${variant.stock} · Tk ${effectiveVariantPrice.toLocaleString("en-BD")}`
+                                    }
                                     className={`px-2 py-0.5 text-xs rounded-full border transition-colors ${
                                       isVariantSelected
                                         ? "bg-primary text-primary-foreground border-primary"
                                         : isOOS
-                                        ? "border-border text-muted-foreground/50 cursor-not-allowed"
-                                        : "border-border hover:border-primary"
+                                          ? "border-border text-muted-foreground/50 cursor-not-allowed"
+                                          : "border-border hover:border-primary"
                                     }`}
                                   >
-                                    {variant.color ? `${variant.color} / ` : ""}{variant.size}
+                                    {variant.color ? `${variant.color} / ` : ""}
+                                    {variant.size}
                                     {isOOS && " (OOS)"}
                                   </button>
                                 );
                               })}
                               {product.variants.length === 0 && (
-                                <p className="text-xs text-muted-foreground">No variants available</p>
+                                <p className="text-xs text-muted-foreground">
+                                  No variants available
+                                </p>
                               )}
                             </div>
                           )}
@@ -985,7 +1189,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                       onClick={handleAddProduct}
                       disabled={addingProduct}
                     >
-                      {addingProduct ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                      {addingProduct ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      ) : null}
                       Add to Order
                     </Button>
                   </div>
@@ -998,7 +1204,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
 
           {/* ── Section C: Pricing & Payment ── */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">Pricing & Payment</h3>
+            <h3 className="text-sm font-semibold text-foreground">
+              Pricing & Payment
+            </h3>
 
             <div className="space-y-2">
               {/* Subtotal — read-only */}
@@ -1009,24 +1217,32 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
 
               {/* Delivery cost — editable */}
               <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground w-32 flex-shrink-0">Delivery Cost</span>
+                <span className="text-sm text-muted-foreground w-32 flex-shrink-0">
+                  Delivery Cost
+                </span>
                 <Input
                   type="number"
                   min={0}
                   value={deliveryCost}
-                  onChange={(e) => setDeliveryCost(Math.max(0, Number(e.target.value)))}
+                  onChange={(e) =>
+                    setDeliveryCost(Math.max(0, Number(e.target.value)))
+                  }
                   className="h-7 text-sm w-32"
                 />
               </div>
 
               {/* Discount — editable */}
               <div className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground w-32 flex-shrink-0">Discount</span>
+                <span className="text-sm text-muted-foreground w-32 flex-shrink-0">
+                  Discount
+                </span>
                 <Input
                   type="number"
                   min={0}
                   value={discount}
-                  onChange={(e) => setDiscount(Math.max(0, Number(e.target.value)))}
+                  onChange={(e) =>
+                    setDiscount(Math.max(0, Number(e.target.value)))
+                  }
                   className="h-7 text-sm w-32"
                 />
               </div>
@@ -1036,13 +1252,17 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
               {/* Advance Paid — read-only */}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Advance Paid</span>
-                <span className="font-medium text-green-600">{formatAmount(advancePaidAmount)}</span>
+                <span className="font-medium text-green-600">
+                  {formatAmount(advancePaidAmount)}
+                </span>
               </div>
 
               {/* Due — read-only, calculated */}
               <div className="flex items-center justify-between text-sm">
                 <span className="font-semibold">Due</span>
-                <span className="font-bold text-base">{formatAmount(Math.max(0, due))}</span>
+                <span className="font-bold text-base">
+                  {formatAmount(Math.max(0, due))}
+                </span>
               </div>
             </div>
 
@@ -1054,14 +1274,24 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cod" className="text-sm">Cash on Delivery</SelectItem>
-                  <SelectItem value="online" className="text-sm">Online Payment</SelectItem>
+                  <SelectItem value="cod" className="text-sm">
+                    Cash on Delivery
+                  </SelectItem>
+                  <SelectItem value="online" className="text-sm">
+                    Online Payment
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <Button size="sm" onClick={handleSavePricing} disabled={savingPricing}>
-              {savingPricing ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+            <Button
+              size="sm"
+              onClick={handleSavePricing}
+              disabled={savingPricing}
+            >
+              {savingPricing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+              ) : null}
               Save Pricing
             </Button>
 
@@ -1074,7 +1304,9 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
                   onClick={handleGeneratePaymentLink}
                   disabled={generatingLink}
                 >
-                  {generatingLink ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  {generatingLink ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  ) : null}
                   Generate Payment Link
                 </Button>
                 {paymentLink && (
@@ -1103,7 +1335,12 @@ function EditOrderDialog({ open, onClose, order }: EditOrderDialogProps) {
         </div>
 
         {/* Remove Item Confirmation */}
-        <AlertDialog open={removeItemId !== null} onOpenChange={(v) => { if (!v) setRemoveItemId(null); }}>
+        <AlertDialog
+          open={removeItemId !== null}
+          onOpenChange={(v) => {
+            if (!v) setRemoveItemId(null);
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Remove Item?</AlertDialogTitle>
@@ -1136,7 +1373,10 @@ interface OrderRowProps {
   order: EnrichedOrder;
   currentUser: CurrentUser | null;
   onUpdateStatus: (orderId: Id<"orders">, status: OrderStatus) => Promise<void>;
-  onUpdateCourier: (orderId: Id<"orders">, courierName: string) => Promise<void>;
+  onUpdateCourier: (
+    orderId: Id<"orders">,
+    courierName: string,
+  ) => Promise<void>;
   courierEdits: Record<string, string>;
   setCourierEdit: (id: string, val: string) => void;
   onEditOpen: (orderId: Id<"orders">) => void;
@@ -1160,27 +1400,33 @@ function OrderRow({
   const isSuperAdmin = currentUser?.role === "superadmin";
   const orderPerms = currentUser?.permissions?.orders;
 
-  const canEdit = isSuperAdmin || (orderPerms?.canEdit === true);
-  const canConfirm = isSuperAdmin || (orderPerms?.canConfirm === true);
-  const canDelete = isSuperAdmin || (orderPerms?.canDelete === true);
+  const canEdit = isSuperAdmin || orderPerms?.canEdit === true;
+  const canConfirm = isSuperAdmin || orderPerms?.canConfirm === true;
+  const canDelete = isSuperAdmin || orderPerms?.canDelete === true;
   const allowedStatuses: string[] = isSuperAdmin
     ? DROPDOWN_STATUSES
     : (orderPerms?.allowedStatuses ?? []);
 
-  const courierValue = order._id in courierEdits ? courierEdits[order._id] : (order.courierName ?? "");
-  const collectable = order.total - (order.paymentStatus === "paid" ? order.total : 0);
+  const courierValue =
+    order._id in courierEdits
+      ? courierEdits[order._id]
+      : (order.courierName ?? "");
+  const collectable =
+    order.total - (order.paymentStatus === "paid" ? order.total : 0);
   const paidAmount = order.paymentStatus === "paid" ? order.total : 0;
   const isOnlinePayment = order.paymentMethod && order.paymentMethod !== "cod";
 
   const statusColor = TAB_COLORS[order.status];
   const isTerminal = order.status === "completed" || order.status === "deleted";
 
-  const customerDisplayName = order.shippingAddress.name || order.customerName || "—";
-  const customerPhone = order.shippingAddress.phone || order.customerPhone || "—";
+  const customerDisplayName =
+    order.shippingAddress.name || order.customerName || "—";
+  const customerPhone =
+    order.shippingAddress.phone || order.customerPhone || "—";
 
   // Filter dropdown statuses to allowed ones
   const visibleDropdownStatuses = DROPDOWN_STATUSES.filter((s) =>
-    allowedStatuses.includes(s)
+    allowedStatuses.includes(s),
   );
 
   return (
@@ -1188,8 +1434,12 @@ function OrderRow({
       <TableRow className="align-top">
         {/* Order ID + Date */}
         <TableCell className="min-w-[140px]">
-          <p className="font-mono text-xs font-semibold">{formatOrderId(order.orderNumber)}</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">{formatDate(order._creationTime)}</p>
+          <p className="font-mono text-xs font-semibold">
+            {formatOrderId(order.orderNumber)}
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {formatDate(order._creationTime)}
+          </p>
         </TableCell>
 
         {/* Customer Info — name is clickable */}
@@ -1199,7 +1449,9 @@ function OrderRow({
               <a
                 href={`tel:${customerPhone.replace(/\D/g, "")}`}
                 onClick={(e) => {
-                  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                  const isMobile = /iPhone|iPad|iPod|Android/i.test(
+                    navigator.userAgent,
+                  );
                   if (!isMobile) {
                     e.preventDefault();
                     navigator.clipboard.writeText(customerPhone);
@@ -1211,7 +1463,9 @@ function OrderRow({
                 {customerPhone}
               </a>
             ) : (
-              <p className="text-sm font-bold text-foreground">{customerPhone}</p>
+              <p className="text-sm font-bold text-foreground">
+                {customerPhone}
+              </p>
             )}
             <button
               onClick={() => setCustomerDialogOpen(true)}
@@ -1236,9 +1490,15 @@ function OrderRow({
                 title={thumb.productName}
               >
                 {thumb.imageUrl ? (
-                  <img src={thumb.imageUrl} alt={thumb.productName} className="w-full h-full object-cover" />
+                  <img
+                    src={thumb.imageUrl}
+                    alt={thumb.productName}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
-                  <span className={`w-full h-full flex items-center justify-center text-white text-[10px] font-bold ${colorFromName(thumb.productName)}`}>
+                  <span
+                    className={`w-full h-full flex items-center justify-center text-white text-[10px] font-bold ${colorFromName(thumb.productName)}`}
+                  >
                     {getInitialLetter(thumb.productName)}
                   </span>
                 )}
@@ -1258,7 +1518,9 @@ function OrderRow({
         {/* Payment Info */}
         <TableCell className="min-w-[110px]">
           {paidAmount > 0 ? (
-            <p className="text-xs font-medium text-green-600">Paid: {formatAmount(paidAmount)}</p>
+            <p className="text-xs font-medium text-green-600">
+              Paid: {formatAmount(paidAmount)}
+            </p>
           ) : (
             <p className="text-xs text-muted-foreground">Paid: 0 TK</p>
           )}
@@ -1279,12 +1541,16 @@ function OrderRow({
         <TableCell className="min-w-[160px]">
           <Select
             value={order.status}
-            onValueChange={(val) => onUpdateStatus(order._id, val as OrderStatus)}
+            onValueChange={(val) =>
+              onUpdateStatus(order._id, val as OrderStatus)
+            }
           >
             <SelectTrigger size="sm" className="h-7 text-xs w-full">
               <SelectValue>
                 <span className="flex items-center gap-1.5">
-                  <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${statusColor.dot}`} />
+                  <span
+                    className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${statusColor.dot}`}
+                  />
                   {STATUS_LABELS[order.status]}
                 </span>
               </SelectValue>
@@ -1294,7 +1560,9 @@ function OrderRow({
               {isTerminal && (
                 <SelectItem value={order.status} className="text-xs">
                   <span className="flex items-center gap-1.5">
-                    <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${TAB_COLORS[order.status].dot}`} />
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${TAB_COLORS[order.status].dot}`}
+                    />
                     {STATUS_LABELS[order.status]}
                   </span>
                 </SelectItem>
@@ -1302,7 +1570,9 @@ function OrderRow({
               {visibleDropdownStatuses.map((s) => (
                 <SelectItem key={s} value={s} className="text-xs">
                   <span className="flex items-center gap-1.5">
-                    <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${TAB_COLORS[s].dot}`} />
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${TAB_COLORS[s].dot}`}
+                    />
                     {STATUS_LABELS[s]}
                   </span>
                 </SelectItem>
@@ -1389,17 +1659,35 @@ function OrderRow({
           {/* Audit trail */}
           {order.confirmedBy && (
             <p className="text-xs text-muted-foreground mt-1">
-              Confirmed by {order.confirmedBy.name} · {new Date(order.confirmedBy.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              Confirmed by {order.confirmedBy.name} ·{" "}
+              {new Date(order.confirmedBy.at).toLocaleString("en-GB", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </p>
           )}
           {order.deletedBy && (
             <p className="text-xs text-muted-foreground mt-1">
-              Deleted by {order.deletedBy.name} · {new Date(order.deletedBy.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              Deleted by {order.deletedBy.name} ·{" "}
+              {new Date(order.deletedBy.at).toLocaleString("en-GB", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </p>
           )}
           {order.cancelledBy && (
             <p className="text-xs text-muted-foreground mt-1">
-              Cancelled by {order.cancelledBy.name} · {new Date(order.cancelledBy.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              Cancelled by {order.cancelledBy.name} ·{" "}
+              {new Date(order.cancelledBy.at).toLocaleString("en-GB", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </p>
           )}
         </TableCell>
@@ -1451,7 +1739,9 @@ function OrderRow({
 
 export default function AdminOrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState<SelectedStatus>("all");
-  const [courierEdits, setCourierEditsState] = useState<Record<string, string>>({});
+  const [courierEdits, setCourierEditsState] = useState<Record<string, string>>(
+    {},
+  );
   const [editOrderId, setEditOrderId] = useState<Id<"orders"> | null>(null);
 
   const { results, status, loadMore } = usePaginatedQuery(
@@ -1460,7 +1750,7 @@ export default function AdminOrdersPage() {
       status: selectedStatus === "all" ? undefined : selectedStatus,
       excludeStatuses: selectedStatus === "all" ? EXCLUDED_FROM_ALL : undefined,
     },
-    { initialNumItems: 25 }
+    { initialNumItems: 25 },
   );
 
   const statusCounts = useQuery(api.orders.getStatusCounts);
@@ -1470,8 +1760,14 @@ export default function AdminOrdersPage() {
 
   // "All" tab counts exclude completed/deleted
   const excludedSet = new Set(EXCLUDED_FROM_ALL);
-  const allCount = statusCounts?.filter((s) => !excludedSet.has(s.status as OrderStatus)).reduce((sum, s) => sum + s.count, 0) ?? 0;
-  const allAmount = statusCounts?.filter((s) => !excludedSet.has(s.status as OrderStatus)).reduce((sum, s) => sum + s.totalAmount, 0) ?? 0;
+  const allCount =
+    statusCounts
+      ?.filter((s) => !excludedSet.has(s.status as OrderStatus))
+      .reduce((sum, s) => sum + s.count, 0) ?? 0;
+  const allAmount =
+    statusCounts
+      ?.filter((s) => !excludedSet.has(s.status as OrderStatus))
+      .reduce((sum, s) => sum + s.totalAmount, 0) ?? 0;
 
   function getTabCount(s: OrderStatus): number {
     return statusCounts?.find((c) => c.status === s)?.count ?? 0;
@@ -1485,16 +1781,24 @@ export default function AdminOrdersPage() {
     setCourierEditsState((prev) => ({ ...prev, [id]: val }));
   }
 
-  async function handleUpdateStatus(orderId: Id<"orders">, newStatus: OrderStatus) {
+  async function handleUpdateStatus(
+    orderId: Id<"orders">,
+    newStatus: OrderStatus,
+  ) {
     try {
       await updateStatus({ orderId, status: newStatus });
       toast.success("Status updated");
-    } catch {
-      toast.error("Failed to update status");
+    } catch (error: unknown) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update status",
+      );
     }
   }
 
-  async function handleUpdateCourier(orderId: Id<"orders">, courierName: string) {
+  async function handleUpdateCourier(
+    orderId: Id<"orders">,
+    courierName: string,
+  ) {
     try {
       await updateCourier({ orderId, courierName });
     } catch {
@@ -1503,7 +1807,9 @@ export default function AdminOrdersPage() {
   }
 
   const orders = results as EnrichedOrder[];
-  const editOrder = editOrderId ? orders.find((o) => o._id === editOrderId) ?? null : null;
+  const editOrder = editOrderId
+    ? (orders.find((o) => o._id === editOrderId) ?? null)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -1514,7 +1820,10 @@ export default function AdminOrdersPage() {
 
       {/* Tab Bar */}
       <div className="overflow-x-auto scrollbar-hide">
-        <div className="flex items-center gap-2 pb-1" style={{ minWidth: "max-content" }}>
+        <div
+          className="flex items-center gap-2 pb-1"
+          style={{ minWidth: "max-content" }}
+        >
           {/* All tab */}
           <button
             onClick={() => setSelectedStatus("all")}
@@ -1525,7 +1834,9 @@ export default function AdminOrdersPage() {
             }`}
           >
             All: {allCount}
-            {selectedStatus === "all" && allAmount > 0 && ` (Tk ${allAmount.toLocaleString("en-BD")})`}
+            {selectedStatus === "all" &&
+              allAmount > 0 &&
+              ` (Tk ${allAmount.toLocaleString("en-BD")})`}
           </button>
 
           {/* Status tabs */}
@@ -1539,11 +1850,15 @@ export default function AdminOrdersPage() {
                 key={s}
                 onClick={() => setSelectedStatus(s)}
                 className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs transition-colors ${
-                  isActive ? `${colors.active} font-semibold` : `${colors.inactive} font-medium`
+                  isActive
+                    ? `${colors.active} font-semibold`
+                    : `${colors.inactive} font-medium`
                 }`}
               >
                 {STATUS_LABELS[s]}: {count}
-                {isActive && amount > 0 && ` (Tk ${amount.toLocaleString("en-BD")})`}
+                {isActive &&
+                  amount > 0 &&
+                  ` (Tk ${amount.toLocaleString("en-BD")})`}
               </button>
             );
           })}

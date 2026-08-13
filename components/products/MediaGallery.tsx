@@ -39,7 +39,7 @@ function MediaPlaceholder({
         alt={label}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
-        className="h-full w-full object-cover"
+        className="h-full w-full object-contain"
       />
     );
   }
@@ -158,7 +158,7 @@ function GalleryVideo({
           alt=""
           loading="eager"
           decoding="async"
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-contain"
         />
       )}
       <video
@@ -353,7 +353,7 @@ export default function MediaGallery({
                           alt={`Product ${i + 1}`}
                           priority={i === 0}
                           posterUrl={posterUrl}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-contain"
                         />
                       ) : item.type === "video" ? (
                         <GalleryVideo
@@ -532,7 +532,7 @@ export default function MediaGallery({
                 alt={`Product ${i + 1}`}
                 priority={i === 0}
                 posterUrl={posterUrl}
-                className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
+                className="h-full w-full object-contain"
               />
             ) : item.type === "video" ? (
               <GalleryVideo

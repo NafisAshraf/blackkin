@@ -96,76 +96,23 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     plugins: [
       // The Convex plugin is required for Convex compatibility
       convex({ authConfig }),
-      // Phone number OTP authentication — only auth method for customers
+      // Phone-only authentication is intentionally enabled at the client's
+      // request. Keep the phone plugin so existing Better Auth users, sessions,
+      // and Convex employee-account linking continue to work unchanged.
       phoneNumber({
-        // Auto-create a new user when OTP is verified for the first time.
+        // Auto-create a new user when the phone is submitted for the first time.
         // Without this, Better Auth throws 500 for new users (user not found).
         signUpOnVerification: {
           getTempEmail: (phone) =>
             `phone_${phone.replace(/[^0-9]/g, "")}@blackkin.internal`,
           getTempName: (phone) => phone,
         },
-        sendOTP: async ({ phoneNumber: phone, code }) => {
-          const apiKey = process.env.SPACE_TEL_API_KEY;
-          const senderId = process.env.SPACE_TEL_SENDER_ID;
-
-          if (!apiKey || !senderId) {
-            console.error(
-              "[SMS] SPACE_TEL_API_KEY or SPACE_TEL_SENDER_ID not set — OTP not sent.",
-            );
-            console.log(`[SMS-MOCK] ${phone} -> ${code}`);
-            return;
-          }
-
-          // API expects 8801XXXXXXXXX format (no + prefix)
-          const contactNumber = phone.replace(/^\+/, "");
-          const textBody = `Your Blackkin OTP is ${code}. Valid for 5 minutes. Do not share this code.`;
-
-          try {
-            const res = await fetch(
-              "https://ccs.teamitqan.com/api/SendSMS/shoot",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  apiKey,
-                  contactNumbers: contactNumber,
-                  senderId,
-                  textBody,
-                  type: "text",
-                  label: "transactional",
-                }),
-              },
-            );
-
-            if (!res.ok) {
-              const body = await res.text().catch(() => "(no body)");
-              console.error(
-                `[SMS] HTTP ${res.status} from gateway — body: ${body}`,
-              );
-              return;
-            }
-
-            const data = (await res.json()) as {
-              code: number;
-              shootId?: string;
-            };
-
-            if (data.code === 0 || data.code === 4) {
-              console.log(
-                `[SMS] OTP delivered to ${phone} — shoot: ${data.shootId ?? "-"}`,
-              );
-            } else {
-              console.error(
-                `[SMS] Delivery failed for ${phone} — code: ${data.code}`,
-              );
-            }
-          } catch (err) {
-            console.error("[SMS] Network error — OTP not sent:", err);
-          }
-        },
-        otpLength: 6,
-        expiresIn: 300, // 5 minutes
+        // Intentionally do not send an SMS while phone-only login is active.
+        sendOTP: async () => {},
+        // This bypass is the requested security tradeoff: possession of the
+        // phone number is enough to authenticate. The client still uses Better
+        // Auth's verify route so normal user/session hooks keep firing.
+        verifyOTP: async () => true,
       }),
     ],
   });

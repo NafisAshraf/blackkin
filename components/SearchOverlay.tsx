@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { X, Search, ArrowRight } from "lucide-react";
 import type { StorefrontSearchProduct } from "@/contexts/StorefrontDataContext";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -71,9 +72,11 @@ export default function SearchOverlay({
 
   const handleSearch = useCallback(
     (query: string) => {
-      if (!query.trim()) return;
+      const normalizedQuery = query.trim();
+      if (!normalizedQuery) return;
+      trackMetaEvent("Search", { search_string: normalizedQuery });
       onClose();
-      router.push(`/products?q=${encodeURIComponent(query.trim())}`);
+      router.push(`/products?q=${encodeURIComponent(normalizedQuery)}`);
     },
     [router, onClose],
   );

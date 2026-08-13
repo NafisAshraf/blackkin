@@ -21,6 +21,7 @@ import { authClient } from "@/lib/auth-client";
 import { getGuestCart } from "@/lib/guest-cart";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useMetaTracking } from "@/hooks/use-meta-tracking";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -230,6 +231,25 @@ export default function ProductInfo({
   const [bundleAddLoading, setBundleAddLoading] = useState<2 | 3 | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [guestCartQuantity, setGuestCartQuantity] = useState(0);
+  const { trackAddToCart } = useMetaTracking();
+
+  function trackSelectedVariantAdded(quantityAdded: number) {
+    trackAddToCart({
+      content_ids: [String(_id)],
+      content_name: name,
+      content_type: "product",
+      contents: [
+        {
+          id: String(_id),
+          quantity: quantityAdded,
+          item_price: effectivePrice,
+        },
+      ],
+      currency: "BDT",
+      num_items: quantityAdded,
+      value: effectivePrice * quantityAdded,
+    });
+  }
 
   const uniqueSizes = Array.from(new Set(variants.map((v) => v.size)));
 
@@ -314,6 +334,7 @@ export default function ProductInfo({
       } else {
         addGuestItem(_id, selectedVariantId, quantityToAdd);
       }
+      trackSelectedVariantAdded(quantityToAdd);
       toast.success(`${quantityToAdd} items added to cart`);
     } catch {
       toast.error("Failed to add to cart");
@@ -575,6 +596,8 @@ export default function ProductInfo({
                 variantId={selectedVariantId}
                 disabled={!selectedVariantId}
                 quantity={quantity}
+                productName={name}
+                unitPrice={effectivePrice}
                 onSuccess={() => setQuantity(1)}
               />
             ) : (
@@ -614,6 +637,7 @@ export default function ProductInfo({
                     } else {
                       addGuestItem(_id, selectedVariantId, quantity);
                     }
+                    trackSelectedVariantAdded(quantity);
                     router.push("/checkout");
                   } catch {
                     toast.error("Could not proceed to checkout");

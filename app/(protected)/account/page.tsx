@@ -84,7 +84,7 @@ export default function AccountPage() {
     router.push("/");
   };
 
-  // All users now auth via phone OTP — treat everyone as a phone user
+  // All users authenticate by phone, so treat everyone as a phone user.
   const isPhoneUser = true;
 
   function startEditField(field: ProfileField, currentValue: string) {
@@ -212,7 +212,7 @@ export default function AccountPage() {
                 const displayName =
                   currentUser?.name ?? session.user.name ?? "";
 
-                // Mobile: from the Convex users.phone field (set by OTP auth)
+                // Mobile: from the Convex users.phone field set by phone auth.
                 const displayPhone = currentUser?.phone ?? "";
 
                 // Email: optional contact email stored in Convex
@@ -301,7 +301,7 @@ export default function AccountPage() {
             </CardHeader>
             <CardContent className="text-sm space-y-4">
               <p className="text-muted-foreground">
-                Signed in with mobile number via OTP.
+                Signed in with mobile number.
               </p>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
                 Sign Out

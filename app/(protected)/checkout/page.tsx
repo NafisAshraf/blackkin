@@ -42,14 +42,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { useCart } from "@/components/cart/CartProvider";
+import { useMetaTracking } from "@/hooks/use-meta-tracking";
+import {
+  createMetaEventId,
+  getMetaBrowserIdentifiers,
+  trackMetaEvent,
+} from "@/lib/meta-pixel";
 
 type AddressMode = "home" | "work" | "custom";
 type SaveAs = "home" | "work" | "none";
@@ -61,6 +60,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { isAuthenticated: isConvexAuth } = useConvexAuth();
   const { isMerging } = useCart();
+  const { trackAddToCart, trackInitiateCheckout } = useMetaTracking();
   const cart = useQuery(
     api.cart.getCartWithPricing,
     isConvexAuth ? {} : "skip",
@@ -105,6 +105,26 @@ export default function CheckoutPage() {
   const checkoutTotal = cart
     ? Math.max(0, cart.total - voucherDiscount) + deliveryCost
     : 0;
+  const initiateCheckoutTracked = useRef(false);
+
+  useEffect(() => {
+    if (!cart || cart.items.length === 0 || initiateCheckoutTracked.current) {
+      return;
+    }
+    initiateCheckoutTracked.current = true;
+    trackInitiateCheckout({
+      content_ids: cart.items.map((item) => String(item.productId)),
+      content_type: "product",
+      contents: cart.items.map((item) => ({
+        id: String(item.productId),
+        quantity: item.quantity,
+        item_price: item.discountedPrice,
+      })),
+      currency: "BDT",
+      num_items: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+      value: cart.total + deliveryCost,
+    });
+  }, [cart, deliveryCost, trackInitiateCheckout]);
 
   // Address mode: which pill is selected
   const [addressMode, setAddressMode] = useState<AddressMode>("custom");
@@ -123,9 +143,6 @@ export default function CheckoutPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showEmailCapture, setShowEmailCapture] = useState(false);
-  const [captureEmail, setCaptureEmail] = useState("");
-  const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [cartUpdateLoadingId, setCartUpdateLoadingId] = useState<string | null>(
     null,
   );
@@ -255,13 +272,39 @@ export default function CheckoutPage() {
     try {
       if (paymentMethod === "cod") {
         // ── Cash on Delivery ──
-        await createOrder({
+        const metaEventId = createMetaEventId("purchase");
+        const metaIdentifiers = getMetaBrowserIdentifiers();
+        const createdOrder = await createOrder({
           shippingAddress,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
           ...(appliedVoucherCode && voucherResult?.valid
             ? { voucherCode: appliedVoucherCode }
             : {}),
+          metaEventId,
+          metaSourceUrl: window.location.href,
+          ...metaIdentifiers,
         });
+
+        trackMetaEvent(
+          "Purchase",
+          {
+            content_ids: cart?.items.map((item) => String(item.productId)),
+            content_type: "product",
+            contents: cart?.items.map((item) => ({
+              id: String(item.productId),
+              quantity: item.quantity,
+              item_price: item.discountedPrice,
+            })),
+            currency: "BDT",
+            num_items: cart?.items.reduce(
+              (sum, item) => sum + item.quantity,
+              0,
+            ),
+            order_id: String(createdOrder.orderId),
+            value: createdOrder.total,
+          },
+          metaEventId,
+        );
 
         // Persist name to user profile on first order (fire-and-forget)
         if (!userProfile?.name && name.trim()) {
@@ -278,13 +321,8 @@ export default function CheckoutPage() {
 
         toast.success("Order placed!");
 
-        // If user has no email on file, prompt them before redirecting
-        if (!userProfile?.email) {
-          setIsSubmitting(false);
-          setShowEmailCapture(true);
-        } else {
-          router.push("/thank-you");
-        }
+        router.replace("/thank-you");
+        return;
       } else {
         // ── SSLCommerz Online Payment ──
         toast.loading("Connecting to payment gateway…", { id: "ssl-init" });
@@ -820,9 +858,7 @@ export default function CheckoutPage() {
               <Separator />
               <div className="flex justify-between font-semibold text-base">
                 <span>Total</span>
-                <span>
-                  ৳{checkoutTotal.toLocaleString()}
-                </span>
+                <span>৳{checkoutTotal.toLocaleString()}</span>
               </div>
             </div>
 
@@ -834,7 +870,7 @@ export default function CheckoutPage() {
                 </h3>
                 <div ref={emblaRef} className="overflow-hidden pb-2">
                   <div className="flex gap-3">
-                    {recommendations.map((rec: any) => {
+                    {recommendations.map((rec) => {
                       const cartItem = cart?.items.find(
                         (i) => i.variantId === rec.variantId,
                       );
@@ -921,6 +957,21 @@ export default function CheckoutPage() {
                                       productId: rec.productId,
                                       variantId: rec.variantId,
                                       quantity: 1,
+                                    });
+                                    trackAddToCart({
+                                      content_ids: [String(rec.productId)],
+                                      content_name: rec.productName,
+                                      content_type: "product",
+                                      contents: [
+                                        {
+                                          id: String(rec.productId),
+                                          quantity: 1,
+                                          item_price: rec.discountedPrice,
+                                        },
+                                      ],
+                                      currency: "BDT",
+                                      num_items: 1,
+                                      value: rec.discountedPrice,
                                     });
                                   } catch (e: unknown) {
                                     toast.error(
@@ -1017,62 +1068,6 @@ export default function CheckoutPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Email capture dialog — shown after COD order when no email on file */}
-      <Dialog open={showEmailCapture} onOpenChange={setShowEmailCapture}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Stay in touch</DialogTitle>
-            <DialogDescription>
-              Add an email address to receive order updates and receipts.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-1">
-              <Label htmlFor="capture-email">Email address</Label>
-              <Input
-                id="capture-email"
-                type="email"
-                placeholder="you@example.com"
-                value={captureEmail}
-                onChange={(e) => setCaptureEmail(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => router.push("/thank-you")}
-              >
-                Skip
-              </Button>
-              <Button
-                className="flex-1"
-                disabled={!captureEmail.trim() || isSavingEmail}
-                onClick={async () => {
-                  setIsSavingEmail(true);
-                  try {
-                    await updateProfile({ email: captureEmail.trim() });
-                    toast.success("Email saved!");
-                  } catch {
-                    toast.error("Could not save email.");
-                  } finally {
-                    setIsSavingEmail(false);
-                  }
-                  router.push("/thank-you");
-                }}
-              >
-                {isSavingEmail ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Save & Continue"
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

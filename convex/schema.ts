@@ -230,7 +230,11 @@ export default defineSchema({
     .index("by_productId", ["productId"])
     .index("by_sizeId", ["sizeId"])
     .index("by_productId_and_sizeId", ["productId", "sizeId"])
-    .index("by_productId_and_sizeId_and_color", ["productId", "sizeId", "color"])
+    .index("by_productId_and_sizeId_and_color", [
+      "productId",
+      "sizeId",
+      "color",
+    ])
     .index("by_productId_and_size", ["productId", "size"])
     .index("by_productId_and_size_and_color", ["productId", "size", "color"]),
 
@@ -355,6 +359,11 @@ export default defineSchema({
     voucherDiscountAmount: v.optional(v.number()), // flat BDT deducted by voucher
     bundleDiscountAmount: v.optional(v.number()), // BDT deducted by bundle tier discount
     bundleDiscountFreeDelivery: v.optional(v.boolean()), // true = delivery should be waived
+    inventoryState: v.optional(
+      v.union(v.literal("deducted"), v.literal("restored")),
+    ),
+    inventoryStateChangedAt: v.optional(v.number()),
+    inventoryStateReason: v.optional(v.string()),
     confirmedBy: v.optional(
       v.object({ userId: v.id("users"), name: v.string(), at: v.number() }),
     ),
@@ -494,6 +503,47 @@ export default defineSchema({
     ),
     config: v.any(),
   }).index("by_type", ["type"]),
+
+  // Best-effort Meta Conversions API delivery. Rows contain no raw phone,
+  // email, access token, or other authentication credentials.
+  marketingEventOutbox: defineTable({
+    eventName: v.union(
+      v.literal("AddToCart"),
+      v.literal("InitiateCheckout"),
+      v.literal("Purchase"),
+    ),
+    eventId: v.string(),
+    eventTime: v.number(),
+    sourceUrl: v.optional(v.string()),
+    userId: v.id("users"),
+    value: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    contentIds: v.optional(v.array(v.string())),
+    contents: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          quantity: v.number(),
+          itemPrice: v.optional(v.number()),
+        }),
+      ),
+    ),
+    numItems: v.optional(v.number()),
+    orderId: v.optional(v.string()),
+    fbp: v.optional(v.string()),
+    fbc: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+    ),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    sentAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  })
+    .index("by_eventId", ["eventId"])
+    .index("by_status_and_nextAttemptAt", ["status", "nextAttemptAt"]),
 
   // ─── ORDER STATUS AMOUNTS ─────────────────────────────────
   orderStatusAmounts: defineTable({

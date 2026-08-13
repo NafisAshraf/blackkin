@@ -177,7 +177,7 @@ export default function ProductCard({
               loading={priority ? "eager" : "lazy"}
               fetchPriority={priority ? "high" : "auto"}
               decoding="async"
-              className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
+              className="h-full w-full object-contain"
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm bg-muted" />

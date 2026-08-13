@@ -168,6 +168,8 @@ export default function StickyAddToCartBar({
               variantId={selectedVariantId}
               disabled={!selectedVariantId}
               quantity={1}
+              productName={product.name}
+              unitPrice={product.effectivePrice}
               className="h-10 tracking-wider"
             />
           )}

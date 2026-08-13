@@ -1,10 +1,37 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Script from "next/script";
+import { usePathname } from "next/navigation";
 import { useStorefrontData } from "@/contexts/StorefrontDataContext";
+import { trackMetaEvent } from "@/lib/meta-pixel";
+
+function isTrackableStorefrontPath(pathname: string) {
+  return !(
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/challenge")
+  );
+}
 
 export function MarketingScripts() {
   const { marketing: settings } = useStorefrontData();
+  const pathname = usePathname();
+  const initialRoute = useRef(true);
+
+  useEffect(() => {
+    if (initialRoute.current) {
+      initialRoute.current = false;
+      return;
+    }
+    if (
+      settings.facebookBrowserEnabled &&
+      settings.facebookPixelId &&
+      isTrackableStorefrontPath(pathname)
+    ) {
+      trackMetaEvent("PageView");
+    }
+  }, [pathname, settings.facebookBrowserEnabled, settings.facebookPixelId]);
 
   return (
     <>
@@ -20,8 +47,12 @@ export function MarketingScripts() {
             t.src=v;s=b.getElementsByTagName(e)[0];
             s.parentNode.insertBefore(t,s)}(window, document,'script',
             'https://connect.facebook.net/en_US/fbevents.js');
-            fbq('init', '${settings.facebookPixelId}');
-            fbq('track', 'PageView');
+            fbq('init', ${JSON.stringify(settings.facebookPixelId)});
+            if (!location.pathname.startsWith('/admin') &&
+                !location.pathname.startsWith('/api') &&
+                !location.pathname.startsWith('/challenge')) {
+              fbq('track', 'PageView');
+            }
           `}
         </Script>
       )}

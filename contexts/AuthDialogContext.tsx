@@ -10,7 +10,7 @@ import {
 import { AuthDialog } from "@/components/auth/AuthDialog";
 
 interface AuthDialogContextValue {
-  /** Opens the login/OTP dialog. Optionally pass a URL to navigate to after success. */
+  /** Opens the phone login dialog. Optionally pass a URL to navigate to after success. */
   openAuth: (next?: string) => void;
 }
 

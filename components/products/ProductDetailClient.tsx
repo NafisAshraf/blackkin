@@ -11,6 +11,7 @@ import RecommendationCarousel from "@/components/products/RecommendationCarousel
 import ReviewList from "@/components/reviews/ReviewList";
 import StickyAddToCartBar from "@/components/products/StickyAddToCartBar";
 import { Id } from "@/convex/_generated/dataModel";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -143,6 +144,16 @@ export default function ProductDetailClient({
   const [selectedSize, setSelectedSize] = useState<string | null>(initialSize);
   const [galleryJumpRequest, setGalleryJumpRequest] =
     useState<GalleryJumpRequest | null>(null);
+
+  useEffect(() => {
+    trackMetaEvent("ViewContent", {
+      content_ids: [String(product._id)],
+      content_name: product.name,
+      content_type: "product",
+      currency: "BDT",
+      value: product.effectivePrice,
+    });
+  }, [product._id, product.effectivePrice, product.name]);
 
   // Ref attached to the Quantity+AddToCart section inside ProductInfo
   const addToCartRef = useRef<HTMLDivElement>(null);

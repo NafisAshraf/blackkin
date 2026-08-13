@@ -9,12 +9,15 @@ import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
 import { useCart } from "./CartProvider";
 import { cn } from "@/lib/utils";
+import { useMetaTracking } from "@/hooks/use-meta-tracking";
 
 interface AddToCartButtonProps {
   productId: Id<"products">;
   variantId: Id<"productVariants"> | null;
   disabled?: boolean;
   quantity?: number;
+  productName?: string;
+  unitPrice?: number;
   onSuccess?: () => void;
   className?: string;
 }
@@ -24,6 +27,8 @@ export default function AddToCartButton({
   variantId,
   disabled,
   quantity = 1,
+  productName,
+  unitPrice,
   onSuccess,
   className,
 }: AddToCartButtonProps) {
@@ -31,6 +36,7 @@ export default function AddToCartButton({
   const addMutation = useMutation(api.cart.add);
   const { addGuestItem } = useCart();
   const [loading, setLoading] = useState(false);
+  const { trackAddToCart } = useMetaTracking();
 
   const isDisabled = disabled || variantId === null;
 
@@ -44,6 +50,21 @@ export default function AddToCartButton({
         toast.success(
           quantity > 1 ? `${quantity} items added to cart` : "Added to cart",
         );
+        trackAddToCart({
+          content_ids: [String(productId)],
+          content_name: productName,
+          content_type: "product",
+          contents: [
+            {
+              id: String(productId),
+              quantity,
+              ...(unitPrice !== undefined ? { item_price: unitPrice } : {}),
+            },
+          ],
+          currency: "BDT",
+          num_items: quantity,
+          ...(unitPrice !== undefined ? { value: unitPrice * quantity } : {}),
+        });
         onSuccess?.();
       } catch {
         toast.error("Failed to add to cart");
@@ -55,6 +76,21 @@ export default function AddToCartButton({
       toast.success(
         quantity > 1 ? `${quantity} items added to cart` : "Added to cart",
       );
+      trackAddToCart({
+        content_ids: [String(productId)],
+        content_name: productName,
+        content_type: "product",
+        contents: [
+          {
+            id: String(productId),
+            quantity,
+            ...(unitPrice !== undefined ? { item_price: unitPrice } : {}),
+          },
+        ],
+        currency: "BDT",
+        num_items: quantity,
+        ...(unitPrice !== undefined ? { value: unitPrice * quantity } : {}),
+      });
       onSuccess?.();
     }
   }

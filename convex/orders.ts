@@ -1,10 +1,5 @@
-import {
-  query,
-  mutation,
-  internalMutation,
-  internalQuery,
-  MutationCtx,
-} from "./_generated/server";
+import { query, internalQuery, MutationCtx } from "./_generated/server";
+import { mutation, internalMutation } from "./triggers";
 import { v, ConvexError } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import {
@@ -28,6 +23,11 @@ import {
   getVariantSizeLabel,
   isSelectableVariant,
 } from "./lib/variantSizes";
+import {
+  getOrderInventoryState,
+  transitionOrderInventory,
+} from "./lib/orderInventory";
+import { enqueueMarketingEvent } from "./lib/marketingEvents";
 
 const shippingAddressValidator = v.object({
   name: v.string(),
@@ -124,8 +124,15 @@ export const create = mutation({
     shippingAddress: shippingAddressValidator,
     notes: v.optional(v.string()),
     voucherCode: v.optional(v.string()),
+    metaEventId: v.optional(v.string()),
+    metaSourceUrl: v.optional(v.string()),
+    fbp: v.optional(v.string()),
+    fbc: v.optional(v.string()),
   },
-  returns: v.id("orders"),
+  returns: v.object({
+    orderId: v.id("orders"),
+    total: v.number(),
+  }),
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
 
@@ -203,6 +210,7 @@ export const create = mutation({
     const afterBundleTotal = effectiveCartTotal - bundle.bundleDiscountAmount;
     const deliveryCost = getDeliveryCost(bundle);
     const totalBeforeVoucher = afterBundleTotal + deliveryCost;
+    let finalOrderTotal = totalBeforeVoucher;
 
     // Create the order first (we need orderId to create voucherUsage)
     const orderNumber = await nextOrderNumber(ctx);
@@ -223,6 +231,9 @@ export const create = mutation({
         bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
       }),
       paymentStatus: "unpaid",
+      inventoryState: "deducted",
+      inventoryStateChangedAt: Date.now(),
+      inventoryStateReason: "order_created",
       notes: args.notes,
     });
 
@@ -237,40 +248,16 @@ export const create = mutation({
         orderId,
         isCod: true, // COD: confirmed immediately
       });
+      finalOrderTotal = getFinalTotal(
+        afterBundleTotal,
+        voucherDiscountAmount,
+        deliveryCost,
+      );
       // Patch the order total to reflect the voucher discount
       await ctx.db.patch(orderId, {
         voucherCode: args.voucherCode.toUpperCase().trim(),
         voucherDiscountAmount,
-        total: getFinalTotal(
-          afterBundleTotal,
-          voucherDiscountAmount,
-          deliveryCost,
-        ),
-      });
-    }
-
-    const finalTotal = getFinalTotal(
-      afterBundleTotal,
-      voucherDiscountAmount,
-      deliveryCost,
-    );
-
-    const order = await ctx.db.get(orderId);
-    if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
-
-    // Update orderStatusAmounts for "new"
-    const existing = await ctx.db
-      .query("orderStatusAmounts")
-      .withIndex("by_status", (q) => q.eq("status", "new"))
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        totalAmount: existing.totalAmount + finalTotal,
-      });
-    } else {
-      await ctx.db.insert("orderStatusAmounts", {
-        status: "new",
-        totalAmount: finalTotal,
+        total: finalOrderTotal,
       });
     }
 
@@ -316,7 +303,29 @@ export const create = mutation({
       }
     }
 
-    return orderId;
+    if (args.metaEventId) {
+      await enqueueMarketingEvent(ctx, {
+        eventName: "Purchase",
+        eventId: args.metaEventId,
+        eventTime: Math.floor(Date.now() / 1000),
+        sourceUrl: args.metaSourceUrl,
+        userId: user._id,
+        value: finalOrderTotal,
+        currency: "BDT",
+        contentIds: enrichedItems.map((item) => String(item.productId)),
+        contents: enrichedItems.map((item) => ({
+          id: String(item.productId),
+          quantity: item.quantity,
+          itemPrice: item.unitPrice,
+        })),
+        numItems: totalQuantity,
+        orderId: String(orderId),
+        fbp: args.fbp,
+        fbc: args.fbc,
+      });
+    }
+
+    return { orderId, total: finalOrderTotal };
   },
 });
 
@@ -424,6 +433,7 @@ export const updateStatus = mutation({
 
     const oldOrder = await ctx.db.get(args.orderId);
     if (!oldOrder) throw new ConvexError("Order not found");
+    const oldInventoryState = getOrderInventoryState(oldOrder);
 
     // Server-side allowedStatuses enforcement
     if (admin.role !== "superadmin") {
@@ -447,10 +457,17 @@ export const updateStatus = mutation({
     if (args.status === "deleted") auditPatch.deletedBy = actor;
     if (args.status === "cancelled") auditPatch.cancelledBy = actor;
 
-    await ctx.db.patch(args.orderId, { status: args.status, ...auditPatch });
-    const newOrder = await ctx.db.get(args.orderId);
-    if (newOrder)
-      await aggregateOrders.replaceOrInsert(ctx, oldOrder, newOrder);
+    const inventoryPatch = await transitionOrderInventory(
+      ctx,
+      oldOrder,
+      args.status,
+      `status_changed_to_${args.status}`,
+    );
+    await ctx.db.patch(args.orderId, {
+      status: args.status,
+      ...auditPatch,
+      ...inventoryPatch,
+    });
 
     // Release voucher if order is being cancelled or deleted
     if (args.status === "cancelled" || args.status === "deleted") {
@@ -467,32 +484,22 @@ export const updateStatus = mutation({
         }
         await ctx.db.patch(voucherUsage._id, { status: "cancelled" });
       }
-    }
-
-    // Decrement old status amount
-    const oldAmountDoc = await ctx.db
-      .query("orderStatusAmounts")
-      .withIndex("by_status", (q) => q.eq("status", oldOrder.status))
-      .unique();
-    if (oldAmountDoc) {
-      await ctx.db.patch(oldAmountDoc._id, {
-        totalAmount: Math.max(0, oldAmountDoc.totalAmount - oldOrder.total),
-      });
-    }
-    // Increment new status amount
-    const newAmountDoc = await ctx.db
-      .query("orderStatusAmounts")
-      .withIndex("by_status", (q) => q.eq("status", args.status))
-      .unique();
-    if (newAmountDoc) {
-      await ctx.db.patch(newAmountDoc._id, {
-        totalAmount: newAmountDoc.totalAmount + oldOrder.total,
-      });
-    } else {
-      await ctx.db.insert("orderStatusAmounts", {
-        status: args.status,
-        totalAmount: oldOrder.total,
-      });
+    } else if (oldInventoryState === "restored") {
+      const voucherUsage = await ctx.db
+        .query("voucherUsages")
+        .withIndex("by_orderId", (q) => q.eq("orderId", args.orderId))
+        .unique();
+      if (voucherUsage?.status === "cancelled") {
+        const voucher = await ctx.db.get(voucherUsage.voucherId);
+        if (!voucher) throw new ConvexError("Order voucher no longer exists");
+        if (voucher.maxUses > 0 && voucher.usedCount >= voucher.maxUses) {
+          throw new ConvexError(
+            `Cannot reactivate this order because voucher ${voucher.code} has reached its usage limit.`,
+          );
+        }
+        await ctx.db.patch(voucher._id, { usedCount: voucher.usedCount + 1 });
+        await ctx.db.patch(voucherUsage._id, { status: "confirmed" });
+      }
     }
 
     return null;
@@ -646,6 +653,9 @@ export const createInternal = internalMutation({
       }),
       paymentStatus: "unpaid",
       paymentMethod: "sslcommerz",
+      inventoryState: "deducted",
+      inventoryStateChangedAt: Date.now(),
+      inventoryStateReason: "order_created",
       notes,
     });
 
@@ -676,25 +686,6 @@ export const createInternal = internalMutation({
       voucherDiscountAmount,
       deliveryCost,
     );
-
-    const order = await ctx.db.get(orderId);
-    if (order) await aggregateOrders.insertIfDoesNotExist(ctx, order);
-
-    // Update orderStatusAmounts for "new"
-    const existing = await ctx.db
-      .query("orderStatusAmounts")
-      .withIndex("by_status", (q) => q.eq("status", "new"))
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        totalAmount: existing.totalAmount + finalTotal,
-      });
-    } else {
-      await ctx.db.insert("orderStatusAmounts", {
-        status: "new",
-        totalAmount: finalTotal,
-      });
-    }
 
     // Backfill user name from shipping address if not yet set.
     if (user && !user.name && shippingAddress.name) {
@@ -799,10 +790,18 @@ export const cancelAndRestockInternal = internalMutation({
   handler: async (ctx, args) => {
     const order = await ctx.db.get(args.orderId);
     if (!order) return;
+    const previousInventoryState = getOrderInventoryState(order);
 
+    const inventoryPatch = await transitionOrderInventory(
+      ctx,
+      order,
+      "cancelled",
+      "payment_initialization_failed",
+    );
     await ctx.db.patch(args.orderId, {
       status: "cancelled",
       paymentStatus: "unpaid",
+      ...inventoryPatch,
     });
 
     const items = await ctx.db
@@ -810,16 +809,8 @@ export const cancelAndRestockInternal = internalMutation({
       .withIndex("by_orderId", (q) => q.eq("orderId", args.orderId))
       .collect();
 
-    for (const item of items) {
-      // 1. restore stock
-      const variant = await ctx.db.get(item.variantId);
-      if (variant) {
-        await ctx.db.patch(variant._id, {
-          stock: variant.stock + item.quantity,
-        });
-      }
-
-      // 2. restore cart
+    for (const item of previousInventoryState === "deducted" ? items : []) {
+      // Restore cart after the inventory transition.
       const existingCartItem = await ctx.db
         .query("cartItems")
         .withIndex("by_userId", (q) => q.eq("userId", order.userId))
@@ -1143,6 +1134,14 @@ export const updateOrderItem = mutation({
     const item = await ctx.db.get(itemId);
     if (!item || item.orderId !== orderId)
       throw new ConvexError("Item not found");
+    const order = await ctx.db.get(orderId);
+    if (!order) throw new ConvexError("Order not found");
+    const inventoryState = getOrderInventoryState(order);
+    if (!inventoryState)
+      throw new ConvexError(
+        "This legacy order needs an inventory audit first.",
+      );
+    const ownsInventory = inventoryState === "deducted";
 
     const sizeMaps = await getActiveSizeMaps(ctx);
 
@@ -1151,17 +1150,21 @@ export const updateOrderItem = mutation({
       const oldVariant = await ctx.db.get(item.variantId);
       const newVariant = await ctx.db.get(variantId);
       if (!newVariant) throw new ConvexError("Variant not found");
+      if (ownsInventory && !oldVariant)
+        throw new ConvexError("Current variant no longer exists");
       const sizeLabel = getVariantSizeLabel(newVariant, sizeMaps);
       if (!sizeLabel) throw new ConvexError("Variant not available");
-      if (newVariant.stock < quantity)
+      if (ownsInventory && newVariant.stock < quantity)
         throw new ConvexError("Insufficient stock");
 
-      if (oldVariant) {
+      if (ownsInventory && oldVariant) {
         await ctx.db.patch(item.variantId, {
           stock: oldVariant.stock + item.quantity,
         });
       }
-      await ctx.db.patch(variantId, { stock: newVariant.stock - quantity });
+      if (ownsInventory) {
+        await ctx.db.patch(variantId, { stock: newVariant.stock - quantity });
+      }
 
       // Update item with new variant info, keep original unit price
       await ctx.db.patch(itemId, {
@@ -1177,10 +1180,12 @@ export const updateOrderItem = mutation({
       if (!variant) throw new ConvexError("Variant not found");
       if (!isSelectableVariant(variant, sizeMaps))
         throw new ConvexError("Variant not available");
-      const stockDiff = quantity - item.quantity;
-      if (stockDiff > 0 && variant.stock < stockDiff)
-        throw new ConvexError("Insufficient stock");
-      await ctx.db.patch(variantId, { stock: variant.stock - stockDiff });
+      if (ownsInventory) {
+        const stockDiff = quantity - item.quantity;
+        if (stockDiff > 0 && variant.stock < stockDiff)
+          throw new ConvexError("Insufficient stock");
+        await ctx.db.patch(variantId, { stock: variant.stock - stockDiff });
+      }
       await ctx.db.patch(itemId, {
         quantity,
         totalPrice: item.unitPrice * quantity,
@@ -1205,13 +1210,21 @@ export const removeOrderItem = mutation({
     const item = await ctx.db.get(itemId);
     if (!item || item.orderId !== orderId)
       throw new ConvexError("Item not found");
+    const order = await ctx.db.get(orderId);
+    if (!order) throw new ConvexError("Order not found");
+    const inventoryState = getOrderInventoryState(order);
+    if (!inventoryState)
+      throw new ConvexError(
+        "This legacy order needs an inventory audit first.",
+      );
 
-    // Restore stock
-    const variant = await ctx.db.get(item.variantId);
-    if (variant) {
-      await ctx.db.patch(item.variantId, {
-        stock: variant.stock + item.quantity,
-      });
+    if (inventoryState === "deducted") {
+      const variant = await ctx.db.get(item.variantId);
+      if (variant) {
+        await ctx.db.patch(item.variantId, {
+          stock: variant.stock + item.quantity,
+        });
+      }
     }
 
     await ctx.db.delete(itemId);
@@ -1236,6 +1249,13 @@ export const addOrderItem = mutation({
 
     const product = await ctx.db.get(productId);
     if (!product) throw new ConvexError("Product not found");
+    const order = await ctx.db.get(orderId);
+    if (!order) throw new ConvexError("Order not found");
+    const inventoryState = getOrderInventoryState(order);
+    if (!inventoryState)
+      throw new ConvexError(
+        "This legacy order needs an inventory audit first.",
+      );
 
     const variant = await ctx.db.get(variantId);
     if (!variant) throw new ConvexError("Variant not found");
@@ -1244,11 +1264,14 @@ export const addOrderItem = mutation({
     if (!sizeLabel) throw new ConvexError("Variant not available");
     if (variant.productId !== productId)
       throw new ConvexError("Variant does not belong to product");
-    if (variant.stock < quantity) throw new ConvexError("Insufficient stock");
+    if (inventoryState === "deducted" && variant.stock < quantity)
+      throw new ConvexError("Insufficient stock");
 
     const unitPrice = variant.priceOverride ?? product.basePrice;
 
-    await ctx.db.patch(variantId, { stock: variant.stock - quantity });
+    if (inventoryState === "deducted") {
+      await ctx.db.patch(variantId, { stock: variant.stock - quantity });
+    }
 
     await ctx.db.insert("orderItems", {
       orderId,

@@ -7,6 +7,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { authClient } from "@/lib/auth-client";
+import { trackMetaEvent } from "@/lib/meta-pixel";
 
 interface WishlistButtonProps {
   productId: Id<"products">;
@@ -34,6 +35,12 @@ export default function WishlistButton({
     setLoading(true);
     try {
       await toggleMutation({ productId });
+      if (!inWishlist) {
+        trackMetaEvent("AddToWishlist", {
+          content_ids: [String(productId)],
+          content_type: "product",
+        });
+      }
       toast.success(inWishlist ? "Removed from wishlist" : "Added to wishlist");
     } catch {
       toast.error("Something went wrong");

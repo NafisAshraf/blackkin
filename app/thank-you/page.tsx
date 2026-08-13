@@ -1,33 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Home, PackageSearch } from "lucide-react";
+import { CheckCircle2, Home, PackageSearch } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 
 export default function ThankYouPage() {
-  const router = useRouter();
-  const [secondsRemaining, setSecondsRemaining] = useState(5);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setSecondsRemaining((current) => {
-        if (current <= 1) {
-          window.clearInterval(intervalId);
-          router.push("/");
-          return 0;
-        }
-
-        return current - 1;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
-  }, [router]);
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -58,25 +37,16 @@ export default function ThankYouPage() {
                 See order updates
               </Link>
             </Button>
-            <Button asChild variant="outline" className="w-full sm:w-auto gap-2">
+            <Button
+              asChild
+              variant="outline"
+              className="w-full sm:w-auto gap-2"
+            >
               <Link href="/">
                 <Home className="h-4 w-4" aria-hidden="true" />
                 Back home
               </Link>
             </Button>
-          </div>
-
-          <div className="mx-auto max-w-sm space-y-3 pt-2">
-            <div className="h-1 w-full overflow-hidden bg-muted">
-              <div
-                className="h-full bg-foreground transition-all duration-1000 ease-linear"
-                style={{ width: `${((5 - secondsRemaining) / 5) * 100}%` }}
-              />
-            </div>
-            <p className="flex items-center justify-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-              Redirecting home in {secondsRemaining} seconds
-              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </p>
           </div>
         </section>
       </main>
