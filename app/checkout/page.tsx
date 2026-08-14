@@ -1,0 +1,1290 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import useEmblaCarousel from "embla-carousel-react";
+import { useQuery, useMutation, useAction, useConvexAuth } from "convex/react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { api } from "@/convex/_generated/api";
+import { Id } from "@/convex/_generated/dataModel";
+import { Navbar } from "@/components/Navbar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  Loader2,
+  Home,
+  Briefcase,
+  MapPin,
+  CreditCard,
+  Banknote,
+  Trash2,
+  Minus,
+  Plus,
+  Tag,
+  X,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useCart } from "@/components/cart/CartProvider";
+import { authClient } from "@/lib/auth-client";
+import { isPhoneNumber, normalizePhone } from "@/lib/auth-utils";
+import { getGuestCart } from "@/lib/guest-cart";
+import { useMetaTracking } from "@/hooks/use-meta-tracking";
+import {
+  createMetaEventId,
+  getMetaBrowserIdentifiers,
+  trackMetaEvent,
+} from "@/lib/meta-pixel";
+
+type AddressMode = "home" | "work" | "custom";
+type SaveAs = "home" | "work" | "none";
+
+type PaymentMethod = "cod" | "sslcommerz";
+const DELIVERY_CHARGE = 80;
+
+// Unified line-item shape so the JSX below doesn't need to branch on
+// guest vs authenticated cart — only the mutation handlers do.
+type CartLineItem = {
+  key: string;
+  cartItemId?: Id<"cartItems">;
+  variantId: string;
+  productId: string;
+  productName: string;
+  productSlug: string;
+  size: string;
+  color?: string;
+  imageUrl: string | null;
+  quantity: number;
+  stock: number;
+  discountedPrice: number;
+};
+
+type BundleTier = "tier2" | "tier3" | "none";
+
+type UnifiedCart = {
+  items: CartLineItem[];
+  subtotal: number;
+  discountAmount: number;
+  bundleDiscountAmount: number;
+  bundleDiscountTier: BundleTier;
+  bundleDiscountFreeDelivery: boolean;
+  total: number;
+};
+
+const EMPTY_CART: UnifiedCart = {
+  items: [],
+  subtotal: 0,
+  discountAmount: 0,
+  bundleDiscountAmount: 0,
+  bundleDiscountTier: "none",
+  bundleDiscountFreeDelivery: false,
+  total: 0,
+};
+
+export default function CheckoutPage() {
+  const router = useRouter();
+  const { isAuthenticated: isConvexAuth } = useConvexAuth();
+  const { isMerging, addGuestItem, removeGuestItem, updateGuestQuantity } =
+    useCart();
+  const { trackAddToCart, trackInitiateCheckout } = useMetaTracking();
+
+  // ── Cart source: authenticated users read the server cart; guests read
+  //    their localStorage cart and price it via a no-auth query. ──
+  const guestLocalItems = getGuestCart();
+  const authCart = useQuery(
+    api.cart.getCartWithPricing,
+    isConvexAuth ? {} : "skip",
+  );
+  const guestCartPricing = useQuery(
+    api.cart.getGuestCartPricing,
+    !isConvexAuth && guestLocalItems.length > 0
+      ? { items: guestLocalItems }
+      : "skip",
+  );
+
+  const isGuestCartEmpty = !isConvexAuth && guestLocalItems.length === 0;
+
+  // undefined while loading, otherwise a UnifiedCart
+  const cart: UnifiedCart | undefined = useMemo(() => {
+    if (isConvexAuth) {
+      if (!authCart) return undefined;
+      return {
+        items: authCart.items.map((item) => ({
+          // Always key by variantId so guest→auth merge doesn't remount
+          // rows or break cartUpdateLoadingId comparisons mid-update.
+          key: item.variantId,
+          cartItemId: item._id,
+          variantId: item.variantId,
+          productId: item.productId,
+          productName: item.productName,
+          productSlug: item.productSlug,
+          size: item.size,
+          color: item.color,
+          imageUrl: item.imageUrl,
+          quantity: item.quantity,
+          stock: item.stock,
+          discountedPrice: item.discountedPrice,
+        })),
+        subtotal: authCart.subtotal,
+        discountAmount: authCart.discountAmount,
+        bundleDiscountAmount: authCart.bundleDiscountAmount,
+        bundleDiscountTier: authCart.bundleDiscountTier,
+        bundleDiscountFreeDelivery: authCart.bundleDiscountFreeDelivery,
+        total: authCart.total,
+      };
+    }
+    if (isGuestCartEmpty) return EMPTY_CART;
+    if (!guestCartPricing) return undefined;
+    return {
+      items: guestCartPricing.items.map((item) => ({
+        key: item.variantId,
+        variantId: item.variantId,
+        productId: item.productId,
+        productName: item.productName,
+        productSlug: item.productSlug,
+        size: item.size,
+        color: item.color,
+        imageUrl: item.imageUrl,
+        quantity: item.quantity,
+        stock: item.stock,
+        discountedPrice: item.discountedPrice,
+      })),
+      subtotal: guestCartPricing.subtotal,
+      discountAmount: guestCartPricing.discountAmount,
+      bundleDiscountAmount: guestCartPricing.bundleDiscountAmount,
+      bundleDiscountTier: guestCartPricing.bundleDiscountTier,
+      bundleDiscountFreeDelivery: guestCartPricing.bundleDiscountFreeDelivery,
+      total: guestCartPricing.total,
+    };
+    // guestLocalItems is a fresh array each render (localStorage read); its
+    // contents are what actually matter, captured via guestCartPricing/isGuestCartEmpty.
+  }, [isConvexAuth, authCart, isGuestCartEmpty, guestCartPricing]);
+
+  const savedAddressesQuery = useQuery(
+    api.addresses.getSavedAddresses,
+    isConvexAuth ? {} : "skip",
+  );
+  // Guests have no saved addresses and never query for them — treat as an
+  // already-resolved empty list (stable reference) instead of an eternal
+  // "skip" undefined.
+  const savedAddresses = useMemo(
+    () => (isConvexAuth ? savedAddressesQuery : []),
+    [isConvexAuth, savedAddressesQuery],
+  );
+  const cartSizes = cart
+    ? Array.from(new Set(cart.items.map((i) => i.size)))
+    : [];
+  const recommendations = useQuery(
+    api.recommendations.getAlsoBought,
+    cart !== undefined ? { sizes: cartSizes } : "skip",
+  );
+  const createOrder = useMutation(api.orders.create);
+  const saveAddressMutation = useMutation(api.addresses.saveAddress);
+  const initiatePayment = useAction(api.paymentActions.initiate);
+  const userProfile = useQuery(
+    api.users.getCurrentUserWithRole,
+    isConvexAuth ? {} : "skip",
+  );
+  const updateProfile = useMutation(api.users.updateProfile);
+  const addToCart = useMutation(api.cart.add);
+  const updateCartQty = useMutation(api.cart.updateQuantity);
+  const removeFromCart = useMutation(api.cart.remove);
+
+  // Voucher state
+  const [voucherInput, setVoucherInput] = useState("");
+  const [appliedVoucherCode, setAppliedVoucherCode] = useState<string | null>(
+    null,
+  );
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+  const voucherResult = useQuery(
+    api.vouchers.validateVoucher,
+    appliedVoucherCode ? { code: appliedVoucherCode } : "skip",
+  );
+  const voucherDiscount = voucherResult?.valid
+    ? (voucherResult.discountAmount ?? 0)
+    : 0;
+  const deliveryCost = cart?.bundleDiscountFreeDelivery ? 0 : DELIVERY_CHARGE;
+  const checkoutTotal = cart
+    ? Math.max(0, cart.total - voucherDiscount) + deliveryCost
+    : 0;
+  const initiateCheckoutTracked = useRef(false);
+
+  useEffect(() => {
+    if (!cart || cart.items.length === 0 || initiateCheckoutTracked.current) {
+      return;
+    }
+    initiateCheckoutTracked.current = true;
+    trackInitiateCheckout({
+      content_ids: cart.items.map((item) => String(item.productId)),
+      content_type: "product",
+      contents: cart.items.map((item) => ({
+        id: String(item.productId),
+        quantity: item.quantity,
+        item_price: item.discountedPrice,
+      })),
+      currency: "BDT",
+      num_items: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+      value: cart.total + deliveryCost,
+    });
+  }, [cart, deliveryCost, trackInitiateCheckout]);
+
+  // Address mode: which pill is selected
+  const [addressMode, setAddressMode] = useState<AddressMode>("custom");
+  // Whether we've auto-initialised the mode from saved addresses
+  const modeInitialised = useRef(false);
+
+  // Shipping form fields
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // For the "save custom address" flow
+  const [saveAs, setSaveAs] = useState<SaveAs>("none");
+  const saveAsInitialised = useRef(false);
+
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cod");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Set once a guest has been silently signed in on submit; the order is
+  // actually placed once the server cart merge finishes (see effect below).
+  const [pendingPlaceOrder, setPendingPlaceOrder] = useState(false);
+  const [cartUpdateLoadingId, setCartUpdateLoadingId] = useState<string | null>(
+    null,
+  );
+  const [checkoutDeleteConfirm, setCheckoutDeleteConfirm] = useState<{
+    item: CartLineItem;
+  } | null>(null);
+
+  // Embla Carousel for People Also Bought
+  const [emblaRef, emblaApi] = useEmblaCarousel({
+    loop: false,
+    align: "start",
+    dragFree: true,
+  });
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [snapCount, setSnapCount] = useState(0);
+
+  const onInit = useCallback(() => {
+    if (!emblaApi) return;
+    setSnapCount(emblaApi.scrollSnapList().length);
+  }, [emblaApi]);
+
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return;
+    setCanScrollPrev(emblaApi.canScrollPrev());
+    setCanScrollNext(emblaApi.canScrollNext());
+    setCurrentIndex(emblaApi.selectedScrollSnap());
+  }, [emblaApi]);
+
+  useEffect(() => {
+    if (!emblaApi) return;
+    onInit();
+    onSelect();
+    emblaApi.on("reInit", onInit);
+    emblaApi.on("reInit", onSelect);
+    emblaApi.on("select", onSelect);
+    return () => {
+      emblaApi.off("reInit", onInit);
+      emblaApi.off("reInit", onSelect);
+      emblaApi.off("select", onSelect);
+    };
+  }, [emblaApi, onInit, onSelect]);
+
+  const homeAddress = savedAddresses?.find((a) => a.type === "home");
+  const workAddress = savedAddresses?.find((a) => a.type === "work");
+  const hasSavedAddresses =
+    savedAddresses !== undefined && savedAddresses.length > 0;
+
+  // Auto-initialise mode to the first available saved address
+  useEffect(() => {
+    if (savedAddresses === undefined) return;
+    if (modeInitialised.current) return;
+    modeInitialised.current = true;
+
+    if (homeAddress) {
+      setAddressMode("home");
+    } else if (workAddress) {
+      setAddressMode("work");
+    }
+    // else stays "custom"
+  }, [savedAddresses, homeAddress, workAddress]);
+
+  // Fill form fields whenever the mode changes
+  useEffect(() => {
+    if (addressMode === "home" && homeAddress) {
+      setName(homeAddress.name);
+      setPhone(homeAddress.phone);
+      setAddress(homeAddress.address);
+    } else if (addressMode === "work" && workAddress) {
+      setName(workAddress.name);
+      setPhone(workAddress.phone);
+      setAddress(workAddress.address);
+    } else if (addressMode === "custom") {
+      setName((prev) => prev || userProfile?.name || "");
+      setPhone((prev) => prev || userProfile?.phone || "");
+      setAddress("");
+      setSaveAs("none");
+    }
+  }, [addressMode, homeAddress, workAddress, userProfile]);
+
+  // When userProfile first loads (async), prefill indicators if still in custom mode.
+  // Guests have no userProfile (skipped query), so this is a no-op for them —
+  // they type their own name/phone directly.
+  useEffect(() => {
+    if (addressMode === "custom") {
+      if (userProfile?.name && !name) setName(userProfile.name);
+      if (userProfile?.phone && !phone) setPhone(userProfile.phone);
+    }
+  }, [userProfile, addressMode, name, phone]);
+
+  // If selected saved address gets deleted externally, fall back gracefully
+  useEffect(() => {
+    if (savedAddresses === undefined) return;
+    if (addressMode === "home" && !homeAddress) {
+      setAddressMode(workAddress ? "work" : "custom");
+    } else if (addressMode === "work" && !workAddress) {
+      setAddressMode(homeAddress ? "home" : "custom");
+    }
+  }, [savedAddresses, addressMode, homeAddress, workAddress]);
+
+  // Slots available for "save as" (only slots not already occupied)
+  const availableSaveSlots: SaveAs[] = [];
+  if (!homeAddress) availableSaveSlots.push("home");
+  if (!workAddress) availableSaveSlots.push("work");
+  const canSaveAddress =
+    addressMode === "custom" && availableSaveSlots.length > 0 && isConvexAuth;
+
+  // Pre-select saveAs to first available slot on load
+  useEffect(() => {
+    if (saveAsInitialised.current || savedAddresses === undefined) return;
+    saveAsInitialised.current = true;
+    if (!homeAddress) setSaveAs("home");
+    else if (!workAddress) setSaveAs("work");
+  }, [savedAddresses, homeAddress, workAddress]);
+
+  const shippingAddress = useMemo(
+    () => ({
+      name,
+      phone,
+      address: address.trim(),
+    }),
+    [name, phone, address],
+  );
+
+  // ── Cart line-item mutation helpers — branch between the authenticated
+  //    Convex mutations and the local guest-cart helpers from useCart(). ──
+  const changeItemQuantity = useCallback(
+    async (item: CartLineItem, quantity: number) => {
+      if (!item.cartItemId) {
+        updateGuestQuantity(item.variantId, quantity);
+        return;
+      }
+      setCartUpdateLoadingId(item.variantId);
+      try {
+        await updateCartQty({ cartItemId: item.cartItemId, quantity });
+      } catch (e: unknown) {
+        toast.error(
+          e instanceof Error ? e.message : "Failed to update quantity",
+        );
+      } finally {
+        setCartUpdateLoadingId(null);
+      }
+    },
+    [updateCartQty, updateGuestQuantity],
+  );
+
+  const removeItem = useCallback(
+    async (item: CartLineItem) => {
+      if (!item.cartItemId) {
+        removeGuestItem(item.variantId);
+        return;
+      }
+      setCartUpdateLoadingId(item.variantId);
+      try {
+        await removeFromCart({ cartItemId: item.cartItemId });
+      } catch (e: unknown) {
+        toast.error(e instanceof Error ? e.message : "Failed to remove item");
+      } finally {
+        setCartUpdateLoadingId(null);
+      }
+    },
+    [removeFromCart, removeGuestItem],
+  );
+
+  // Actually creates the order / initiates payment. Only ever called once
+  // we know we're authenticated (real login, or the silent sign-in below).
+  const placeOrder = useCallback(async () => {
+    try {
+      if (paymentMethod === "cod") {
+        // ── Cash on Delivery ──
+        const metaEventId = createMetaEventId("purchase");
+        const metaIdentifiers = getMetaBrowserIdentifiers();
+        const createdOrder = await createOrder({
+          shippingAddress,
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(appliedVoucherCode && voucherResult?.valid
+            ? { voucherCode: appliedVoucherCode }
+            : {}),
+          metaEventId,
+          metaSourceUrl: window.location.href,
+          ...metaIdentifiers,
+        });
+
+        trackMetaEvent(
+          "Purchase",
+          {
+            content_ids: cart?.items.map((item) => String(item.productId)),
+            content_type: "product",
+            contents: cart?.items.map((item) => ({
+              id: String(item.productId),
+              quantity: item.quantity,
+              item_price: item.discountedPrice,
+            })),
+            currency: "BDT",
+            num_items: cart?.items.reduce(
+              (sum, item) => sum + item.quantity,
+              0,
+            ),
+            order_id: String(createdOrder.orderId),
+            value: createdOrder.total,
+          },
+          metaEventId,
+        );
+
+        // Persist name to user profile on first order (fire-and-forget)
+        if (!userProfile?.name && name.trim()) {
+          updateProfile({ name: name.trim() }).catch(console.error);
+        }
+
+        // Fire-and-forget address save if user opted in
+        if (addressMode === "custom" && saveAs !== "none") {
+          saveAddressMutation({
+            type: saveAs,
+            ...shippingAddress,
+          }).catch(console.error);
+        }
+
+        toast.success("Order placed!");
+
+        router.replace("/thank-you");
+        return;
+      } else {
+        // ── SSLCommerz Online Payment ──
+        toast.loading("Connecting to payment gateway…", { id: "ssl-init" });
+
+        // Persist name before navigating away (fire-and-forget)
+        if (!userProfile?.name && name.trim()) {
+          updateProfile({ name: name.trim() }).catch(console.error);
+        }
+
+        const result = await initiatePayment({
+          shippingAddress,
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(appliedVoucherCode && voucherResult?.valid
+            ? { voucherCode: appliedVoucherCode }
+            : {}),
+        });
+        toast.dismiss("ssl-init");
+        // Full-page redirect to SSLCommerz hosted payment page
+        window.location.href = result.GatewayPageURL;
+      }
+    } catch (e: unknown) {
+      toast.dismiss("ssl-init");
+      toast.error(e instanceof Error ? e.message : "Failed to place order");
+      setIsSubmitting(false);
+    }
+    // Note: for sslcommerz we don't setIsSubmitting(false) — page navigates away
+  }, [
+    paymentMethod,
+    createOrder,
+    shippingAddress,
+    notes,
+    appliedVoucherCode,
+    voucherResult,
+    cart,
+    userProfile,
+    name,
+    updateProfile,
+    addressMode,
+    saveAs,
+    saveAddressMutation,
+    router,
+    initiatePayment,
+  ]);
+
+  // Snapshot of the guest cart's variant IDs at the moment sign-in is
+  // triggered — used to detect once CartProvider's merge has actually
+  // landed in the server cart (see the readiness effect below). `isMerging`
+  // alone isn't a safe signal here: it's flipped by a separate effect in
+  // CartProvider that can still be running the *previous* render's value
+  // in the very same commit where `isConvexAuth` first becomes true, which
+  // would let `placeOrder()` fire a beat too early against an empty cart.
+  const expectedMergedVariantIdsRef = useRef<string[]>([]);
+
+  // Always point at the latest placeOrder so the merge-readiness effect
+  // below doesn't close over form state from the render that started
+  // silent sign-in (notes, address, voucher, etc.).
+  const placeOrderRef = useRef(placeOrder);
+  placeOrderRef.current = placeOrder;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    if (isConvexAuth) {
+      await placeOrder();
+      return;
+    }
+
+    // ── Guest checkout: silently sign in with the phone they typed, no
+    //    login dialog. The order is placed once the resulting cart merge
+    //    (handled by CartProvider) is confirmed in the server cart — see
+    //    the readiness effect below. ──
+    const cleanedPhone = phone.trim();
+    if (!isPhoneNumber(cleanedPhone)) {
+      toast.error("Please enter a valid mobile number.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      expectedMergedVariantIdsRef.current = guestLocalItems.map(
+        (i) => i.variantId,
+      );
+      const result = await authClient.phoneNumber.verify({
+        phoneNumber: normalizePhone(cleanedPhone),
+        code: "phone-only-login",
+      });
+      if (result.error) {
+        toast.error(
+          result.error.message || "Failed to place order. Please try again.",
+        );
+        setIsSubmitting(false);
+        return;
+      }
+      setPendingPlaceOrder(true);
+    } catch {
+      toast.error("Failed to place order. Please try again.");
+      setIsSubmitting(false);
+    }
+  };
+
+  // Once the silent sign-in succeeds, wait until the server cart actually
+  // reflects every item the guest had — driven by the reactive cart query
+  // itself rather than the CartProvider's `isMerging` flag — then place
+  // the order.
+  useEffect(() => {
+    if (!pendingPlaceOrder) return;
+    if (!isConvexAuth || cart === undefined) return;
+    const expected = expectedMergedVariantIdsRef.current;
+    const merged = expected.every((variantId) =>
+      cart.items.some((item) => item.variantId === variantId),
+    );
+    if (!merged) return;
+    setPendingPlaceOrder(false);
+    void placeOrderRef.current();
+  }, [pendingPlaceOrder, isConvexAuth, cart]);
+
+  if (isMerging || cart === undefined || savedAddresses === undefined) {
+    return (
+      <>
+        <Navbar />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </>
+    );
+  }
+
+  if (!cart || cart.items.length === 0) {
+    return (
+      <>
+        <Navbar />
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <p className="text-muted-foreground text-lg">Your cart is empty</p>
+          <Link href="/products">
+            <Button variant="outline">Browse Products</Button>
+          </Link>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Navbar />
+      <main className="max-w-6xl mx-auto px-6 py-10">
+        <h1 className="text-2xl font-semibold mb-8">Checkout</h1>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          {/* Left: Shipping Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <h2 className="text-lg font-medium">Shipping Information</h2>
+
+            {/* Address pill toggle — only shown when user has saved addresses */}
+            {hasSavedAddresses && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Deliver to
+                </Label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {homeAddress && (
+                    <button
+                      type="button"
+                      onClick={() => setAddressMode("home")}
+                      className={cn(
+                        "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-all",
+                        addressMode === "home"
+                          ? "bg-foreground text-background border-foreground"
+                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background",
+                      )}
+                    >
+                      <Home className="h-3.5 w-3.5" />
+                      Home
+                    </button>
+                  )}
+                  {workAddress && (
+                    <button
+                      type="button"
+                      onClick={() => setAddressMode("work")}
+                      className={cn(
+                        "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-all",
+                        addressMode === "work"
+                          ? "bg-foreground text-background border-foreground"
+                          : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background",
+                      )}
+                    >
+                      <Briefcase className="h-3.5 w-3.5" />
+                      Work
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAddressMode("custom")}
+                    className={cn(
+                      "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium border transition-all",
+                      addressMode === "custom"
+                        ? "bg-foreground text-background border-foreground"
+                        : "border-border text-muted-foreground hover:border-foreground hover:text-foreground bg-background",
+                    )}
+                  >
+                    <MapPin className="h-3.5 w-3.5" />
+                    Custom
+                  </button>
+                </div>
+                {addressMode !== "custom" && (
+                  <p className="text-xs text-muted-foreground">
+                    Fields are pre-filled from your saved address. You can edit
+                    them for this order.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label htmlFor="name">Full Name *</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="John Doe"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="phone">Phone *</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+                placeholder="+880 1XXX XXXXXX"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Changing this number only applies to this order and won&apos;t
+                update your account.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="address">Delivery Address *</Label>
+              <Textarea
+                id="address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Full delivery address"
+                rows={3}
+                required
+              />
+            </div>
+
+            {/* Save address option — only shown for custom addresses when a slot is available */}
+            {canSaveAddress && (
+              <div className="space-y-1.5 p-3 bg-muted/50 rounded-md border border-border">
+                <Label htmlFor="saveAs" className="text-sm">
+                  Save this address?
+                </Label>
+                <select
+                  id="saveAs"
+                  value={saveAs}
+                  onChange={(e) => setSaveAs(e.target.value as SaveAs)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="none">Do not save</option>
+                  {availableSaveSlots.includes("home") && (
+                    <option value="home">Save as Home address</option>
+                  )}
+                  {availableSaveSlots.includes("work") && (
+                    <option value="work">Save as Work address</option>
+                  )}
+                </select>
+              </div>
+            )}
+
+            <Separator />
+
+            {/* Payment Method */}
+            <div className="space-y-3">
+              <Label>Payment Method</Label>
+              <div className="grid grid-cols-1 gap-3">
+                {/* Cash on Delivery */}
+                <label
+                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                    paymentMethod === "cod"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="cod"
+                    checked={paymentMethod === "cod"}
+                    onChange={() => setPaymentMethod("cod")}
+                    className="accent-primary"
+                    id="pm-cod"
+                  />
+                  <Banknote className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Cash on Delivery</p>
+                    <p className="text-xs text-muted-foreground">
+                      Pay when you receive
+                    </p>
+                  </div>
+                </label>
+
+                {/*
+                  Online payment is intentionally hidden until SSLCommerz is
+                  ready. Keep this radio-card dormant for a future re-enable.
+
+                  Online Payment dormant JSX:
+                <label
+                  className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                    paymentMethod === "sslcommerz"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    value="sslcommerz"
+                    checked={paymentMethod === "sslcommerz"}
+                    onChange={() => setPaymentMethod("sslcommerz")}
+                    className="accent-primary"
+                    id="pm-online"
+                  />
+                  <CreditCard className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium">Online Payment</p>
+                    <p className="text-xs text-muted-foreground">
+                      Card, Mobile Banking &amp; More
+                    </p>
+                  </div>
+                </label>
+                */}
+              </div>
+
+              {/*
+                SSLCommerz helper text is intentionally hidden while COD is the
+                only customer-facing payment option.
+
+              {paymentMethod === "sslcommerz" && (
+                <p className="text-xs text-muted-foreground">
+                  You&apos;ll be redirected to SSLCommerz secure payment page.
+                  Supports VISA, Mastercard, bKash, Nagad and more.
+                </p>
+              )}
+              */}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-1">
+              <Label htmlFor="notes">Order Notes (optional)</Label>
+              <Textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any special instructions..."
+                rows={3}
+              />
+            </div>
+
+            {/* Voucher Code */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5" />
+                Voucher Code
+              </Label>
+              {appliedVoucherCode && voucherResult?.valid ? (
+                <div className="flex items-center gap-2 p-3 rounded-md bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">
+                      <span className="font-mono">{appliedVoucherCode}</span>{" "}
+                      applied
+                    </p>
+                    {voucherResult.voucherDescription && (
+                      <p className="text-xs text-green-600 dark:text-green-500 truncate">
+                        {voucherResult.voucherDescription}
+                      </p>
+                    )}
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400">
+                      -৳{voucherDiscount.toLocaleString()} off
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppliedVoucherCode(null);
+                      setVoucherInput("");
+                    }}
+                    className="h-6 w-6 flex items-center justify-center rounded hover:bg-green-100 dark:hover:bg-green-900 transition-colors"
+                    aria-label="Remove voucher"
+                  >
+                    <X className="h-3.5 w-3.5 text-green-700 dark:text-green-400" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <Input
+                      id="voucherCode"
+                      value={voucherInput}
+                      onChange={(e) =>
+                        setVoucherInput(e.target.value.toUpperCase())
+                      }
+                      placeholder="Enter code"
+                      className="font-mono uppercase"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (voucherInput.trim())
+                            setAppliedVoucherCode(voucherInput.trim());
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!voucherInput.trim() || isApplyingVoucher}
+                      onClick={() => {
+                        if (voucherInput.trim()) {
+                          setIsApplyingVoucher(true);
+                          setAppliedVoucherCode(voucherInput.trim());
+                          setTimeout(() => setIsApplyingVoucher(false), 600);
+                        }
+                      }}
+                    >
+                      {isApplyingVoucher ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Apply"
+                      )}
+                    </Button>
+                  </div>
+                  {appliedVoucherCode &&
+                    voucherResult &&
+                    !voucherResult.valid && (
+                      <p className="text-xs text-destructive">
+                        {voucherResult.errorMessage ?? "Invalid voucher code."}
+                      </p>
+                    )}
+                </div>
+              )}
+            </div>
+
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {paymentMethod === "sslcommerz"
+                    ? "Connecting…"
+                    : "Placing Order…"}
+                </>
+              ) : paymentMethod === "sslcommerz" ? (
+                "Pay Online"
+              ) : (
+                "Place Order"
+              )}
+            </Button>
+          </form>
+
+          {/* Right: Order Summary */}
+          <div className="space-y-6">
+            <h2 className="text-lg font-medium">Order Summary</h2>
+
+            <div className="space-y-4">
+              {cart.items.map((item) => {
+                const isItemLoading = cartUpdateLoadingId === item.variantId;
+                return (
+                  <div key={item.key} className="flex gap-4 items-start">
+                    {item.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt={item.productName}
+                        className="w-16 h-16 object-cover rounded-md bg-muted flex-shrink-0"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium line-clamp-2">
+                        {item.productName}
+                      </p>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        Size: {item.size}
+                        {item.color ? ` · ${item.color}` : ""}
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center border border-border">
+                          {item.quantity === 1 ? (
+                            <button
+                              className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                              disabled={isItemLoading}
+                              onClick={() =>
+                                setCheckoutDeleteConfirm({ item })
+                              }
+                              aria-label="Remove item"
+                            >
+                              <Trash2 className="h-3 w-3 text-destructive" />
+                            </button>
+                          ) : (
+                            <button
+                              className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                              disabled={isItemLoading}
+                              onClick={() =>
+                                changeItemQuantity(item, item.quantity - 1)
+                              }
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                          )}
+                          <span className="h-6 w-7 flex items-center justify-center text-xs font-medium border-x border-border">
+                            {isItemLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              item.quantity
+                            )}
+                          </span>
+                          <button
+                            className="h-6 w-6 flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-40"
+                            disabled={
+                              item.quantity >= item.stock || isItemLoading
+                            }
+                            onClick={() =>
+                              changeItemQuantity(item, item.quantity + 1)
+                            }
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <p className="text-sm font-medium whitespace-nowrap">
+                          ৳
+                          {(
+                            item.discountedPrice * item.quantity
+                          ).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>৳{cart.subtotal.toLocaleString()}</span>
+              </div>
+              {cart.discountAmount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Discount</span>
+                  <span>-৳{cart.discountAmount.toLocaleString()}</span>
+                </div>
+              )}
+              {cart.bundleDiscountAmount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>
+                    Bundle Discount (
+                    {cart.bundleDiscountTier === "tier3"
+                      ? "3+ items"
+                      : "2+ items"}
+                    )
+                  </span>
+                  <span>-৳{cart.bundleDiscountAmount.toLocaleString()}</span>
+                </div>
+              )}
+              {voucherDiscount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" />
+                    Voucher ({appliedVoucherCode})
+                  </span>
+                  <span>-৳{voucherDiscount.toLocaleString()}</span>
+                </div>
+              )}
+              <div
+                className={`flex justify-between ${
+                  deliveryCost === 0 ? "text-green-600" : ""
+                }`}
+              >
+                <span>Delivery</span>
+                <span>
+                  {deliveryCost === 0
+                    ? "Free"
+                    : `৳${deliveryCost.toLocaleString()}`}
+                </span>
+              </div>
+              <Separator />
+              <div className="flex justify-between font-semibold text-base">
+                <span>Total</span>
+                <span>৳{checkoutTotal.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* People Also Bought — variant-based */}
+            {recommendations && recommendations.length > 0 && (
+              <div className="space-y-3 pt-4">
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+                  People Also Bought
+                </h3>
+                <div ref={emblaRef} className="overflow-hidden pb-2">
+                  <div className="flex gap-3">
+                    {recommendations.map((rec) => {
+                      const cartItem = cart?.items.find(
+                        (i) => i.variantId === rec.variantId,
+                      );
+                      const inCart = !!cartItem;
+                      return (
+                        <div
+                          key={rec.variantId}
+                          className="flex-[0_0_calc(40%-8px)] flex-shrink-0 border rounded-md overflow-hidden"
+                        >
+                          <Link
+                            href={`/products/${rec.productSlug}`}
+                            className="block"
+                          >
+                            <div className="aspect-square bg-muted">
+                              {rec.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={rec.imageUrl}
+                                  alt={rec.productName}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                                  No image
+                                </div>
+                              )}
+                            </div>
+                          </Link>
+                          <div className="p-2 space-y-1.5">
+                            <p className="text-xs font-medium line-clamp-2">
+                              {rec.productName}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {rec.size}
+                              {rec.color ? ` / ${rec.color}` : ""}
+                            </p>
+                            <p className="text-xs font-semibold">
+                              ৳{rec.effectivePrice.toLocaleString()}
+                            </p>
+                            {inCart ? (
+                              <div className="flex items-center justify-between gap-1">
+                                <button
+                                  onClick={() => {
+                                    if (cartItem.quantity <= 1) {
+                                      removeItem(cartItem);
+                                    } else {
+                                      changeItemQuantity(
+                                        cartItem,
+                                        cartItem.quantity - 1,
+                                      );
+                                    }
+                                  }}
+                                  className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                                >
+                                  −
+                                </button>
+                                <span className="text-xs font-medium">
+                                  {cartItem.quantity}
+                                </span>
+                                <button
+                                  onClick={() =>
+                                    changeItemQuantity(
+                                      cartItem,
+                                      cartItem.quantity + 1,
+                                    )
+                                  }
+                                  disabled={cartItem.quantity >= rec.stock}
+                                  className="w-6 h-6 rounded border text-sm font-bold hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full h-7 text-xs"
+                                disabled={rec.stock === 0}
+                                onClick={async () => {
+                                  try {
+                                    if (isConvexAuth) {
+                                      await addToCart({
+                                        productId: rec.productId,
+                                        variantId: rec.variantId,
+                                        quantity: 1,
+                                      });
+                                    } else {
+                                      addGuestItem(
+                                        rec.productId,
+                                        rec.variantId,
+                                        1,
+                                      );
+                                    }
+                                    trackAddToCart({
+                                      content_ids: [String(rec.productId)],
+                                      content_name: rec.productName,
+                                      content_type: "product",
+                                      contents: [
+                                        {
+                                          id: String(rec.productId),
+                                          quantity: 1,
+                                          item_price: rec.discountedPrice,
+                                        },
+                                      ],
+                                      currency: "BDT",
+                                      num_items: 1,
+                                      value: rec.discountedPrice,
+                                    });
+                                  } catch (e: unknown) {
+                                    toast.error(
+                                      e instanceof Error
+                                        ? e.message
+                                        : "Failed to add",
+                                    );
+                                  }
+                                }}
+                              >
+                                {rec.stock === 0 ? "Out of stock" : "Add"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Progress Bar & Arrows */}
+                {snapCount > 1 && (
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex-1 h-0.5 bg-gray-200 relative overflow-hidden">
+                      <div
+                        className="absolute top-0 left-0 h-full bg-foreground transition-all duration-300 ease-out"
+                        style={{
+                          width: `${snapCount > 0 ? 100 / snapCount : 100}%`,
+                          transform: `translateX(${currentIndex * 100}%)`,
+                        }}
+                      />
+                    </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => emblaApi?.scrollPrev()}
+                        disabled={!canScrollPrev}
+                        className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => emblaApi?.scrollNext()}
+                        disabled={!canScrollNext}
+                        className="h-8 w-8 rounded-full border border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 transition-colors"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <AlertDialog
+        open={!!checkoutDeleteConfirm}
+        onOpenChange={(open) => !open && setCheckoutDeleteConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from cart?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove &ldquo;{checkoutDeleteConfirm?.item.productName}&rdquo;
+              from your cart?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!cartUpdateLoadingId}
+              onClick={async () => {
+                if (!checkoutDeleteConfirm) return;
+                await removeItem(checkoutDeleteConfirm.item);
+                setCheckoutDeleteConfirm(null);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

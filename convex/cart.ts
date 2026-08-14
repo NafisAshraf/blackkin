@@ -162,6 +162,120 @@ export const getGuestCartItems = query({
   },
 });
 
+/**
+ * Public query — no auth required.
+ * Mirrors getCartWithPricing's subtotal/discount/bundle-discount math but
+ * operates on client-supplied guest cart items instead of the cartItems
+ * table, so the checkout page can show accurate pricing before sign-in.
+ */
+export const getGuestCartPricing = query({
+  args: {
+    items: v.array(
+      v.object({
+        productId: v.string(),
+        variantId: v.string(),
+        quantity: v.number(),
+      }),
+    ),
+  },
+  returns: v.object({
+    items: v.array(guestCartItemFull),
+    subtotal: v.number(),
+    discountAmount: v.number(),
+    bundleDiscountAmount: v.number(),
+    bundleDiscountTier: v.union(
+      v.literal("tier2"),
+      v.literal("tier3"),
+      v.literal("none"),
+    ),
+    bundleDiscountFreeDelivery: v.boolean(),
+    total: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    if (args.items.length === 0) {
+      return {
+        items: [],
+        subtotal: 0,
+        discountAmount: 0,
+        bundleDiscountAmount: 0,
+        bundleDiscountTier: "none" as const,
+        bundleDiscountFreeDelivery: false,
+        total: 0,
+      };
+    }
+
+    const sizeMaps = await getActiveSizeMaps(ctx);
+
+    let subtotal = 0;
+    let discountAmount = 0;
+
+    const enriched = await Promise.all(
+      args.items.map(async (item) => {
+        let product, variant;
+        try {
+          product = await ctx.db.get(item.productId as Id<"products">);
+          variant = await ctx.db.get(item.variantId as Id<"productVariants">);
+        } catch {
+          return null; // invalid Convex ID format
+        }
+
+        if (!product || !isProductVisible(product)) return null;
+        if (!variant || variant.productId !== product._id) return null;
+        const sizeLabel = getVariantSizeLabel(variant, sizeMaps);
+        if (!sizeLabel) return null;
+        if (variant.stock === 0) return null;
+
+        const pricing = await getEffectivePrice(ctx, product);
+        const quantity = Math.min(item.quantity, variant.stock);
+        subtotal += product.basePrice * quantity;
+        discountAmount += pricing.discountAmount * quantity;
+
+        const imageUrl = product.thumbnailStorageId
+          ? await r2.getUrl(product.thumbnailStorageId)
+          : null;
+
+        return {
+          variantId: variant._id as string,
+          productId: product._id as string,
+          quantity,
+          productName: product.name,
+          productSlug: product.slug,
+          basePrice: product.basePrice,
+          discountedPrice: pricing.effectivePrice,
+          discountAmount: pricing.discountAmount,
+          size: sizeLabel,
+          color: variant.color,
+          imageUrl,
+          stock: variant.stock,
+        };
+      }),
+    );
+
+    const validItems = enriched.filter(
+      (x): x is NonNullable<typeof x> => x !== null,
+    );
+
+    const totalQuantity = validItems.reduce((sum, i) => sum + i.quantity, 0);
+    const effectiveCartTotal = subtotal - discountAmount;
+
+    const bundle = await computeBundleDiscount(
+      ctx,
+      totalQuantity,
+      effectiveCartTotal,
+    );
+
+    return {
+      items: validItems,
+      subtotal,
+      discountAmount,
+      bundleDiscountAmount: bundle.bundleDiscountAmount,
+      bundleDiscountTier: bundle.bundleDiscountTier,
+      bundleDiscountFreeDelivery: bundle.bundleDiscountFreeDelivery,
+      total: subtotal - discountAmount - bundle.bundleDiscountAmount,
+    };
+  },
+});
+
 export const add = mutation({
   args: {
     productId: v.id("products"),

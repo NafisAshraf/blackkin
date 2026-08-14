@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  Heart,
   Loader2,
   ShoppingCart,
   Info,
@@ -320,6 +319,28 @@ export default function ProductInfo({
       : quantity;
   const isBundleAddDisabled = !selectedVariantId || bundleAddLoading !== null;
 
+  /** Add selected qty to cart (auth or guest) then go straight to checkout. */
+  async function handleBuyNow() {
+    if (!selectedVariantId) return;
+    setIsBuyingNow(true);
+    try {
+      if (session) {
+        await addToCartMutation({
+          productId: _id,
+          variantId: selectedVariantId,
+          quantity,
+        });
+      } else {
+        addGuestItem(_id, selectedVariantId, quantity);
+      }
+      trackSelectedVariantAdded(quantity);
+      router.push("/checkout");
+    } catch {
+      toast.error("Could not proceed to checkout");
+      setIsBuyingNow(false);
+    }
+  }
+
   async function addSelectedVariantQuantity(quantityToAdd: 2 | 3) {
     if (!selectedVariantId) return;
 
@@ -624,26 +645,7 @@ export default function ProductInfo({
               <button
                 type="button"
                 disabled={!selectedVariantId || isBuyingNow}
-                onClick={async () => {
-                  if (!selectedVariantId) return;
-                  setIsBuyingNow(true);
-                  try {
-                    if (session) {
-                      await addToCartMutation({
-                        productId: _id,
-                        variantId: selectedVariantId,
-                        quantity,
-                      });
-                    } else {
-                      addGuestItem(_id, selectedVariantId, quantity);
-                    }
-                    trackSelectedVariantAdded(quantity);
-                    router.push("/checkout");
-                  } catch {
-                    toast.error("Could not proceed to checkout");
-                    setIsBuyingNow(false);
-                  }
-                }}
+                onClick={handleBuyNow}
                 className="w-full h-11 border border-border bg-background text-foreground text-xs font-semibold tracking-wider uppercase flex items-center justify-center gap-2 hover:bg-muted transition-colors disabled:opacity-40"
               >
                 {isBuyingNow ? (

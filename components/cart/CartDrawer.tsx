@@ -306,7 +306,7 @@ export function CartDrawer() {
               <span className="text-lg font-bold">৳{subtotal.toLocaleString()}</span>
             </div>
             <Link
-              href={session ? "/checkout" : "/login?next=/checkout"}
+              href="/checkout"
               prefetch={false}
               onClick={() => setIsOpen(false)}
               className="block w-full bg-foreground text-background text-xs font-semibold tracking-[0.2em] uppercase text-center py-4 hover:opacity-90 transition-opacity"

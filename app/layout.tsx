@@ -99,8 +99,11 @@ export default async function RootLayout({
       lang="en"
       className={cn("font-sans")}
       style={fontVariables}
+      // Extensions (e.g. ColorZilla) inject attrs like cz-shortcut-listen on
+      // <html>/<body> before hydrate; suppress so they don't trip a mismatch.
+      suppressHydrationWarning
     >
-      <body className="antialiased">
+      <body className="antialiased" suppressHydrationWarning>
         <ConvexClientProvider>
           <StorefrontDataProvider data={storefrontData}>
             <TooltipProvider>
